@@ -1,6 +1,6 @@
 """把 Anthropic HTML 指南转成精简 markdown(调研存档)。"""
-import re
 import html
+import re
 
 src = "docs/research/anthropic-effective-agents.html"
 s = open(src, encoding="utf-8", errors="ignore").read()
