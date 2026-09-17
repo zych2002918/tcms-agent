@@ -24,7 +24,7 @@ dev = [
     "pytest-cov>=4.0",
     "ruff>=0.5",
     # 以下为各成员 test extra 的并集，保证根级一把梭不缺插件（engine 侧需要）
-    "pytest-html>=4.0",
+    "pytest-html>=4.2.0",
     "allure-pytest>=2.13",
     "hypothesis>=6.0",
 ]
