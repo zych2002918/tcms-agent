@@ -47,3 +47,8 @@ Desktop.ini
 # ---- 本地密钥与设置（绝不入库）----
 .env
 *.local
+
+# ---- AI 生成用例的编译产物（executor_real 写到 <upstream>/tests/）----
+# 正常情况下 agent 跑完会立刻搬进沙箱（见 _exec_worker._relocate_artifact），
+# 这里是安全网：万一进程被强杀在搬走之前，也不该把产物提交进仓库。
+test_ai_generated*.py

@@ -287,3 +287,34 @@ def test_drafts_never_touch_the_repo(knowledge, tmp_path: Path) -> None:
     assert (repo_root / "packages").is_dir(), f"路径推算不对: {repo_root}"
     stray = [p for p in (repo_root / "packages").rglob("test_repo_isolation.*")]
     assert stray == [], f"草稿不得出现在仓库里: {stray}"
+
+
+def test_run_draft_does_not_pollute_upstream_tree(knowledge, tmp_path: Path) -> None:
+    """**执行路径**也不能往仓库里写东西 —— 上面那条测试漏掉的正是这一半。
+
+    漏掉的经过：`test_drafts_never_touch_the_repo` 只覆盖了 `draft_test_case`
+    （R1 写入），而污染发生在 `run_draft`（R2 真实执行）——
+    `executor_real` 按设计把编译出的 pytest 文件写进 ``<upstream>/tests/``，
+    因为那样才能看到引擎的 conftest 夹具。在旧的"双仓平级 clone"布局里
+    upstream 是**另一个仓库**，写在那里无所谓；**三仓合一后 upstream 就是本仓的
+    `packages/engine`**，于是每跑一次就往源码树里留一个 `test_ai_generated_p2.py`。
+
+    修法：执行器跑完立刻把生成物搬进沙箱（`<sandbox>/<run>/drafts/generated/`），
+    搬不走就删除。本测试同时断言「上游树干净」与「产物确实留下来了」——
+    只断言前者会纵容"顺手删掉产物"这种把审计能力也一起删掉的修法。
+    """
+    reg = _reg(knowledge, tmp_path)
+    d = reg.invoke("draft_test_case", {"case": _case()})
+    r = reg.invoke("run_draft", {"draft_id": d["draft_id"]})
+    assert r.get("all_passed") is True, r
+
+    # ① 上游源码树必须干净
+    leftovers = sorted(p.name for p in (UPSTREAM / "tests").glob("test_ai_generated*.py"))
+    assert leftovers == [], f"run_draft 往上游源码树写了文件: {leftovers}"
+
+    # ② 产物应被搬进沙箱（审计能力不能一起丢掉）
+    sb = DraftSandbox(root=tmp_path / "sandbox", run_id="r1-test")
+    kept = sorted(p.name for p in sb.generated_dir().glob("*.py"))
+    assert kept, "编译产物应搬进沙箱的 generated/ 目录，而不是被丢弃"
+    body = (sb.generated_dir() / kept[0]).read_text(encoding="utf-8")
+    assert "AUTO-GENERATED" in body and "door_fault" in body, "搬走的应是真正的编译产物"

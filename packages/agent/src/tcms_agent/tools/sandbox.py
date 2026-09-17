@@ -106,6 +106,20 @@ class DraftSandbox:
     def case_path(self, draft_id: str) -> Path:
         return self.dir() / f"{_slug(draft_id)}.json"
 
+    def generated_dir(self) -> Path:
+        """编译产物（真实 pytest 文件）的落点。
+
+        为什么要专门一个目录：`executor_real` 按设计把生成的 pytest 文件写进
+        ``<upstream>/tests/``（那样才能看到引擎的 conftest 夹具）。在旧的
+        "双仓平级 clone"布局里 upstream 是**另一个仓库**，写在那里无所谓；
+        **三仓合一后 upstream 就是我们自己的源码树**，留在那里等于污染仓库——
+        而且直接违反本类"草稿只活在沙箱里、不碰仓库"的承诺。
+        因此执行器改为跑完即把该文件搬进这里（见 `_exec_worker._run_cases`）。
+        """
+        d = self.dir() / "generated"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
     def src_path(self, draft_id: str) -> Path:
         return self.dir() / f"{_slug(draft_id)}.py"
 
@@ -254,8 +268,14 @@ def _draft_test_case(
     }
 
 
-def _run_cases_subprocess(cases_path: Path, *, upstream: Path | None, timeout_s: float) -> dict:
-    """在独立子进程里跑生成用例（与 run_scenario 同一套真超时机制）。"""
+def _run_cases_subprocess(
+    cases_path: Path, *, upstream: Path | None, timeout_s: float, artifact_dir: Path | None = None
+) -> dict:
+    """在独立子进程里跑生成用例（与 run_scenario 同一套真超时机制）。
+
+    `artifact_dir`：编译产物（真实 pytest 文件）搬出上游源码树后的落点。
+    不传则子进程会**直接删除**该文件——宁可没有产物，也不污染仓库。
+    """
     import os
 
     env = os.environ.copy()
@@ -266,6 +286,10 @@ def _run_cases_subprocess(cases_path: Path, *, upstream: Path | None, timeout_s:
         # 避免子进程再做一次路径猜测而与主进程不一致
         env["TCMS_UPSTREAM_ROOT"] = str(upstream)
         env["TCMS_UPSTREAM_DIR"] = str(upstream)
+    # 编译产物的落点：用环境变量传给子进程，避免改写 cases JSON。
+    # 不设时子进程会直接删除生成文件（宁可没有产物，也不污染仓库）。
+    if artifact_dir is not None:
+        env["TCMS_AGENT_ARTIFACT_DIR"] = str(artifact_dir)
     env.setdefault("PYTHONIOENCODING", "utf-8")
 
     started = time.perf_counter()
@@ -328,7 +352,12 @@ def _run_draft(
     if upstream is None:
         return {"error": "缺少上游引擎目录，无法执行用例"}
 
-    res = _run_cases_subprocess(sandbox.case_path(draft_id), upstream=upstream, timeout_s=timeout_s)
+    res = _run_cases_subprocess(
+        sandbox.case_path(draft_id),
+        upstream=upstream,
+        timeout_s=timeout_s,
+        artifact_dir=sandbox.generated_dir(),
+    )
     if not res.get("ok"):
         return {"error": res.get("error", "执行失败"), "timed_out": res.get("timed_out", False), "draft_id": draft_id}
 

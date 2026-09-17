@@ -35,6 +35,49 @@ def _run_scenario(path: str) -> dict:
     return {"ok": True, "report": _truncate(sc.run_yaml(path))}
 
 
+def _relocate_artifact(res: object) -> str:
+    """把生成物搬出**上游源码树**，返回搬走后的路径（搬不走就删除，返回空串）。
+
+    ## 为什么必须这么做
+
+    `run_real(keep_artifacts=True)` 按设计把编译出的 pytest 文件写进
+    ``<upstream>/tests/``——那样才能看到引擎的 conftest 夹具。在旧的
+    "双仓平级 clone"布局里 upstream 是**另一个仓库**，写在那里无所谓。
+
+    **但三仓合一后 upstream 就是我们自己的源码树**（`packages/engine`），
+    于是每跑一次 `run_draft` 就往仓库里留一个 `test_ai_generated_p2.py`。
+    这既污染仓库，也直接违反 `DraftSandbox` 自己"草稿只活在沙箱里、不碰仓库"
+    的承诺。落点由 `TCMS_AGENT_ARTIFACT_DIR` 指定（agent 传沙箱目录）；
+    未指定时**直接删除**——宁可没有产物，也不污染仓库。
+    """
+    import os  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    gen = Path(str(getattr(res, "report_path", "") or ""))
+    if not gen.is_file():
+        return ""
+    try:
+        code = gen.read_text(encoding="utf-8")
+    except OSError:
+        code = ""
+    try:
+        gen.unlink()  # 先清干净上游树，再谈要不要留副本
+    except OSError:
+        pass
+
+    out_dir = os.environ.get("TCMS_AGENT_ARTIFACT_DIR", "").strip()
+    if not out_dir or not code:
+        return ""
+    try:
+        d = Path(out_dir)
+        d.mkdir(parents=True, exist_ok=True)
+        target = d / f"generated-{int(time.time() * 1000)}-{gen.stem}.py"
+        target.write_text(code, encoding="utf-8")
+        return str(target)
+    except OSError:
+        return ""
+
+
 def _run_cases(cases_path: str) -> dict:
     """用 testgen 的真实执行器跑一批生成用例（编译成 pytest 后真跑）。"""
     from tcms_ai_testgen.executor_real import run_real  # noqa: PLC0415
@@ -54,6 +97,8 @@ def _run_cases(cases_path: str) -> dict:
     if not upstream or not Path(str(upstream)).is_dir():
         return {"ok": False, "error": f"上游引擎目录不可用: {upstream!r}"}
     res = run_real(cases, upstream, keep_artifacts=True)
+    # 立刻把生成物搬出上游源码树（详见 _relocate_artifact 的说明）
+    artifact_path = _relocate_artifact(res)
     return {
         "ok": True,
         "result": _truncate(
@@ -64,7 +109,9 @@ def _run_cases(cases_path: str) -> dict:
                 "compiled": getattr(res, "compiled", None),
                 "compile_rate": getattr(res, "compile_rate", None),
                 "exec_pass_rate": getattr(res, "exec_pass_rate", None),
-                "report_path": str(getattr(res, "report_path", "") or ""),
+                # 注意：这里**不再回传上游树内的路径**，只给搬走后的产物路径。
+                # 回传旧路径会诱使上层去归档一个已经不存在的位置。
+                "artifact_path": artifact_path,
                 "stdout": (res.stdout or "")[-6000:],
             }
         ),
