@@ -8,9 +8,13 @@
 
 from __future__ import annotations
 
+import json as _json
+import queue as _queue
+import threading as _threading
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .._version import __version__
@@ -197,6 +201,15 @@ class AgentRunRequest(BaseModel):
     """Agent 任务执行请求（模块级：FastAPI 前向引用约束）。"""
 
     task_id: str | None = None  # None = 全跑
+
+
+def _sse(obj: dict) -> str:
+    """把一条消息编码成 SSE 帧。
+
+    `ensure_ascii=False` 是有意的：中文在流里保持可读，
+    便于直接 `curl` 这个端点排查问题（白盒的东西自己也该是白的）。
+    """
+    return f"data: {_json.dumps(obj, ensure_ascii=False)}\n\n"
 
 
 class FaultLabRequest(BaseModel):
@@ -1099,6 +1112,102 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
                 raise HTTPException(404, f"任务不存在: {req.task_id}")
         # 每次现取后端（设置页改 key/provider 后无需重启即生效）
         return _make_harness().run_tasks(tasks)
+
+    @app.get("/api/agent/run/stream")
+    def agent_run_stream(task_id: str | None = None) -> StreamingResponse:
+        """Agent 任务的**实时白盒流**（SSE）。
+
+        与 `POST /api/agent/run` 的本质差别：后者要等任务跑完才一次性返回轨迹，
+        前端在等待期间只能放一段**轮换文案**装作在跑；这个端点**每产生一条真实
+        轨迹就推一条**，于是"思考中…"可以换成真实步骤流——
+        真实查询串、完整候选集与选择理由、该场景**实际注入了哪些故障**、
+        断言逐条明细。这正是"白盒"与"进度动画"的区别。
+
+        协议（每行一个 SSE `data:`，JSON）：
+            {"type":"start","tasks":[...],"backend":"..."}
+            {"type":"trace","task_id":"...","entry":{step,detail,t,payload}}
+            {"type":"done","task_id":"...","score":{...},"achieved":bool}
+            {"type":"end"}  或  {"type":"error","error":"..."}
+        """
+        tasks = default_tasks(asset_model)
+        if task_id:
+            tasks = [t for t in tasks if t.task_id == task_id]
+            if not tasks:
+                raise HTTPException(404, f"任务不存在: {task_id}")
+
+        harness = _make_harness()
+        q: _queue.Queue = _queue.Queue()
+        _END = object()
+
+        def _worker() -> None:
+            runs: list = []
+            try:
+                for t in tasks:
+                    tid = t.task_id
+
+                    def _push(entry: dict, _tid: str = tid) -> None:
+                        q.put({"type": "trace", "task_id": _tid, "entry": entry})
+
+                    run = harness.run_task(t, on_log=_push)
+                    runs.append(run)
+                    q.put(
+                        {
+                            "type": "done",
+                            "task_id": tid,
+                            "achieved": bool(run.achieved),
+                            "duration_ms": run.duration_ms,
+                            "score": run.score(),
+                            "trace_len": len(run.trace),
+                        }
+                    )
+                # 末尾给出与 POST /api/agent/run **同构**的完整报告：
+                # 前端据此直接渲染结果，无需把任务再跑一遍（省一次真执行 + 一次模型调用）
+                q.put({"type": "result", "report": harness.summarize_runs(runs)})
+            except Exception as e:  # noqa: BLE001 - 异常必须传下去，不能静默
+                q.put({"type": "error", "error": f"{type(e).__name__}: {e}"})
+            finally:
+                q.put(_END)
+
+        _threading.Thread(target=_worker, daemon=True).start()
+
+        def _gen():
+            yield _sse({"type": "start", "tasks": [t.task_id for t in tasks], "count": len(tasks)})
+            while True:
+                try:
+                    item = q.get(timeout=180)
+                except _queue.Empty:
+                    yield _sse({"type": "error", "error": "任务超时（180s 无新步骤）"})
+                    break
+                if item is _END:
+                    break
+                yield _sse(item)
+            yield _sse({"type": "end"})
+
+        return StreamingResponse(
+            _gen(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # 反代下不要缓冲，否则"流"就变成一次性
+            },
+        )
+
+    @app.get("/api/scenarios/{scenario_file}/composition")
+    def scenario_composition_ep(scenario_file: str, entry_fault: str | None = None) -> dict:
+        """场景构成说明：这个场景到底注入了哪些故障、彼此是什么关系。
+
+        用途是回答演示现场最容易被问住的一句话：
+        "我只点了一个故障，为什么动画里注入了三个？"
+        返回的 `why` / `oneliner` 是**可照读的演示口径**，
+        `injections` 是逐条可核对的事实（来自场景 YAML，不是推断）。
+        """
+        from ..core.scenario_view import scenario_composition  # noqa: PLC0415
+
+        sc_def = asset_model.scenarios.get(scenario_file)
+        if sc_def is None:
+            raise HTTPException(404, f"场景不存在: {scenario_file}")
+        return scenario_composition(sc_def, asset_model, entry_fault)
 
     @app.post("/api/agent/free")
     def agent_free(req: AgentFreeRequest) -> dict:

@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 #  公共引导模块：被 start.ps1 / agent-demo.ps1 / test.ps1 共同引用。
 #
 #  编码：本文件必须为 UTF-8 with BOM（PowerShell 5.1 无 BOM 时按 ANSI 解析，中文乱码）。
@@ -52,18 +52,20 @@ function Show-UvHelp {
 
 #: 同步依赖；返回 $true 表示成功。
 function Sync-Deps($Uv, $Root) {
-    $args = @('sync', '--quiet')
+    # 注意：这里不能把变量叫 $args —— 那是 PowerShell 的自动变量，
+    # 在同名函数里会被当作"未绑定参数"而语义含糊（当前能跑，但是个陷阱）。
+    $uvArgs = @('sync', '--quiet')
     if ($env:TCMS_OFFLINE -eq '1') {
         $cache = Join-Path $Root '_offline\uv-cache'
         if (Test-Path $cache) {
             $env:UV_CACHE_DIR = $cache
-            $args += '--offline'
+            $uvArgs += '--offline'
             Warn "离线模式（使用包内缓存：$cache）"
         } else {
             Warn '指定了离线模式，但包内没有 _offline\uv-cache；将尝试联网'
         }
     }
-    & $Uv @args
+    & $Uv @uvArgs
     if ($LASTEXITCODE -eq 0) { return $true }
     Write-Host ""
     Fail '依赖同步失败。常见原因与处理：'

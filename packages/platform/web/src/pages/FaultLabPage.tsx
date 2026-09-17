@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useSearchParams } from "react-router-dom";
 import { api, type FaultLabCurvePoint, type FaultLabEvent, type FaultLabResp } from "../api";
 import { Panel, Tag, EmptyState, SkeletonRows } from "../components/ui";
+import { ScenarioCompositionCard } from "../components/ScenarioCompositionCard";
 import { advancePlayback, activeSpanKeys, buildSpans, eventWindow } from "../lib/playerState";
 
 /* ================= t4 资产化：任意序列 / 跳转演示初始化 =================
@@ -479,6 +480,8 @@ function SourceNote({ e }: { e: FaultLabEventEx }) {
 
 export function FaultLabPage() {
   const [searchParams] = useSearchParams();
+  //: 从某故障跳转进来时带上的"入口故障"（用于把"你点的那个"标出来）
+  const entryFault = searchParams.get("fault") ?? undefined;
   const [scenarios, setScenarios] = useState<{ file: string; name: string; steps: number; fault_keys: string[] }[]>([]);
   const [sel, setSel] = useState("");
   const [phase, setPhase] = useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -734,6 +737,10 @@ export function FaultLabPage() {
               <Tag tone="warn">引擎未启用 · 处置来自故障字典</Tag>
             )}
           </div>
+
+          {/* 多故障解释：用户点一个故障进来却看到多个时，第一个问题就是"为什么"。
+              全库 104 个场景里 61 个多故障，因此这是通用卡而非补丁。 */}
+          <ScenarioCompositionCard scenario={data.demo.scenario} entryFault={entryFault} />
 
           {/* 列车动画 + 驾驶台 */}
           <Panel bodyClass="p-3">

@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type AgentComposeResp, type AgentFreeResp, type AgentRunResp } from "../api";
+import {
+  api,
+  streamAgentRun,
+  type AgentRunResp,
+  type AgentComposeResp,
+  type AgentFreeResp,
+  type AgentStreamTraceEntry,
+} from "../api";
 import { Panel, Tag, EmptyState, SkeletonRows } from "../components/ui";
+import { LiveWhiteBox } from "../components/LiveWhiteBox";
 
 type AgentRun = AgentRunResp["runs"][number];
 
@@ -61,9 +69,12 @@ const STEP_META: Record<string, { label: string; tone: "info" | "ok" | "warn" | 
 const STEP_ORDER = ["plan", "retrieve", "act", "exec", "verify", "reflect", "report"];
 
 /** 跳 FaultLab：run.scenario 是真实场景文件名（含 .yaml）→ 直达 ?scenario= 演示本次执行的场景动画
- * 通道契约与 fe-faultlab t4 对齐：from=agent-exec → FaultLab 顶部标注「来自 Agent 执行」 */
-function faultlabHref(scenario: string, from: string): string {
+ * 通道契约与 fe-faultlab t4 对齐：from=agent-exec → FaultLab 顶部标注「来自 Agent 执行」。
+ * `fault` 是本次执行的目标故障：FaultLab 用它把"你点的那个"在多故障场景里标出来
+ * （一个场景常注入多个故障，用户点一个进来看到三个时的疑问由那张解释卡回答）。 */
+function faultlabHref(scenario: string, from: string, fault?: string): string {
   const p = new URLSearchParams({ scenario, from });
+  if (fault) p.set("fault", fault);
   return `/faultlab?${p.toString()}`;
 }
 
@@ -75,15 +86,6 @@ const DIM_LABELS: Record<string, string> = {
   requirement_trace: "需求追溯",
   honesty: "诚实性",
 };
-
-/** 运行中「Agent 思考中…」的步骤提示（随动画轮换，给用户"进程在走"的感觉） */
-const RUN_HINTS = [
-  "正在把你的目标拆成「故障 → 期望处置」…",
-  "正在从知识底座检索证据（GraphRAG）…",
-  "正在挑选覆盖该故障的真实场景…",
-  "正在真实引擎上执行并核对断言…",
-  "正在评审结果：阈值 / 联锁 / 需求追溯…",
-];
 
 /** 单条 run 的「管线进程视图」：把逐条 reveal 映射到横排 step 点亮 */
 function StepPipeline({ trace, showCount }: { trace: AgentRun["trace"]; showCount: number }) {
@@ -198,7 +200,13 @@ export function AgentPage() {
   const [err, setErr] = useState("");
   const [goal, setGoal] = useState("");
   const [goalHint, setGoalHint] = useState(""); // 自由目标没锚定 → 换说法引导
-  const [hintIdx, setHintIdx] = useState(0); // 运行中步骤提示轮换
+  // 实时白盒：后端推来的**真实**轨迹（取代原先的轮换文案）
+  const [live, setLive] = useState<AgentStreamTraceEntry[]>([]);
+  //: 白盒流是否**真的**开着。只有它为真才允许显示"已连接白盒流"之类的话——
+  //: 自由目标/组合/诊断三条路径走的是普通 POST，不开流，不能借用白盒的措辞。
+  const [liveActive, setLiveActive] = useState(false);
+  const [liveErr, setLiveErr] = useState("");
+  const streamAbort = useRef<AbortController | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   /** 场景文件名 → 中文名（“场景名=简短释义”展示用；拿不到就回落文件主干） */
   const [scenName, setScenName] = useState<Record<string, string>>({});
@@ -212,12 +220,8 @@ export function AgentPage() {
     return () => timers.current.forEach(clearTimeout);
   }, []);
 
-  // 运行中：步骤提示轮换（简单 interval；离开 running 自动停）
-  useEffect(() => {
-    if (phase !== "running") return;
-    const id = setInterval(() => setHintIdx((i) => i + 1), 2000);
-    return () => clearInterval(id);
-  }, [phase]);
+  // 组件卸载时中断白盒流，别让后台连接挂着
+  useEffect(() => () => streamAbort.current?.abort(), []);
 
   const current = tasks.find((t) => t.task_id === sel);
   const engineBlocked = sys !== null && !sys.engine.ok;
@@ -252,6 +256,9 @@ export function AgentPage() {
     setErr("");
     setGoalHint("");
     setVisible(0);
+    setLive([]);
+    setLiveErr("");
+    setLiveActive(false);
   };
 
   const run = async (taskId?: string) => {
@@ -263,15 +270,34 @@ export function AgentPage() {
       return;
     }
     begin();
-    try {
-      const r = await api.agentRun(id);
-      setResult(r);
-      scheduleReveal(r.runs);
-      setPhase("done");
-    } catch (e) {
-      setErr(String(e));
-      setPhase("done");
-    }
+
+    // 走**实时白盒流**：每来一条真实轨迹就渲染一条，运行期间就能看见
+    // Agent 查了什么、在哪些候选里选了什么、真实执行注入了哪些故障。
+    // 流末尾带回与 /api/agent/run 同构的完整报告，因此不需要把任务跑第二遍。
+    streamAbort.current?.abort();
+    const ac = new AbortController();
+    streamAbort.current = ac;
+    setLiveActive(true);
+    let gotResult = false;
+    streamAgentRun(
+      id,
+      (ev) => {
+        if (ev.type === "trace") {
+          setLive((prev) => [...prev, ev.entry]);
+        } else if (ev.type === "result") {
+          gotResult = true;
+          const rep = ev.report as unknown as AgentRunResp;
+          setResult(rep);
+          scheduleReveal(rep.runs);
+          setPhase("done");
+        } else if (ev.type === "error") {
+          setLiveErr(ev.error);
+        } else if (ev.type === "end") {
+          if (!gotResult) setPhase("done");
+        }
+      },
+      ac.signal,
+    );
   };
 
   const runFreeGoal = async (g: string) => {
@@ -638,18 +664,37 @@ export function AgentPage() {
         <div className="panel border-bad/30 bg-bad/5 px-4 py-2.5 text-sm text-bad">⚠ {err}</div>
       )}
 
-      {/* 运行中：Agent 思考中…（步骤提示轮换 + pulse） */}
-      {phase === "running" && !result && !freeResp && !composeResp && !goalHint && (
-        <div className="panel px-4 py-4 flex items-start gap-3 step-in">
-          <span className="mt-1.5 flex h-2.5 w-2.5">
+      {/* 运行中 / 运行完毕：**实时白盒**（真实步骤流，可展开核对载荷）。
+          仅在流**真的**开着或已有真实轨迹时渲染 —— 自由目标/组合/诊断走普通 POST，
+          不借用白盒的措辞（那会变成另一种假状态）。 */}
+      {(liveActive || live.length > 0) && !freeResp && !composeResp && !goalHint && (
+        <LiveWhiteBox entries={live} running={phase === "running"} error={liveErr} />
+      )}
+
+      {/* 白盒流刚建立、还没有第一条真实步骤：如实说"在等"，不编造进行到哪一步 */}
+      {liveActive && phase === "running" && live.length === 0 && !liveErr && (
+        <div className="panel px-4 py-3 flex items-center gap-3 step-in">
+          <span className="flex h-2.5 w-2.5">
             <span className="h-2.5 w-2.5 rounded-full bg-info pulse-dot" />
           </span>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-ink">Agent 思考中…</div>
-            <div className="text-xs text-ink-dim mt-0.5 h-4">{RUN_HINTS[hintIdx % RUN_HINTS.length]}</div>
-            <div className="mt-1">
-              <SkeletonRows rows={1} cols={3} />
-            </div>
+          <div className="text-xs text-ink-faint">
+            已连上白盒流，等待后端第一条真实步骤…（不显示编造的进度）
+          </div>
+        </div>
+      )}
+
+      {/* 其余路径（自由目标 / 组合 / 诊断）走普通 POST，没有逐步轨迹可看：
+          给一个**不声称内部步骤**的等待提示。 */}
+      {phase === "running" && !liveActive && !result && !freeResp && !composeResp && !goalHint && !diagBusy && (
+        <div className="panel px-4 py-3 flex items-center gap-3 step-in">
+          <span className="flex h-2.5 w-2.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-info pulse-dot" />
+          </span>
+          <div className="text-xs text-ink-faint">
+            请求处理中…（这条路径不提供逐步轨迹，完成后一次性给出结果）
+          </div>
+          <div className="ml-auto w-40">
+            <SkeletonRows rows={1} cols={2} />
           </div>
         </div>
       )}
@@ -1004,7 +1049,7 @@ export function AgentPage() {
                     </span>
                     <a
                       className="btn-ghost btn-sm ml-auto shrink-0"
-                      href={faultlabHref(run.scenario, "agent-exec")}
+                      href={faultlabHref(run.scenario, "agent-exec", run.fault)}
                       title="跳转 FaultLab，用动画回放这个场景的故障注入 → 检测 → 处置 → 恢复"
                     >
                       ▶ 看动画

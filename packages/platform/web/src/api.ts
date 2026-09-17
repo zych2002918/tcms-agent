@@ -215,6 +215,125 @@ export interface ConstRow {
   desc: string;
 }
 
+// ---- Agent 实时白盒流（GET /api/agent/run/stream，SSE）----
+//
+// 与 agentRun 的区别：agentRun 要等跑完才拿到轨迹，运行期间前端只能放
+// 轮换文案；这个流每产生一条**真实**轨迹就推一条，于是"思考中…"可以换成
+// 真实步骤（真实查询串、候选集与选择理由、注入了哪些故障、断言明细）。
+
+/** 一条真实轨迹（与后端 TaskRun.trace 同构） */
+export interface AgentStreamTraceEntry {
+  step: string;
+  detail: string;
+  t: number;
+  payload?: Record<string, unknown>;
+}
+
+export type AgentStreamEvent =
+  | { type: "start"; tasks: string[]; count: number }
+  | { type: "trace"; task_id: string; entry: AgentStreamTraceEntry }
+  | {
+      type: "done";
+      task_id: string;
+      achieved: boolean;
+      duration_ms: number;
+      score: Record<string, unknown>;
+      trace_len: number;
+    }
+  /** 流末尾的完整报告，与 POST /api/agent/run 的响应**同构** */
+  | { type: "result"; report: Record<string, unknown> }
+  | { type: "error"; error: string }
+  | { type: "end" };
+
+/**
+ * 打开 Agent 实时白盒流。返回一个 abort 函数。
+ *
+ * 用 fetch + ReadableStream 而非 EventSource：一是可以带 AbortSignal 主动取消，
+ * 二是 EventSource 在流异常结束时会自动重连（对一次性任务反而是错的）。
+ */
+export function streamAgentRun(
+  taskId: string | undefined,
+  onEvent: (ev: AgentStreamEvent) => void,
+  signal?: AbortSignal,
+): void {
+  const qs = taskId ? `?task_id=${encodeURIComponent(taskId)}` : "";
+  void (async () => {
+    try {
+      const r = await fetch(`/api/agent/run/stream${qs}`, {
+        headers: { Accept: "text/event-stream" },
+        signal,
+      });
+      if (!r.ok || !r.body) throw new Error(`${r.status} ${r.statusText}`);
+      const reader = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        // SSE 以空行分帧
+        let idx = buf.indexOf("\n\n");
+        while (idx >= 0) {
+          const frame = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          for (const line of frame.split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              onEvent(JSON.parse(line.slice(6)) as AgentStreamEvent);
+            } catch {
+              /* 单帧坏了不该炸掉整条流 */
+            }
+          }
+          idx = buf.indexOf("\n\n");
+        }
+      }
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") return; // 主动取消不算错误
+      onEvent({ type: "error", error: String((e as Error)?.message ?? e) });
+    }
+  })();
+}
+
+/** 场景构成说明（GET /api/scenarios/{file}/composition） */
+export interface ScenarioInjection {
+  fault: string;
+  node: string | null;
+  level: string;
+  level_label: string;
+  expect: string;
+  expect_label: string;
+  impact: string;
+  at: number;
+  fault_name?: string;
+  action?: string;
+  action_label?: string;
+  sil?: string;
+  desc?: string;
+  role: "entry" | "co";
+  role_label: string;
+}
+
+export interface ScenarioComposition {
+  available: boolean;
+  scenario: string;
+  scenario_name: string;
+  desc: string;
+  /** 不同故障数（去重后）*/
+  total_faults: number;
+  /** 注入次数（含同一故障的重复注入）——"恢复后重发"场景下与 total_faults 不等 */
+  total_injections: number;
+  /** 被重复注入的故障（次数 > 1）*/
+  repeated: { fault: string; times: number; name: string }[];
+  entry_fault: string;
+  has_entry: boolean;
+  relation: "single" | "repeat_single" | "flat_multi";
+  why: string;
+  oneliner: string;
+  injections: ScenarioInjection[];
+  recoveries: { fault: string; at: number }[];
+  is_multi: boolean;
+}
+
 export const api = {
   stats: () => req<Stats>("/stats"),
   health: () => req<HealthResp>("/health"),
@@ -263,6 +382,13 @@ export const api = {
     req<{ task_id: string; title: string; goal: string; target_fault: string; expected_action: string }[]>("/agent/tasks"),
   agentRun: (taskId?: string) =>
     req<AgentRunResp>("/agent/run", { method: "POST", body: JSON.stringify({ task_id: taskId ?? null }) }),
+  /** 场景构成：这个场景注入了哪些故障、彼此什么关系（回答"为什么有三个故障"） */
+  scenarioComposition: (file: string, entryFault?: string) =>
+    req<ScenarioComposition>(
+      `/scenarios/${encodeURIComponent(file)}/composition${
+        entryFault ? `?entry_fault=${encodeURIComponent(entryFault)}` : ""
+      }`,
+    ),
   agentFree: (goal: string) =>
     req<AgentFreeResp>("/agent/free", { method: "POST", body: JSON.stringify({ goal }) }),
   agentCompose: (message: string) =>
