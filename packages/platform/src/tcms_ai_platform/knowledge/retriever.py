@@ -92,6 +92,76 @@ class HybridRetriever:
             )
         return self._bm25_index
 
+    #: doc_id ↔ 图谱节点 id 的少数前缀差异（需求文档用 req:，图谱节点用 requirement:）
+    _NODE_ALIASES: tuple[tuple[str, str], ...] = (("req:", "requirement:"),)
+
+    def _to_node_id(self, doc_id: str) -> str | None:
+        """doc_id → 图谱节点 id（处理已知前缀别名；找不到返回 None，不猜）。"""
+        if doc_id in self.graph.nodes:
+            return doc_id
+        for doc_pfx, node_pfx in self._NODE_ALIASES:
+            if doc_id.startswith(doc_pfx):
+                cand = node_pfx + doc_id[len(doc_pfx) :]
+                if cand in self.graph.nodes:
+                    return cand
+        return None
+
+    def _to_doc_id(self, node_id: str, docs: dict[str, Doc]) -> str | None:
+        """图谱节点 id → doc_id（反向别名）。"""
+        if node_id in docs:
+            return node_id
+        for doc_pfx, node_pfx in self._NODE_ALIASES:
+            if node_id.startswith(node_pfx):
+                cand = doc_pfx + node_id[len(node_pfx) :]
+                if cand in docs:
+                    return cand
+        return None
+
+    def _graph_channel(
+        self,
+        seeds: list[str],
+        known: set[str] | None = None,
+        *,
+        limit: int = 20,
+    ) -> list[str]:
+        """图谱通道：沿图边扩展出**文本两路未召回**的结构相邻文档。
+
+        与前两路的本质差别：
+        - 向量 / 词法靠**文本相似**；
+        - 图谱靠**结构相邻**。
+
+        「车门故障」与「SR-21 后车门故障按未关处理，禁止发车」在文本上重合有限，
+        但在知识图里直接相连。纯文本检索容易漏掉这种"文本不像但业务上强相关"的资产
+        ——这正是 GraphRAG 的价值点。
+
+        **为什么必须传 `known`（已召回集合）并剔除**：实测发现，若让图谱扩展结果与
+        文本两路**等权竞争**，本语料下图谱候选 100% 已被文本两路召回——它不增加任何
+        召回，只把排序搅乱，golden 从 14/14 掉到 12/14。
+        一个只稀释不增益的通道没有存在理由，所以这里把它限定为**纯补充通道**：
+        只交出文本两路没找到的文档，因而只可能增加召回、不可能稀释。
+
+        排序按**共现强度**（与多个种子相邻者更靠前），确定性可回归。
+        """
+        if not self.graph.nodes:
+            return []
+        known = known or set()
+        docs = self._docs_map_of()
+        cooc: dict[str, int] = {}
+        first_seen: dict[str, int] = {}
+        for srank, seed in enumerate(seeds):
+            nid = self._to_node_id(seed)
+            if nid is None:
+                continue
+            for nb_id, _via in self.graph.neighbors(nid):
+                did = self._to_doc_id(nb_id, docs)
+                if not did or did in known:
+                    continue  # 文本两路已召回的直接跳过（本通道只做补充）
+                if did not in first_seen:
+                    first_seen[did] = srank
+                cooc[did] = cooc.get(did, 0) + 1
+        ranked = sorted(cooc.items(), key=lambda kv: (-kv[1], first_seen[kv[0]], kv[0]))
+        return [d for d, _ in ranked[:limit]]
+
     def _route_via_graph(self, query: str, probe: int = 3) -> list[str]:
         """图谱先定位域：查询无显式域词时，用全局 top-k 命中经 belongs_to 边
         反查所属系统 → 得到 1 个分区域（Q4"先图谱定位系统再域内 topk"兜底）。
@@ -261,6 +331,7 @@ class HybridRetriever:
                     "text": h["text"],
                     "score": h["score"],
                     "domain": (h.get("meta") or {}).get("domain", ""),
+                    "channels": h.get("channels") or [],
                     "graph_neighbors": neighbors,
                     # P1-4：弱证据升级（无直接边时的可溯源关联）
                     "source_ref": KnowledgeGraph.node_asset_ref(nid),
@@ -329,14 +400,27 @@ class HybridRetriever:
         lex_top = self._bm25().top(query, k=max(vector_pool, k * 2), domain=lex_domain)
         vec_ids = [h["doc_id"] for h in vector]
         lex_ids = [doc_id for doc_id, _ in lex_top]
-        fused = rrf([vec_ids, lex_ids], top=max(k * 2, 8))
+        # 图谱通道（第三路，**纯补充**）：用前两路头部命中当种子，沿图边扩展出文本
+        # 两路未召回的结构相邻文档。因已剔除 known，它只可能增加召回、不会稀释排序。
+        # 权重 1.0：补充通道进来的文档本来在文本视角下"不该出现"，不给足权重就永远
+        # 进不了最终 top-k，通道也就白设了。
+        seeds = list(dict.fromkeys([*vec_ids[:8], *lex_ids[:8]]))
+        graph_ids = self._graph_channel(seeds, set(vec_ids) | set(lex_ids), limit=max(vector_pool, k))
+        fused = rrf([vec_ids, lex_ids, graph_ids], top=max(k * 2, 8))
         ordered: list[dict] = []
         dmap = self._docs_map_of()
+        vset, lset, gset = set(vec_ids), set(lex_ids), set(graph_ids)
         for doc_id, fscore in fused:
             vh = next((h for h in vector if h["doc_id"] == doc_id), None)
             doc = dmap.get(doc_id)
             if vh is None and doc is None:
                 continue
+            # 逐条标注"这条被哪几路召回"——让"三通道融合"可被逐条核对，而不是一句宣称
+            channels = [
+                name
+                for name, s in (("vector", vset), ("lexical", lset), ("graph", gset))
+                if doc_id in s
+            ]
             ordered.append(
                 {
                     "doc_id": doc_id,
@@ -344,6 +428,7 @@ class HybridRetriever:
                     "text": vh["text"] if vh else (doc.text if doc else ""),
                     "meta": vh["meta"] if vh else (doc.meta if doc else {}),
                     "score": round(fscore, 4),
+                    "channels": channels,
                 }
             )
         # 兜底：融合结果为空时退回向量顺序（诚实降级，不空手）

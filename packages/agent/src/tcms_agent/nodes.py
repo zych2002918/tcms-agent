@@ -523,16 +523,53 @@ def check_reference(ref: str, knowledge: KnowledgeContext) -> tuple[bool, str]:
     return (ref in knowledge.graph.nodes), "图谱节点"
 
 
+def extract_citations(text: str) -> list[str]:
+    """从**自然语言文本**里抽出资产引用（`kind:key` 形式）。
+
+    为什么需要它：此前引用校验只覆盖"工具返回过的 id"。如果模型在**结论正文**里
+    写了一个从未被任何工具返回过的 `fault:xxx`，那条引用根本不进校验链——
+    幻觉只要不经过工具就查不出来。这里把正文里的引用也拉进校验。
+    """
+    import re
+
+    pattern = re.compile(
+        r"\b(fault|req|scenario|symptom|signal|message|system|function|device"
+        r"|requirement|threshold|hazard|interlock|mechanism|concept|state|mode|standard)"
+        r":([A-Za-z0-9_][A-Za-z0-9_.\-]*)"
+    )
+    out: list[str] = []
+    for m in pattern.finditer(text or ""):
+        ref = f"{m.group(1)}:{m.group(2)}"
+        if ref not in out:
+            out.append(ref)
+    return out
+
+
 def make_verify_node(knowledge: KnowledgeContext) -> Callable[[AgentState], dict]:
-    """校验：引用真实性 + 目标故障是否被证据覆盖 + 是否有可用证据。"""
+    """校验：引用真实性（工具链 + 结论正文）+ 目标故障是否被证据覆盖 + 是否有可用证据。"""
 
     def verify_node(state: AgentState) -> dict:
         sources = list(dict.fromkeys(state.get("sources") or []))
+
+        # 结论正文里的引用也要查——模型完全可能"顺手"写一个没被工具返回过的 id
+        answer_text = ""
+        for m in reversed(state.get("messages") or []):
+            if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None):
+                c = m.content
+                answer_text = c if isinstance(c, str) else str(c)
+                break
+        answer_refs = [r for r in extract_citations(answer_text) if r not in sources]
+
         checked: list[dict] = []
         fabricated: list[str] = []
         for ref in sources:
             ok, how = check_reference(ref, knowledge)
-            checked.append({"ref": ref, "exists": ok, "via": how})
+            checked.append({"ref": ref, "exists": ok, "via": how, "from": "tool"})
+            if not ok:
+                fabricated.append(ref)
+        for ref in answer_refs:
+            ok, how = check_reference(ref, knowledge)
+            checked.append({"ref": ref, "exists": ok, "via": how, "from": "answer_text"})
             if not ok:
                 fabricated.append(ref)
 
@@ -548,8 +585,14 @@ def make_verify_node(knowledge: KnowledgeContext) -> Callable[[AgentState], dict
         has_evidence = bool(state.get("evidence"))
 
         reasons: list[str] = []
-        if fabricated:
-            reasons.append(f"引用了不存在的资产（幻觉引用）：{'、'.join(fabricated)}")
+        fab_tool = [r for r in fabricated if any(c["ref"] == r and c["from"] == "tool" for c in checked)]
+        fab_answer = [r for r in fabricated if r not in fab_tool]
+        if fab_tool:
+            reasons.append(f"工具链出现不存在的资产：{'、'.join(fab_tool)}")
+        if fab_answer:
+            reasons.append(
+                f"**结论正文**里引用了工具从未返回过的资产（幻觉引用）：{'、'.join(fab_answer)}"
+            )
         if not has_evidence:
             reasons.append("整个过程没有取得任何工具证据")
         if not goal_fault:
@@ -562,7 +605,9 @@ def make_verify_node(knowledge: KnowledgeContext) -> Callable[[AgentState], dict
             "passed": passed,
             "reasons": reasons,
             "refs_checked": len(checked),
+            "refs_from_answer": len(answer_refs),
             "refs_fabricated": fabricated,
+            "refs_fabricated_in_answer": fab_answer,
             "refs": checked,
             "goal_fault": goal_fault,
             "fault_covered": fault_covered,
@@ -574,8 +619,8 @@ def make_verify_node(knowledge: KnowledgeContext) -> Callable[[AgentState], dict
                 _e(
                     "verify",
                     "verify",
-                    f"引用校验 {len(checked)} 条，疑似幻觉 {len(fabricated)} 条 → "
-                    f"{'通过' if passed else '未通过'}",
+                    f"引用校验 {len(checked)} 条（含结论正文 {len(answer_refs)} 条），"
+                    f"疑似幻觉 {len(fabricated)} 条 → {'通过' if passed else '未通过'}",
                     int(state.get("steps", 0)),
                     fabricated=fabricated,
                 )

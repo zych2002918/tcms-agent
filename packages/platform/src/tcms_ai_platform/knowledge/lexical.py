@@ -100,12 +100,26 @@ class BM25Index:
 # ---------------------------------------------------------------------------
 
 
-def rrf(rankings: list[list[str]], k: int = 60, top: int = 8) -> list[tuple[str, float]]:
-    """多路排序 → RRF 融合分数；返回 top 个 (doc_id, rrf_score)（降序、id 决胜）。"""
+def rrf(
+    rankings: list[list[str]],
+    k: int = 60,
+    top: int = 8,
+    weights: list[float] | None = None,
+) -> list[tuple[str, float]]:
+    """多路排序 → RRF 融合分数；返回 top 个 (doc_id, rrf_score)（降序、id 决胜）。
+
+    `weights`：逐路权重，缺省全 1.0（等权）。等权是**默认也是纪律**——权重需要标定
+    数据才能定，没有依据时不应臆造。仅当某一路的排序质量明显弱于其它路（例如图谱
+    通道按"结构相邻"排序，精度天然低于按文本相似排序的两路）才给低权重，并把
+    取值理由写在调用点。
+    """
+    ws = list(weights) if weights is not None else [1.0] * len(rankings)
+    if len(ws) != len(rankings):
+        raise ValueError(f"weights 数量({len(ws)}) 必须与排序路数({len(rankings)})一致")
     acc: dict[str, float] = {}
-    for ranking in rankings:
+    for w, ranking in zip(ws, rankings):
         for rank, doc_id in enumerate(ranking, start=1):
-            acc[doc_id] = acc.get(doc_id, 0.0) + 1.0 / (k + rank)
+            acc[doc_id] = acc.get(doc_id, 0.0) + w / (k + rank)
     fused = sorted(acc.items(), key=lambda kv: (-kv[1], kv[0]))
     return fused[:top]
 

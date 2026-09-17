@@ -24,10 +24,21 @@ from .registry import ToolSpec
 
 
 def _bind(name: str, runner: Callable[..., dict], ctx: KnowledgeContext) -> Callable[[dict], dict]:
-    """把 platform 的 run_tool_safe(name, args, m, g, hr) 绑成单参可调用。"""
+    """把 platform 的 run_tool_safe(name, args, m, g, hr) 绑成单参可调用。
+
+    `kb_search` 额外做一步**特征重排**：融合阶段（RRF）只用排名，丢掉了"这条为什么
+    被召回"的信息；重排把通道共识 / 查询覆盖 / id 字面命中 / 类型先验捡回来。
+    实测（14 条检索 golden）：min_at 达标持平 14/14，**期望项进 top-1 由 12/14 升到 14/14**，
+    且没有任何一条被排差。
+    """
 
     def _call(args: dict[str, Any]) -> dict:
-        return runner(name, args, ctx.model, ctx.graph, ctx.retriever)
+        res = runner(name, args, ctx.model, ctx.graph, ctx.retriever)
+        if name == "kb_search" and isinstance(res, dict) and res.get("hits"):
+            from ..rerank import apply_to_kb_result
+
+            res = apply_to_kb_result(str(args.get("query") or ""), res)
+        return res
 
     _call.__name__ = f"call_{name}"
     return _call

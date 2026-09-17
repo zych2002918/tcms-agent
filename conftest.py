@@ -29,3 +29,19 @@ if _ENGINE_MARKER.is_file():
 
     if str(_ENGINE) not in sys.path:
         sys.path.insert(0, str(_ENGINE))
+else:
+    # ---- 静默 skip 护栏 ----
+    # 各成员大量测试用 `skipif(not UPSTREAM.is_dir())` 保护自己（这样包能独立安装使用）。
+    # 代价是：一旦在 monorepo 里引擎路径失效，**几百条测试会集体静默跳过，套件照样"全绿"**。
+    # 这个坑本项目踩过两次（R0 迁移时 21 个测试文件；R6 时自己新写的 3 条），
+    # 所以这里宁可**大声失败**也不静默放过。
+    # 确实要在没有引擎的环境下跑（如只装了 platform + 内置快照），设 TCMS_ALLOW_NO_ENGINE=1。
+    if os.environ.get("TCMS_ALLOW_NO_ENGINE") != "1":
+        import pytest
+
+        pytest.exit(
+            f"未找到上游引擎: {_ENGINE_MARKER}\n"
+            "在 monorepo 中这意味着大量测试会静默跳过（假绿），因此默认中止。\n"
+            "若确实要在无引擎环境下运行，请设 TCMS_ALLOW_NO_ENGINE=1。",
+            returncode=1,
+        )
