@@ -69,6 +69,19 @@ class AgentConfig:
     sandbox_dir: Path = field(default_factory=lambda: Path.home() / ".tcms-agent" / "sandbox")
     """执行产物归档根目录（每次运行一个 run_id 子目录）。"""
 
+    # --- R3 持久化（需人工审批）---
+    memory_dir: Path = field(default_factory=lambda: Path.home() / ".tcms-agent" / "memory")
+    """长期记忆根目录（write_memory 的落点；写入前必须过引用门禁 + 人工审批）。"""
+
+    artifacts_dir: Path = field(default_factory=lambda: Path.home() / ".tcms-agent" / "artifacts")
+    """正式归档目录（promote_artifact 的落点；把沙箱产物提升为可追溯归档）。"""
+
+    approval_required: bool = True
+    """R3 工具是否强制人工审批。
+
+    **默认 True 且不建议关闭**：持久化写入是唯一会改变系统状态的副作用，
+    在安全关键域必须有人把关。设为 False 仅用于受控实验，且会在结果里如实标注。"""
+
     # --- 存储 ---
     db_path: Path = field(default_factory=default_db_path)
     """轨迹（checkpoint）落盘的 SQLite 路径。"""

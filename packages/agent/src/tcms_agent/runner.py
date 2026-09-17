@@ -38,6 +38,8 @@ class AgentRunResult:
     evidence: list[dict] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     audit: dict[str, Any] = field(default_factory=dict)
+    approvals: list[dict] = field(default_factory=list)
+    """人工审批记录（批准/拒绝 + 理由）。空列表表示本次运行没触发过审批。"""
 
     @property
     def passed(self) -> bool:
@@ -63,6 +65,7 @@ class AgentRunResult:
             "sources": self.sources,
             "evidence": self.evidence,
             "trace": self.trace,
+            "approvals": self.approvals,
         }
 
 
@@ -93,12 +96,29 @@ class AgentRunner:
 
     # ---- 运行 ----
 
-    def run(self, goal: str, thread_id: str | None = None) -> AgentRunResult:
-        """跑一个目标，返回结构化结果（状态已落盘）。"""
+    def run(
+        self,
+        goal: str,
+        thread_id: str | None = None,
+        approver: Any = None,
+    ) -> AgentRunResult:
+        """跑一个目标，返回结构化结果（状态已落盘）。
+
+        `approver`：人在环路的审批回调，签名 `(payload: dict) -> 决策`。
+        决策可为 bool / {"approved": bool, "reason": str} / 上述的列表，
+        与待审批项一一对应；未覆盖的项一律视为**拒绝**。
+
+        **默认 approver=None 时全部拒绝**——安全默认：无人把关时宁可不写。
+        如需放行，必须显式传入审批者（CLI 会走交互式提示）。
+        """
         tid = thread_id or f"run-{uuid.uuid4().hex[:12]}"
         conn = self._connect()
         try:
             graph, registry, model_kind = self.build(conn, run_id=tid)
+            config = {
+                "configurable": {"thread_id": tid},
+                "recursion_limit": self.cfg.recursion_limit,
+            }
             init = {
                 "goal": goal,
                 "messages": [HumanMessage(goal)],
@@ -108,14 +128,11 @@ class AgentRunner:
                 "evidence": [],
                 "sources": [],
                 "trace": [],
+                "pending": [],
+                "approvals": [],
             }
-            final = graph.invoke(
-                init,
-                config={
-                    "configurable": {"thread_id": tid},
-                    "recursion_limit": self.cfg.recursion_limit,
-                },
-            )
+            final = graph.invoke(init, config)
+            final = self._drive_approvals(graph, config, final, approver)
         finally:
             conn.close()
 
@@ -129,7 +146,56 @@ class AgentRunner:
             evidence=list(final.get("evidence") or []),
             sources=list(dict.fromkeys(final.get("sources") or [])),
             audit=registry.audit_summary(),
+            approvals=list(final.get("approvals") or []),
         )
+
+    # ---- 人在环路：中断 → 征求决策 → 恢复 ----
+
+    def _drive_approvals(self, graph: Any, config: dict, state: dict, approver) -> dict:
+        """反复「取中断载荷 → 征求决策 → resume」，直到图不再暂停。
+
+        设了硬上限（guard）：审批循环本身也可能因为 Agent 反复请求写入而变长，
+        必须有刹车，且到顶要如实暴露而不是静默吞掉。
+        """
+        from langgraph.types import Command
+
+        for _ in range(10):
+            snap = graph.get_state(config)
+            interrupts = [
+                i
+                for t in (snap.tasks or ())
+                for i in (getattr(t, "interrupts", ()) or ())
+            ]
+            if not interrupts:
+                break
+            if len(interrupts) == 1:
+                resume: Any = self._ask(approver, interrupts[0].value)
+            else:
+                resume = {i.id: self._ask(approver, i.value) for i in interrupts}
+            state = graph.invoke(Command(resume=resume), config)
+        else:
+            state = dict(state)
+            state.setdefault("trace", [])
+            state["trace"] = list(state["trace"]) + [
+                {
+                    "node": "approve",
+                    "event": "guard_exhausted",
+                    "detail": "审批循环达到上限（10 轮），已停止继续征求审批",
+                    "step": int(state.get("steps", 0)),
+                    "data": {},
+                }
+            ]
+        return state
+
+    @staticmethod
+    def _ask(approver, payload: dict) -> Any:
+        """征求一次审批决策；无审批者 → 默认拒绝（安全默认）。"""
+        if approver is None:
+            n = len((payload or {}).get("requests") or []) or 1
+            return [
+                {"approved": False, "reason": "无人审批（默认拒绝持久化写入）"} for _ in range(n)
+            ]
+        return approver(payload)
 
     # ---- 轨迹回放（time-travel）----
 

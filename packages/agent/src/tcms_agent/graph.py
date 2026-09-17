@@ -24,12 +24,14 @@ from .models import build_chat_model
 from .nodes import (
     make_act_node,
     make_agent_node,
+    make_approve_node,
     make_plan_node,
     make_report_node,
     make_verify_node,
 )
 from .state import AgentState
 from .tools.execution import ExecutionSandbox, build_execution_tools
+from .tools.persist import PersistentStore, build_persist_tools
 from .tools.readonly import build_readonly_tools
 from .tools.registry import ToolRegistry
 
@@ -52,14 +54,18 @@ def build_registry(
     各级别实现进度：
         R0 只读    ✅ 7 个（复用 platform 5 个 + 原生 2 个）
         R1 沙箱写  ⬜ 计划于 R4（需同时落地沙箱与丢弃机制）
-        R2 真执行  ✅ 2 个（子进程 + 真超时 + 产物归档）
-        R3 持久化  ⬜ 计划于 R5（需同时落地 human-in-the-loop 审批）
+        R2 真实执行 ✅ 2 个（子进程 + 真超时 + 产物归档）
+        R3 持久化  ✅ 2 个（write_memory / promote_artifact）+ 人工审批 + 引用门禁
     """
     registry = ToolRegistry(max_level=cfg.max_level)
     registry.register_all(build_readonly_tools(knowledge))  # R0
     sandbox = ExecutionSandbox(root=cfg.sandbox_dir, run_id=run_id)
     registry.register_all(
         build_execution_tools(knowledge, sandbox, timeout_s=cfg.exec_timeout_s)  # R2
+    )
+    store = PersistentStore(memory_dir=cfg.memory_dir, artifacts_dir=cfg.artifacts_dir)
+    registry.register_all(
+        build_persist_tools(knowledge, store, cfg.sandbox_dir, run_id=run_id)  # R3
     )
     return registry
 
@@ -100,7 +106,8 @@ def build_graph(
     g = StateGraph(AgentState)
     g.add_node("plan", make_plan_node(knowledge))
     g.add_node("agent", make_agent_node(model, registry, knowledge, cfg))
-    g.add_node("act", make_act_node(registry))
+    g.add_node("act", make_act_node(registry, approval_required=cfg.approval_required))
+    g.add_node("approve", make_approve_node(registry, run_id=run_id))
     g.add_node("verify", make_verify_node(knowledge))
     g.add_node("report", make_report_node())
 
@@ -111,7 +118,13 @@ def build_graph(
         lambda s: _route_after_agent(s, cfg.max_steps),
         {"act": "act", "verify": "verify"},
     )
-    g.add_edge("act", "agent")
+    # act 之后分流：有待审批项 → 人工审批节点（唯一的 interrupt 点）；否则回 agent
+    g.add_conditional_edges(
+        "act",
+        lambda s: "approve" if (s.get("pending") or []) else "agent",
+        {"approve": "approve", "agent": "agent"},
+    )
+    g.add_edge("approve", "agent")
     g.add_edge("verify", "report")
     g.add_edge("report", END)
 

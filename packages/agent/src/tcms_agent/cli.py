@@ -18,6 +18,7 @@ from pathlib import Path
 from . import __version__
 from .config import AgentConfig
 from .models import llm_available
+from .permissions import Permission
 from .runner import AgentRunner
 
 
@@ -74,21 +75,60 @@ def _can_mkdir(p: Path) -> bool:
         return False
 
 
+def _interactive_approver(payload: dict) -> list[dict]:
+    """终端交互式审批：逐项询问，默认拒绝（直接回车 = 不批准）。"""
+    print("\n" + "=" * 62)
+    print("⚠️  需要人工审批 —— Agent 请求执行持久化写入")
+    print("=" * 62)
+    print(str(payload.get("note") or ""))
+    for i, r in enumerate(payload.get("requests") or [], 1):
+        print(f"\n[{i}] 工具：{r.get('name')}   （级别：{r.get('level_label')}）")
+        print(f"    参数：{json.dumps(r.get('args'), ensure_ascii=False)[:600]}")
+    decisions: list[dict] = []
+    for i, r in enumerate(payload.get("requests") or [], 1):
+        try:
+            ans = input(f"\n批准 [{i}] {r.get('name')} 执行？[y/N] ").strip().lower()
+        except EOFError:  # 非交互环境（管道）→ 视为拒绝
+            ans = "n"
+        decisions.append(
+            {
+                "approved": ans in ("y", "yes"),
+                "reason": "终端交互审批" if ans in ("y", "yes") else "终端未批准",
+            }
+        )
+    return decisions
+
+
 def cmd_run(args: argparse.Namespace) -> int:
+    max_level = Permission.PERSIST if args.allow_write else Permission.EXECUTE
     cfg = AgentConfig(
         offline=not args.llm,
         max_steps=args.max_steps,
+        max_level=max_level,
         upstream=Path(args.upstream) if args.upstream else None,
         db_path=Path(args.db) if args.db else AgentConfig().db_path,
     )
     if args.llm and not llm_available():
         print("[!] --llm 指定了真模型，但未检测到可用 key → 自动降级为离线规则臂。")
+
+    approver = None
+    if max_level >= Permission.PERSIST:
+        if args.yes:
+            print("[!] --yes：所有持久化写入将被**自动批准**（不推荐，仅用于受控演示）。")
+            approver = lambda _p: {"approved": True, "reason": "--yes 自动批准"}  # noqa: E731
+        elif args.no:
+            print("[i] --no：持久化写入将一律被拒绝。")
+        else:
+            approver = _interactive_approver
+
     runner = AgentRunner(cfg)
-    res = runner.run(args.goal, thread_id=args.thread)
+    res = runner.run(args.goal, thread_id=args.thread, approver=approver)
     print(res.report)
     print()
     print(f"thread_id = {res.thread_id}   model = {res.model_kind}")
     print(f"工具审计：{json.dumps(res.audit, ensure_ascii=False)}")
+    if res.approvals:
+        print(f"人工审批：{json.dumps(res.approvals, ensure_ascii=False)}")
     print("\n轨迹：")
     for t in res.trace:
         print(f"  [{t['step']:>2}] {t['node']:<7} {t['event']:<16} {t['detail'][:96]}")
@@ -137,6 +177,13 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--db", help="轨迹数据库路径")
     r.add_argument("--upstream", help="上游引擎目录（默认自动解析）")
     r.add_argument("--json", action="store_true", help="同时输出完整 JSON")
+    r.add_argument(
+        "--allow-write",
+        action="store_true",
+        help="开放 R3 持久化工具（写长期记忆 / 提升归档）——默认关闭",
+    )
+    r.add_argument("--yes", action="store_true", help="自动批准所有持久化写入（不推荐）")
+    r.add_argument("--no", action="store_true", help="一律拒绝持久化写入（配合 --allow-write）")
     r.set_defaults(func=cmd_run)
 
     h = sub.add_parser("history", help="回放某次运行的轨迹")

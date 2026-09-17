@@ -18,9 +18,11 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Callable
 
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langgraph.types import interrupt
 
 from .config import AgentConfig
 from .knowledge import KnowledgeContext
@@ -178,8 +180,51 @@ def _sources_from(tool_name: str, result: dict) -> list[str]:
     return list(dict.fromkeys(out))
 
 
-def make_act_node(registry: ToolRegistry) -> Callable[[AgentState], dict]:
-    """执行上一轮决策里的工具调用（全部经注册表：权限+审计+兜底）。"""
+def _observe(
+    registry: ToolRegistry,
+    name: str,
+    args: dict,
+    call_id: str,
+    step: int,
+    *,
+    node: str = "act",
+) -> tuple[ToolMessage, dict, list[str], TraceEvent]:
+    """执行一次工具调用并打包成（工具消息 / 证据 / 引用 / 轨迹事件）。"""
+    result = registry.invoke(name, args)
+    err = str(result.get("error") or "")
+    msg = ToolMessage(content=registry.render_result(result), tool_call_id=call_id, name=name)
+    found = _sources_from(name, result)
+    evidence = {
+        "tool": name,
+        "args": args,
+        "ok": not err,
+        "error": err,
+        "sources": found,
+        "result_digest": registry.audit[-1].result_digest if registry.audit else "",
+    }
+    event = _e(
+        node,
+        "observe",
+        f"{name} → {'失败: ' + err if err else f'成功，引用 {len(found)} 个资产'}",
+        step,
+        tool=name,
+        args=args,
+        ok=not err,
+    )
+    return msg, evidence, found, event
+
+
+def make_act_node(registry: ToolRegistry, *, approval_required: bool = True) -> Callable[[AgentState], dict]:
+    """执行上一轮决策里的工具调用（全部经注册表：权限 + 审计 + 兜底）。
+
+    **本节点绝不调用 `interrupt()`**：它会产生真实副作用（执行场景、审计记录），
+    而 LangGraph 在 resume 时会让被中断的节点从头重跑。因此需要人工审批的调用
+    被分流到独立的 `approve` 节点——那里 interrupt 之前不做任何有副作用的事。
+
+    分流规则：
+        level 不需要审批 → 本节点直接执行
+        level 需要审批   → 写入 state.pending，交给 approve 节点
+    """
 
     def act_node(state: AgentState) -> dict:
         msgs = state["messages"]
@@ -193,51 +238,196 @@ def make_act_node(registry: ToolRegistry) -> Callable[[AgentState], dict]:
         evidence: list[dict] = []
         sources: list[str] = []
         trace: list[TraceEvent] = []
+        pending: list[dict] = []
 
         for c in calls:
             name = str(c.get("name") or "")
             args = c.get("args") or {}
             call_id = str(c.get("id") or f"call-{step}-{name}")
-            result = registry.invoke(name, args)
-            err = str(result.get("error") or "")
-            tool_msgs.append(
-                ToolMessage(
-                    content=registry.render_result(result),
-                    tool_call_id=call_id,
-                    name=name,
-                )
+            spec = registry.get(name)
+            needs = bool(
+                approval_required and spec is not None and spec.level.requires_approval
             )
-            found = _sources_from(name, result)
+            if needs:
+                pending.append(
+                    {
+                        "name": name,
+                        "args": args,
+                        "call_id": call_id,
+                        "level": int(spec.level),
+                        "level_label": spec.level.label,
+                        "step": step,
+                    }
+                )
+                trace.append(
+                    _e(
+                        "act",
+                        "defer",
+                        f"{name} 属于 {spec.level.label}，转入人工审批（未执行）",
+                        step,
+                        tool=name,
+                        args=args,
+                    )
+                )
+                continue
+            msg, ev, found, event = _observe(registry, name, args, call_id, step)
+            tool_msgs.append(msg)
+            evidence.append(ev)
             sources += found
-            evidence.append(
+            trace.append(event)
+
+        out: dict = {
+            "messages": tool_msgs,
+            "evidence": evidence,
+            "sources": sources,
+            "trace": trace,
+            "pending": pending,
+        }
+        return out
+
+    return act_node
+
+
+# ---------------------------------------------------------------------------
+# approve —— human-in-the-loop 审批（唯一的中断点）
+# ---------------------------------------------------------------------------
+
+_APPROVAL_NOTE = (
+    "以下工具会产生**持久化副作用**（写入长期记忆 / 提升正式归档），"
+    "需要人工批准后才会执行。未获批准则拒绝执行，并把拒绝原因如实回填给 Agent。"
+)
+
+
+def normalize_decisions(raw: Any, n: int) -> list[dict]:
+    """把审批者的返回规范成 n 条决策。
+
+    容忍多种写法（宽进严出）：True / False / {"approved": bool} / [如上 × n]。
+    缺省与非法值一律视为**拒绝**（安全默认：拿不准就不写）。
+    """
+    if n <= 0:
+        return []
+    if isinstance(raw, bool):
+        items: list[Any] = [{"approved": raw}] * n
+    elif isinstance(raw, dict):
+        items = [raw] * n
+    elif isinstance(raw, list | tuple):
+        items = list(raw) + [{"approved": False}] * max(0, n - len(raw))
+    else:
+        items = [{"approved": False}] * n
+
+    out: list[dict] = []
+    for it in items[:n]:
+        if isinstance(it, bool):
+            out.append({"approved": it, "reason": ""})
+        elif isinstance(it, dict):
+            out.append(
+                {
+                    "approved": bool(it.get("approved")),
+                    "reason": str(it.get("reason") or ""),
+                    "args": it.get("args"),  # 允许审批时修改参数
+                }
+            )
+        else:
+            out.append({"approved": False, "reason": "审批返回值无法解析"})
+    return out
+
+
+def make_approve_node(
+    registry: ToolRegistry, *, run_id: str = "adhoc"
+) -> Callable[[AgentState], dict]:
+    """人工审批节点：中断 → 等决策 → 执行获批项 / 拒绝其余。
+
+    **副作用只写在 `interrupt()` 之后**：resume 时本节点会从头重跑，
+    interrupt 之前的代码会被执行两次，因此那里只能做无副作用的准备
+    （读 state、构造审批载荷）。这条约束已用最小实验验证过。
+    """
+
+    def approve_node(state: AgentState) -> dict:
+        pending = list(state.get("pending") or [])
+        step = int(state.get("steps", 0))
+        if not pending:
+            return {"trace": [_e("approve", "noop", "无待审批项", step)]}
+
+        # ---- interrupt 之前：只做无副作用的准备 ----
+        payload = {
+            "kind": "tool_approval",
+            "thread_id": run_id,
+            "note": _APPROVAL_NOTE,
+            "requests": [
+                {
+                    "name": p.get("name"),
+                    "args": p.get("args"),
+                    "level_label": p.get("level_label"),
+                }
+                for p in pending
+            ],
+        }
+        decision = interrupt(payload)  # ← 暂停点：图状态已落盘，可跨进程恢复
+        decisions = normalize_decisions(decision, len(pending))
+
+        # ---- interrupt 之后：恢复时才执行，且只执行一次 ----
+        tool_msgs: list[ToolMessage] = []
+        evidence: list[dict] = []
+        sources: list[str] = []
+        trace: list[TraceEvent] = []
+        approvals: list[dict] = []
+
+        for p, dec in zip(pending, decisions):
+            name = str(p.get("name") or "")
+            call_id = str(p.get("call_id") or f"approve-{step}-{name}")
+            args = dec.get("args") if isinstance(dec.get("args"), dict) else (p.get("args") or {})
+            approved = bool(dec.get("approved"))
+            approvals.append(
                 {
                     "tool": name,
                     "args": args,
-                    "ok": not err,
-                    "error": err,
-                    "sources": found,
-                    "result_digest": registry.audit[-1].result_digest if registry.audit else "",
+                    "approved": approved,
+                    "reason": dec.get("reason", ""),
+                    "step": step,
                 }
             )
+            if not approved:
+                # 拒绝也是**一等结果**：如实回填，让 Agent 知道"人不同意"，而不是静默丢弃
+                reason = dec.get("reason") or "未说明理由"
+                result = {
+                    "error": f"人工审批未通过（已拒绝执行）: {reason}",
+                    "rejected_by_human": True,
+                }
+                msg = ToolMessage(
+                    content=json.dumps(result, ensure_ascii=False),
+                    tool_call_id=call_id,
+                    name=name,
+                )
+                tool_msgs.append(msg)
+                evidence.append({"tool": name, "args": args, "ok": False, "error": result["error"], "sources": []})
+                trace.append(_e("approve", "rejected", f"{name} 被人工拒绝：{reason}", step, tool=name))
+                continue
+
+            msg, ev, found, event = _observe(registry, name, args, call_id, step, node="approve")
+            tool_msgs.append(msg)
+            evidence.append(ev)
+            sources += found
             trace.append(
                 _e(
-                    "act",
-                    "observe",
-                    f"{name} → {'失败: ' + err if err else f'成功，引用 {len(found)} 个资产'}",
+                    "approve",
+                    "approved_exec",
+                    f"{name} 获批并执行 → {'成功' if ev['ok'] else '失败'}",
                     step,
                     tool=name,
-                    args=args,
-                    ok=not err,
                 )
             )
+            trace.append(event)
+
         return {
             "messages": tool_msgs,
             "evidence": evidence,
             "sources": sources,
             "trace": trace,
+            "approvals": approvals,
+            "pending": [],  # 覆盖语义：清空，防止重复审批
         }
 
-    return act_node
+    return approve_node
 
 
 # ---------------------------------------------------------------------------
@@ -349,6 +539,13 @@ def make_report_node() -> Callable[[AgentState], dict]:
                 break
         v["answer"] = answer
         v["steps_used"] = int(state.get("steps", 0))
+
+        # 审批结果必须进报告：否则"目标达成 ✅"会让人误以为 Agent 想做的一切都成功了。
+        approvals = list(state.get("approvals") or [])
+        denied = [a for a in approvals if not a.get("approved")]
+        v["approvals_total"] = len(approvals)
+        v["approvals_denied"] = len(denied)
+
         head = "✅ 通过" if v.get("passed") else "❌ 未通过"
         lines = [
             f"{head} —— 引用 {v.get('refs_checked', 0)} 条资产，"
@@ -356,9 +553,23 @@ def make_report_node() -> Callable[[AgentState], dict]:
         ]
         if v.get("reasons"):
             lines.append("未通过原因：" + "；".join(v["reasons"]))
+        if approvals:
+            ok_n = len(approvals) - len(denied)
+            lines.append(
+                f"人工审批：{len(approvals)} 项，批准 {ok_n} 项，拒绝 {len(denied)} 项"
+                + (
+                    "（被拒：" + "、".join(str(a.get("tool")) for a in denied) + " —— 该写入未发生）"
+                    if denied
+                    else ""
+                )
+            )
         lines += ["", "【Agent 结论】", answer or "（无最终答复）"]
         v["report"] = "\n".join(lines)
-        return {"verdict": v, "finished": True, "trace": [_e("report", "report", head, int(state.get("steps", 0)))]}
+        return {
+            "verdict": v,
+            "finished": True,
+            "trace": [_e("report", "report", head, int(state.get("steps", 0)))],
+        }
 
     return report_node
 
@@ -368,7 +579,9 @@ __all__ = [
     "check_reference",
     "make_act_node",
     "make_agent_node",
+    "make_approve_node",
     "make_plan_node",
     "make_report_node",
     "make_verify_node",
+    "normalize_decisions",
 ]

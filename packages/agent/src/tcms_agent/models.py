@@ -148,7 +148,28 @@ class OfflineScriptedModel(BaseChatModel):
             script.append(("list_scenarios", {"fault_key": key}))
         if not key and "symptom_diagnose" in names:
             script.append(("symptom_diagnose", {"text": goal}))
+        # 最后一步：把已验证的结论沉淀进长期记忆（R3，会触发人工审批）。
+        # 只有字典与真正执行都确认过才写——这正是"写入门禁"该有的前提。
+        if key and "write_memory" in names:
+            script.append(("write_memory", self._memory_args(goal, key, expected)))
         return script
+
+    @staticmethod
+    def _memory_args(goal: str, key: str, expected: str | None) -> dict[str, Any]:
+        """构造长期记忆写入参数（refs 必须是真实资产 id，否则会被门禁拒绝）。"""
+        refs = [f"fault:{key}"]
+        if expected:
+            refs.append(f"fault:{key}")
+        return {
+            "title": f"验证结论：{key} → {expected or '（未指定）'}",
+            "kind": "semantic",
+            "content": (
+                f"目标：{goal}\n\n"
+                f"结论：故障 {key} 的处置动作为 {expected or '（未指定）'}，"
+                f"已由上游 tcms 引擎的真实场景断言确认。\n"
+            ),
+            "refs": sorted(set(refs)),
+        }
 
     @staticmethod
     def _rounds_done(messages: list[BaseMessage]) -> int:

@@ -52,6 +52,16 @@ class AgentState(TypedDict, total=False):
     # --- 计划（外化，可审计）---
     plan: list[PlanItem]
 
+    # --- 人在环路审批 ---
+    pending: list[dict[str, Any]]
+    """待人工审批的工具调用（R3 持久化类）。
+
+    注意：这是**覆盖**语义（无 reducer）——一旦审批完成就被清空，
+    避免同一次请求被反复审批。"""
+
+    approvals: Annotated[list[dict], operator.add]
+    """审批记录（一次审批一条，含批准/拒绝与理由）。也是审计证据的一部分。"""
+
     # --- 证据与引用 ---
     evidence: Annotated[list[dict], operator.add]
     """工具返回的证据条目（每条含来源工具与原始结果摘要）。"""
