@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-052 light_group_fault (minor, warning) — LampGroupFault
+name: 照明支路故障
+desc: 演示故障序列：照明支路故障。
+steps:
+- at: 3.0
+  inject:
+    node: light
+    fault: light_group_fault
+    level: minor
+    impact: 客室照明支路故障，局部照明失效
+    expect: warning
+- at: 11.0
+  recover: light_group_fault

@@ -1,0 +1,40 @@
+# 场景扩容 Wave C（无孤儿覆盖）：gateway_qos_drop_excess, nmt_lifeguard_timeout, network_backbone_latency_spike, train_power_mode_dispute
+name: 网关丢包·NMT 超时·骨干时延·牵引惰行仲裁编排
+desc: 演示故障序列：网关流量整形丢包、NMT 生命保持超时、骨干时延尖峰、牵引惰行模式仲裁异常。
+steps:
+- at: 3.0
+  inject:
+    node: tcms
+    fault: gateway_qos_drop_excess
+    level: minor
+    impact: 网关突发流量超过整形预算，丢包上升
+    expect: warning
+- at: 4.5
+  inject:
+    node: tcms
+    fault: nmt_lifeguard_timeout
+    level: major
+    impact: CANopen 生命保持超时，节点监督降级
+    expect: warning
+- at: 6.0
+  inject:
+    node: tcms
+    fault: network_backbone_latency_spike
+    level: minor
+    impact: 列车骨干转发时延尖峰（拥塞/重传）
+    expect: warning
+- at: 7.5
+  inject:
+    node: tcms
+    fault: train_power_mode_dispute
+    level: major
+    impact: 牵引/惰行模式仲裁不一致，保持安全默认并告警
+    expect: warning
+- at: 10.0
+  recover: gateway_qos_drop_excess
+- at: 11.5
+  recover: nmt_lifeguard_timeout
+- at: 13.0
+  recover: network_backbone_latency_spike
+- at: 14.5
+  recover: train_power_mode_dispute

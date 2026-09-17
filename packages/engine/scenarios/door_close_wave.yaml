@@ -1,0 +1,22 @@
+# 场景扩容 Wave A（无孤儿覆盖）：door_close_fail, door_control_power_loss
+name: 关门失效与门控失电编排
+desc: 演示故障序列：车门无法关闭、车门控制电源丢失。
+steps:
+- at: 3.0
+  inject:
+    node: bogie
+    fault: door_close_fail
+    level: major
+    impact: 关门指令后门未达 Closed（障碍/执行故障），禁止发车
+    expect: derate
+- at: 4.5
+  inject:
+    node: bogie
+    fault: door_control_power_loss
+    level: major
+    impact: 门控单元失电，门状态按未知处理，禁止发车
+    expect: derate
+- at: 10.0
+  recover: door_close_fail
+- at: 11.5
+  recover: door_control_power_loss

@@ -1,0 +1,49 @@
+# 场景扩容 Wave C（无孤儿覆盖）：pis_wifi_ap_fail, pis_passenger_count_error, pis_audio_amplifier_fail, pis_display_content_stale, pis_schedule_data_incomplete
+name: Wi-Fi·客流计数·功放·内容停滞·时刻表缺失编排
+desc: 演示故障序列：车载 Wi-Fi 热点故障、客流计数偏差超限、PIS 音频功放故障、PIS 显示内容停滞、PIS 时刻表数据缺失。
+steps:
+- at: 3.0
+  inject:
+    node: pis
+    fault: pis_wifi_ap_fail
+    level: info
+    impact: 车载 Wi-Fi 接入点离线
+    expect: none
+- at: 4.5
+  inject:
+    node: pis
+    fault: pis_passenger_count_error
+    level: minor
+    impact: 客流计数与视频复核偏差超阈值
+    expect: warning
+- at: 6.0
+  inject:
+    node: pis
+    fault: pis_audio_amplifier_fail
+    level: minor
+    impact: 音频功放通道故障（播报弱/失真）
+    expect: warning
+- at: 7.5
+  inject:
+    node: pis
+    fault: pis_display_content_stale
+    level: info
+    impact: 显示内容刷新停滞（数据推送中断）
+    expect: none
+- at: 9.0
+  inject:
+    node: pis
+    fault: pis_schedule_data_incomplete
+    level: info
+    impact: 时刻表数据存在缺失区间
+    expect: none
+- at: 10.0
+  recover: pis_wifi_ap_fail
+- at: 11.5
+  recover: pis_passenger_count_error
+- at: 13.0
+  recover: pis_audio_amplifier_fail
+- at: 14.5
+  recover: pis_display_content_stale
+- at: 16.0
+  recover: pis_schedule_data_incomplete

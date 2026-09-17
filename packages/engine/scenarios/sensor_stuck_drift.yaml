@@ -1,0 +1,24 @@
+# 场景 7：传感器卡死 + 漂移叠加 —— 信号层慢故障组合
+# F-TCMS-017 sensor_stuck (minor, warning) + F-TCMS-004 speed_sensor_drift (minor, warning)
+# 多信号故障叠加演示（均为 minor → warning）
+name: 传感器卡死与漂移叠加
+desc: 演示故障序列：传感器卡死、速度传感器轻微漂移。
+steps:
+  - at: 1.0
+    inject:
+      node: bogie
+      fault: sensor_stuck
+      level: minor
+      impact: 信号恒值不随工况变化，变化率检测告警
+      expect: warning
+  - at: 2.0
+    inject:
+      node: bogie
+      fault: speed_sensor_drift
+      level: minor
+      impact: 速度信号缓慢漂移，与真实值偏离
+      expect: warning
+  - at: 10.0
+    recover: sensor_stuck
+  - at: 11.0
+    recover: speed_sensor_drift

@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-044 aux_contactor_weld (major, shutdown) — 分断无响应
+name: 辅助接触器粘连
+desc: 演示故障序列：辅助接触器粘连。
+steps:
+- at: 3.0
+  inject:
+    node: aux
+    fault: aux_contactor_weld
+    level: major
+    impact: 分断指令后接触器仍闭合，安全分断停车
+    expect: shutdown
+- at: 11.0
+  recover: aux_contactor_weld

@@ -1,0 +1,22 @@
+# 场景扩容：F-TCMS-049 pis_display_fault + F-TCMS-050 pis_intercom_fault（minor/major 告警）
+name: PIS 显示与紧急对讲降级
+desc: 演示故障序列：PIS 显示屏故障、乘客紧急对讲失效。
+steps:
+- at: 3.0
+  inject:
+    node: pis
+    fault: pis_display_fault
+    level: minor
+    impact: 显示屏降级，信息发布不完整
+    expect: warning
+- at: 4.5
+  inject:
+    node: pis
+    fault: pis_intercom_fault
+    level: major
+    impact: 紧急对讲链路故障，应急通讯不可用
+    expect: warning
+- at: 11.0
+  recover: pis_display_fault
+- at: 12.5
+  recover: pis_intercom_fault

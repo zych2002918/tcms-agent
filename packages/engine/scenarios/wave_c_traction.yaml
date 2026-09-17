@@ -1,0 +1,58 @@
+# 场景扩容 Wave C（无孤儿覆盖）：traction_motor_temp_high, traction_insulation_low, traction_torque_oscillation, traction_motor_bearing_vibration, traction_cooling_flow_low, traction_motor_phase_imbalance
+name: 电机过热·绝缘·扭矩振荡·轴承·冷却·三相失衡编排
+desc: 演示故障序列：牵引电机绕组过温、牵引回路绝缘下降、牵引扭矩振荡、牵引电机轴承振动、牵引冷却流量不足、电机三相不平衡。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: traction_motor_temp_high
+    level: major
+    impact: 电机绕组温度超限，降功率保护
+    expect: derate
+- at: 4.5
+  inject:
+    node: vcu
+    fault: traction_insulation_low
+    level: major
+    impact: 牵引回路绝缘阻抗下降（受潮/老化）预警
+    expect: warning
+- at: 6.0
+  inject:
+    node: vcu
+    fault: traction_torque_oscillation
+    level: minor
+    impact: 牵引扭矩低频振荡（微滑/控制脉动）
+    expect: warning
+- at: 7.5
+  inject:
+    node: vcu
+    fault: traction_motor_bearing_vibration
+    level: major
+    impact: 电机轴承振动超限（磨损征兆）限速运行
+    expect: derate
+- at: 9.0
+  inject:
+    node: vcu
+    fault: traction_cooling_flow_low
+    level: major
+    impact: 变流/电机冷却流量不足，保护性降功率
+    expect: derate
+- at: 10.0
+  recover: traction_motor_temp_high
+- at: 10.5
+  inject:
+    node: vcu
+    fault: traction_motor_phase_imbalance
+    level: major
+    impact: 电机三相电流不平衡（绕组/接触异常）
+    expect: derate
+- at: 11.5
+  recover: traction_insulation_low
+- at: 13.0
+  recover: traction_torque_oscillation
+- at: 14.5
+  recover: traction_motor_bearing_vibration
+- at: 16.0
+  recover: traction_cooling_flow_low
+- at: 17.5
+  recover: traction_motor_phase_imbalance

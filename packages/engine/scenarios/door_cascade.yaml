@@ -1,0 +1,23 @@
+# 场景 3：车门故障级联 —— 门故障（major）→ 降级 → 超速（major）→ 降级 → 恢复
+# 展示多故障叠加 + 事件式 YAML 写法（action: 字段）
+name: 车门故障级联
+desc: 演示故障序列：车门故障（按未关处理）、超速。
+steps:
+  - at: 1.0
+    action: inject
+    node: bcu
+    fault: door_fault
+    level: major
+    expect: derate
+  - at: 2.0
+    action: inject
+    node: vcu
+    fault: overspeed
+    level: major
+    expect: derate
+  - at: 30.0
+    action: recover
+    fault: door_fault
+  - at: 31.0
+    action: recover
+    fault: overspeed

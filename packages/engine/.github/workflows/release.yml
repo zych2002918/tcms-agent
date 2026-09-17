@@ -1,0 +1,61 @@
+name: Release
+
+# 打 tag 即发布：v* tag 触发后全量回归 + 构建 sdist/wheel + GitHub Release
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt build
+      - name: Quality gate (full regression + coverage)
+        # 覆盖率门禁单源：pyproject [tool.coverage.report] fail_under=97
+        # （与 ci.yml 一致，不再传 --cov-fail-under）
+        run: |
+          python -m pytest tests/ -q --tb=short --junitxml=reports/junit.xml \
+            --cov=tcms --cov-report=term
+      - name: Build package
+        run: python -m build
+      - name: Verify wheel distribution (non-editable smoke)
+        # 发布门禁：wheel 装入干净 venv 后从仓库外实证 import + 数据资产 +
+        # 入口可用（防"能 build 但装上残"的 Release 资产——v1.9.0 教训）
+        run: |
+          python -m venv /tmp/venv-rel
+          /tmp/venv-rel/bin/python -m pip install dist/*.whl
+          cd /tmp
+          /tmp/venv-rel/bin/python "$GITHUB_WORKSPACE/scripts/check_dist.py"
+          /tmp/venv-rel/bin/tcms-test --version
+      - name: Generate release notes
+        run: |
+          python - <<'EOF'
+          import re, pathlib
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          # 取最新版本段（到下一个 ## 前）
+          m = re.search(r"## \[([^\]]+)\] - (.+?)\n(.*?)(?=\n## |\Z)", text, re.S)
+          if not m:
+              raise SystemExit("CHANGELOG 最新版本段缺失")
+          pathlib.Path("release_notes.md").write_text(
+              f"# v{m.group(1)} ({m.group(2)})\n\n{m.group(3).strip()}\n",
+              encoding="utf-8",
+          )
+          EOF
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          body_path: release_notes.md
+          files: |
+            dist/*.whl
+            dist/*.tar.gz

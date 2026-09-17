@@ -1,0 +1,22 @@
+# 场景扩容 Wave A（无孤儿覆盖）：traction_cut_fail, traction_conv_cooling_fault
+name: 牵引切除失效与变流冷却系统故障编排
+desc: 演示故障序列：牵引切除指令失效、牵引变流冷却系统故障。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: traction_cut_fail
+    level: critical
+    impact: EB/停车请求后牵引仍在施加（切除回路失效）
+    expect: emergency_brake
+- at: 4.5
+  inject:
+    node: vcu
+    fault: traction_conv_cooling_fault
+    level: major
+    impact: 变流器冷却风机/水泵失效，温度保护性降功率
+    expect: derate
+- at: 10.0
+  recover: traction_cut_fail
+- at: 11.5
+  recover: traction_conv_cooling_fault

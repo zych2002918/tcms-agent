@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-032 dc_link_undervoltage (major, derate) — DcLinkVoltage 欠压
+name: 直流母线欠压封锁牵引
+desc: 演示故障序列：直流母线欠压。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: dc_link_undervoltage
+    level: major
+    impact: 直流母线电压低于牵引允许值，封锁牵引
+    expect: derate
+- at: 11.0
+  recover: dc_link_undervoltage

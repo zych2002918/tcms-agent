@@ -1,0 +1,31 @@
+# 场景扩容：严重安全原因联合 → EB 环线失电 → 同时失去牵引并紧急制动
+# 现实机制（SIL4 安全电路串联）：现代列车牵引/制动与信号安全电路串联在紧急制动
+#   环线上；一旦检测到特定严重安全故障（列车完整性丧失 / 运行中车门打开等联锁
+#   违规），环线失电 → 列车同时失去牵引力并施加紧急制动（EB 执行由 exec_feedback
+#   三重证据确认：压力 + 回执 + 牵引切除）。
+# 处置取决于原因的分支表达（对应用户问的“牵引丢失是否紧急停车取决于原因”）：
+#   - integrity_loss（critical / EB）——列车完整性丧失（解体/分离）→ EB 环线失电；
+#   - door_open_moving（critical / EB）——运行中车门打开（门-车联锁违规）→ EB；
+#   - traction_loss（major / derate）——可恢复部件/站台停稳正常指令 → 降级不升级 EB；
+#     若牵引丢失由上述 SIL4 原因引起，环线失电时牵引作为伴随同时被切除（EB 执行证据）。
+name: 严重安全联锁联合紧急制动
+desc: 演示故障序列：列车完整性丧失、运行中车门打开（EB 环线失电联合紧急制动）。
+steps:
+- at: 2.0
+  inject:
+    node: vcu
+    fault: integrity_loss
+    level: critical
+    impact: 完整性丧失 → 安全电路 EB 环线失电，同时失去牵引并施加紧急制动
+    expect: emergency_brake
+- at: 3.5
+  inject:
+    node: bogie
+    fault: door_open_moving
+    level: critical
+    impact: 运行中车门打开（门-车联锁违规）→ EB 环线失电叠加，联合紧急制动
+    expect: emergency_brake
+- at: 12.0
+  recover: integrity_loss
+- at: 13.0
+  recover: door_open_moving

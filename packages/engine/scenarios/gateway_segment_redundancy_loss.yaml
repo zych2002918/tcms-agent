@@ -1,0 +1,22 @@
+# 场景扩容：F-TCMS-062 gateway_segment_fault + F-TCMS-063 gateway_redundancy_loss（major）
+name: 网关网段与冗余链路丢失
+desc: 演示故障序列：网关网段故障、网关冗余链路丢失。
+steps:
+- at: 3.0
+  inject:
+    node: tcms
+    fault: gateway_segment_fault
+    level: major
+    impact: 网关 MVB 网段丢失，网段间隔离/转发失效
+    expect: derate
+- at: 4.5
+  inject:
+    node: tcms
+    fault: gateway_redundancy_loss
+    level: major
+    impact: 列车骨干双环冗余失效，退化为单链路
+    expect: derate
+- at: 11.0
+  recover: gateway_segment_fault
+- at: 12.5
+  recover: gateway_redundancy_loss

@@ -1,0 +1,40 @@
+# 场景扩容 Wave C（无孤儿覆盖）：panto_isolator_fault, panto_contact_wear_high, panto_cylinder_air_leak, line_voltage_harmonic_high
+name: 隔离状态·滑板磨耗·气缸泄漏·网压谐波编排
+desc: 演示故障序列：受电弓隔离装置状态异常、受电弓滑板磨耗超限、升弓气缸气路泄漏、网压谐波畸变。
+steps:
+- at: 3.0
+  inject:
+    node: pantograph
+    fault: panto_isolator_fault
+    level: major
+    impact: 弓隔离/跌落开关状态与指令不符
+    expect: derate
+- at: 4.5
+  inject:
+    node: pantograph
+    fault: panto_contact_wear_high
+    level: minor
+    impact: 碳滑板磨耗接近极限（预维）
+    expect: warning
+- at: 6.0
+  inject:
+    node: pantograph
+    fault: panto_cylinder_air_leak
+    level: major
+    impact: 升弓气缸气路泄漏，弓位维持不稳
+    expect: derate
+- at: 7.5
+  inject:
+    node: pantograph
+    fault: line_voltage_harmonic_high
+    level: minor
+    impact: 网压波形畸变率上升（供电质量）
+    expect: warning
+- at: 10.0
+  recover: panto_isolator_fault
+- at: 11.5
+  recover: panto_contact_wear_high
+- at: 13.0
+  recover: panto_cylinder_air_leak
+- at: 14.5
+  recover: line_voltage_harmonic_high

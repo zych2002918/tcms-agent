@@ -1,0 +1,14 @@
+# 场景 8：滚动计数跳变 —— 序列完整性机制检出（minor → warning）
+# F-TCMS-015 rolling_counter_gap (minor, warning)
+name: 滚动计数跳变
+desc: 演示故障序列：滚动计数器跳变。
+steps:
+  - at: 3.0
+    inject:
+      node: bcu
+      fault: rolling_counter_gap
+      level: minor
+      impact: alive/rolling counter 跳变（丢帧/注入），接收端计数连续性检查检出
+      expect: warning
+  - at: 7.0
+    recover: rolling_counter_gap

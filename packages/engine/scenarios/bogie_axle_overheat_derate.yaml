@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-057 bogie_axle_overheat (major, derate) — AxleTemp 超限
+name: 轴温过高限速
+desc: 演示故障序列：轴温过高。
+steps:
+- at: 3.0
+  inject:
+    node: bogie
+    fault: bogie_axle_overheat
+    level: major
+    impact: 轴箱温度超限，轴承损伤征兆，限速运行至最近站
+    expect: derate
+- at: 11.0
+  recover: bogie_axle_overheat

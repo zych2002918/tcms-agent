@@ -1,0 +1,13 @@
+# 场景 2：紧急制动 —— 灾难级故障 → 期望紧急制动 → 恢复
+name: 紧急制动场景
+desc: 演示故障序列：紧急制动执行失败。
+steps:
+  - at: 5.0
+    inject:
+      node: vcu
+      fault: eb_failure
+      level: critical
+      impact: 制动系统失效
+      expect: emergency_brake
+  - at: 15.0
+    recover: eb_failure

@@ -1,0 +1,22 @@
+# 代码所有者（CODEOWNERS）—— 自动请求审查
+# 格式：<路径模式> <所有者>
+# 参考：https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# 默认所有者：仓库维护者（所有变更自动请求其审查）
+* @zych2002918
+
+# 安全关键模块：EBM / ATP / 联锁 / 看门狗 / 错误状态机 —— 必须维护者亲自审查
+tcms/ebm.py @zych2002918
+tcms/atp.py @zych2002918
+tcms/interlocks.py @zych2002918
+tcms/watchdogs.py @zych2002918
+tcms/nmt.py @zych2002918
+tcms/errstate.py @zych2002918
+tcms/voting.py @zych2002918
+tcms/replay.py @zych2002918
+tcms/faultlife.py @zych2002918
+tcms/recorder.py @zych2002918
+
+# 安全策略与 CI 配置
+SECURITY.md @zych2002918
+.github/ @zych2002918

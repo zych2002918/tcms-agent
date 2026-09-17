@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-048 hvac_compressor_overcurrent (major, derate) — 热保护
+name: 空调压缩机过流保护
+desc: 演示故障序列：空调压缩机过流保护。
+steps:
+- at: 3.0
+  inject:
+    node: hvac
+    fault: hvac_compressor_overcurrent
+    level: major
+    impact: 压缩机过流触发保护，制冷中断，客室舒适度降级
+    expect: derate
+- at: 11.0
+  recover: hvac_compressor_overcurrent

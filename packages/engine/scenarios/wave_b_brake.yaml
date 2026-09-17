@@ -1,0 +1,40 @@
+# 场景扩容 Wave B（无孤儿覆盖）：brake_ebr_selfcheck_fail, brake_compressor_fail, brake_pressure_sensor_noise, brake_pad_wear_limit
+name: 制动自检族编排（EBR·空压机·压力噪声·闸瓦）
+desc: 演示故障序列：EBR 硬线回路自检失败、空压机故障、制动压力传感器噪声、闸瓦磨耗到限。
+steps:
+- at: 3.0
+  inject:
+    node: bcu
+    fault: brake_ebr_selfcheck_fail
+    level: major
+    impact: 紧急制动硬线回路日检/自检不通过，EB 保障待确认
+    expect: warning
+- at: 4.5
+  inject:
+    node: bcu
+    fault: brake_compressor_fail
+    level: major
+    impact: 主空压机失效，供风压力维持能力下降
+    expect: derate
+- at: 6.0
+  inject:
+    node: bcu
+    fault: brake_pressure_sensor_noise
+    level: minor
+    impact: 制动压力反馈瞬时跳变（噪声），闭环判据受扰
+    expect: warning
+- at: 7.5
+  inject:
+    node: bcu
+    fault: brake_pad_wear_limit
+    level: minor
+    impact: 闸瓦磨耗接近寿命极限，预告维护
+    expect: warning
+- at: 10.0
+  recover: brake_ebr_selfcheck_fail
+- at: 11.5
+  recover: brake_compressor_fail
+- at: 13.0
+  recover: brake_pressure_sensor_noise
+- at: 14.5
+  recover: brake_pad_wear_limit

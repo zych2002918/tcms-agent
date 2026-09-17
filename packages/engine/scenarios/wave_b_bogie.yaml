@@ -1,0 +1,22 @@
+# 场景扩容 Wave B（无孤儿覆盖）：bogie_secondary_suspension_low, bogie_bearing_vibration_growth
+name: 二系气压低·轴承振动增长编排
+desc: 演示故障序列：二系悬挂气压低、轴承振动趋势异常。
+steps:
+- at: 3.0
+  inject:
+    node: bogie
+    fault: bogie_secondary_suspension_low
+    level: major
+    impact: 空气弹簧压力低（泄漏），运行品质下降需限速
+    expect: derate
+- at: 4.5
+  inject:
+    node: bogie
+    fault: bogie_bearing_vibration_growth
+    level: major
+    impact: 轴承振动幅值持续增长（早期损伤趋势），预测性预警
+    expect: derate
+- at: 10.0
+  recover: bogie_secondary_suspension_low
+- at: 11.5
+  recover: bogie_bearing_vibration_growth

@@ -1,0 +1,22 @@
+# 场景扩容：F-TCMS-054 fire_detector_fault + F-TCMS-055 fire_extinguisher_fault（major）
+name: 烟火探测与灭火装置降级
+desc: 演示故障序列：烟火探测器故障、灭火装置故障。
+steps:
+- at: 3.0
+  inject:
+    node: fire
+    fault: fire_detector_fault
+    level: major
+    impact: 探测器故障/自检失败，失去火灾探测，人工巡视
+    expect: warning
+- at: 4.5
+  inject:
+    node: fire
+    fault: fire_extinguisher_fault
+    level: major
+    impact: 自动灭火装置未就绪，灭火保障缺失
+    expect: warning
+- at: 11.0
+  recover: fire_detector_fault
+- at: 12.5
+  recover: fire_extinguisher_fault

@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-033 brake_cylinder_leak (major, derate) — 压力闭环偏差
+name: 制动缸压力泄漏
+desc: 演示故障序列：制动缸压力泄漏。
+steps:
+- at: 3.0
+  inject:
+    node: bcu
+    fault: brake_cylinder_leak
+    level: major
+    impact: 制动缸压力指令-反馈偏差大，补偿制动降级
+    expect: derate
+- at: 11.0
+  recover: brake_cylinder_leak

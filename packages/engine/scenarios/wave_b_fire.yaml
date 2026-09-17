@@ -1,0 +1,22 @@
+# 场景扩容 Wave B（无孤儿覆盖）：fire_panel_comms_loss, fire_call_point_fault
+name: 火警面板失联·手动报警按钮故障编排
+desc: 演示故障序列：火警面板通信中断、手动报警按钮故障。
+steps:
+- at: 3.0
+  inject:
+    node: fire
+    fault: fire_panel_comms_loss
+    level: major
+    impact: 司机室火警面板与探测器网络失联，报警汇聚不可用
+    expect: warning
+- at: 4.5
+  inject:
+    node: fire
+    fault: fire_call_point_fault
+    level: major
+    impact: 手动报警按钮自检失败/卡滞，人工报警通道受影响
+    expect: warning
+- at: 10.0
+  recover: fire_panel_comms_loss
+- at: 11.5
+  recover: fire_call_point_fault

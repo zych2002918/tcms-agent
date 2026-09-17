@@ -1,0 +1,31 @@
+# 场景扩容 Wave A（无孤儿覆盖）：aux_lv_overcurrent, aux_fan_fault, aux_input_overvoltage
+name: 辅助电源过流·风机·输入过压保护编排
+desc: 演示故障序列：低压母线过流保护、辅助变流风机故障、辅助变流输入过压。
+steps:
+- at: 3.0
+  inject:
+    node: aux
+    fault: aux_lv_overcurrent
+    level: major
+    impact: 低压母线电流超限触发支路保护跳闸
+    expect: shutdown
+- at: 4.5
+  inject:
+    node: aux
+    fault: aux_fan_fault
+    level: minor
+    impact: 辅助变流散热风机失效，负载预警
+    expect: warning
+- at: 6.0
+  inject:
+    node: aux
+    fault: aux_input_overvoltage
+    level: major
+    impact: 辅助变流输入电压超限，保护性分断
+    expect: shutdown
+- at: 10.0
+  recover: aux_lv_overcurrent
+- at: 11.5
+  recover: aux_fan_fault
+- at: 13.0
+  recover: aux_input_overvoltage

@@ -1,0 +1,24 @@
+# 场景 4：CRC 错误风暴 —— 完整性机制（CRC-8）持续检出错误帧
+# F-TCMS-009 crc_error_frame (major, warning) + F-TCMS-016 bit_flip_frame (major, warning)
+# 字节损坏 → 错误帧被丢弃计数；风暴平息后恢复
+name: CRC 错误风暴
+desc: 演示故障序列：报文 CRC 校验错误、单比特翻转。
+steps:
+  - at: 1.0
+    inject:
+      node: bcu
+      fault: crc_error_frame
+      level: major
+      impact: 应用层 CRC-8 校验持续失败，错误帧被丢弃
+      expect: warning
+  - at: 2.0
+    inject:
+      node: bcu
+      fault: bit_flip_frame
+      level: major
+      impact: 随机单比特翻转叠加，进一步抬升错误计数
+      expect: warning
+  - at: 8.0
+    recover: crc_error_frame
+  - at: 9.0
+    recover: bit_flip_frame

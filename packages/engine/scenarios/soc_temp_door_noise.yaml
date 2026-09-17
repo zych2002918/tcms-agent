@@ -1,0 +1,34 @@
+# 场景 13：SOC 偏低 + 温度偏高 + 车门传感器噪声 —— 信息级/轻微级混合
+# F-TCMS-001 soc_low (info, none) + F-TCMS-002 temp_high (info, none)
+# + F-TCMS-003 door_sensor_noise (minor, warning)
+# 能源管理信息告警不触发处置动作；门传感器噪声升级为告警
+name: 能源状态与车门传感器噪声
+desc: 演示故障序列：SOC 偏低、电池温度偏高、车门传感器偶发噪声。
+steps:
+  - at: 1.0
+    inject:
+      node: bcu
+      fault: soc_low
+      level: info
+      impact: SOC 偏低，能源管理提示（不触发处置动作）
+      expect: none
+  - at: 2.0
+    inject:
+      node: bcu
+      fault: temp_high
+      level: info
+      impact: 电池温度偏高提示（不触发处置动作）
+      expect: none
+  - at: 3.0
+    inject:
+      node: bogie
+      fault: door_sensor_noise
+      level: minor
+      impact: 车门传感器偶发噪声，门状态判定告警
+      expect: warning
+  - at: 9.0
+    recover: soc_low
+  - at: 10.0
+    recover: temp_high
+  - at: 11.0
+    recover: door_sensor_noise

@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-059 speed_signal_loss (major, derate) — SpeedValid=0/超时
+name: 速度信号丢失降级
+desc: 演示故障序列：速度信号丢失。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: speed_signal_loss
+    level: major
+    impact: 车速无效或车速帧超时，ATP 速度监督降级
+    expect: derate
+- at: 11.0
+  recover: speed_signal_loss

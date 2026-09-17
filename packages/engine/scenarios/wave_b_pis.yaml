@@ -1,0 +1,31 @@
+# 场景扩容 Wave B（无孤儿覆盖）：pis_camera_fault, pis_train_number_wrong, pis_door_side_indicator_fail
+name: 摄像头离线·车次号错·门侧指示器故障编排
+desc: 演示故障序列：客室监控摄像头故障、PIS 车次号错误、门侧指示器故障。
+steps:
+- at: 3.0
+  inject:
+    node: pis
+    fault: pis_camera_fault
+    level: minor
+    impact: 客室 CCTV 摄像头失帧/离线，监控覆盖不全
+    expect: warning
+- at: 4.5
+  inject:
+    node: pis
+    fault: pis_train_number_wrong
+    level: info
+    impact: 车次/交路号与调度不符（数据下发错误）
+    expect: none
+- at: 6.0
+  inject:
+    node: pis
+    fault: pis_door_side_indicator_fail
+    level: minor
+    impact: 开门侧指示灯/提示故障，乘客引导不全
+    expect: warning
+- at: 10.0
+  recover: pis_camera_fault
+- at: 11.5
+  recover: pis_train_number_wrong
+- at: 13.0
+  recover: pis_door_side_indicator_fail

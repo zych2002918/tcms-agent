@@ -1,0 +1,28 @@
+# 场景 17：恢复后重发 —— 同一故障注入→恢复→再次注入→再次恢复（台账多次开账/关账）
+# 目的：检验故障台账对**重复发生故障**的生命周期管理（FaultLedger 同名故障
+#   开账/恢复/关账可多次轮回，每次开账是独立生命周期）：
+#   ① 3.5s 注入 overspeed → 5.5s 恢复（第一次开账-关账）；
+#   ② 7.5s 同一 overspeed 再次注入 → 9.5s 再次恢复（第二次开账-关账）。
+#   贴近真实运维：ATP 超速告警可能反复出现（同一区间连续越限/缓解），
+#   台账应能区分先后两次事件而非合并为一条。
+name: 超速恢复后重发（重复开账/关账）
+desc: 演示故障序列：超速。
+steps:
+  - at: 3.5
+    inject:
+      node: vcu
+      fault: overspeed
+      level: major
+      impact: 第一次超速越限，ATP 请求降级限速
+      expect: derate
+  - at: 5.5
+    recover: overspeed
+  - at: 7.5
+    inject:
+      node: vcu
+      fault: overspeed
+      level: major
+      impact: 缓解后再次超速（同区间重发），台账第二次开账
+      expect: derate
+  - at: 9.5
+    recover: overspeed

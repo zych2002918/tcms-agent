@@ -1,0 +1,31 @@
+# 场景扩容 Wave C（无孤儿覆盖）：light_emergency_battery_low, light_marker_fail, light_headlight_dimmer_fail
+name: 应急电池低·标志灯·前照灯调光异常编排
+desc: 演示故障序列：应急照明电池低、车侧标志灯故障、前照灯调光异常。
+steps:
+- at: 3.0
+  inject:
+    node: light
+    fault: light_emergency_battery_low
+    level: minor
+    impact: 应急照明后备电池容量低（疏散保障）
+    expect: warning
+- at: 4.5
+  inject:
+    node: light
+    fault: light_marker_fail
+    level: minor
+    impact: 车侧标志/运营标识灯失效
+    expect: warning
+- at: 6.0
+  inject:
+    node: light
+    fault: light_headlight_dimmer_fail
+    level: minor
+    impact: 前照灯调光/远近光切换异常
+    expect: warning
+- at: 10.0
+  recover: light_emergency_battery_low
+- at: 11.5
+  recover: light_marker_fail
+- at: 13.0
+  recover: light_headlight_dimmer_fail

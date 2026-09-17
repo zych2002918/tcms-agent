@@ -1,0 +1,30 @@
+# 场景 16：慢速漂移 + 突发升级 —— 速度通道 minor 漂移先 warning，major 故障叠加后升级
+# 目的：同子系统（牵引/速度通道）先出现**慢速漂移**（speed_sensor_drift, minor, warning），
+#   验证处置优先级合并：漂移在账期间叠加更高等级故障时，处置由 warning 升级为 derate。
+#   ① speed_sensor_drift（F-TCMS-004, minor, warning）速度信号缓慢漂移，2oo3 表决不一致告警；
+#   ② overspeed（F-TCMS-007, major, derate）漂移掩盖真实速度，列车实际越限未被第一时间识别，
+#      检测到后按 major 处置——验证「漂移先告警 → 突发故障叠加升级」的处置优先级合并
+#      （faultlevel.merge_actions：warning < derate，取最高）。
+#   恢复路径：overspeed 速度回落后先缓解（derate 解除），漂移随后消失多通道一致后解除，
+#   体现同通道故障分阶段恢复。
+name: 速度漂移与超速突发升级
+desc: 演示故障序列：速度传感器轻微漂移、超速。
+steps:
+  - at: 1.0
+    inject:
+      node: vcu
+      fault: speed_sensor_drift
+      level: minor
+      impact: 速度信号缓慢漂移偏离真实值，2oo3 表决不一致，告警提示司机
+      expect: warning
+  - at: 3.0
+    inject:
+      node: vcu
+      fault: overspeed
+      level: major
+      impact: 漂移期间列车实际速度越过限速，突发 major 叠加，处置升级为降级运行
+      expect: derate
+  - at: 8.0
+    recover: overspeed
+  - at: 9.0
+    recover: speed_sensor_drift

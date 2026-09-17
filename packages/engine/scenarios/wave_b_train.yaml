@@ -1,0 +1,31 @@
+# 场景扩容 Wave B（无孤儿覆盖）：vcu_startup_selftest_fail, train_time_sync_loss, cab_display_blank
+name: 启动自检失败·时间同步丢失·司控台黑屏编排
+desc: 演示故障序列：VCU 启动自检失败、列车级时间同步丢失、司控台显示屏黑屏。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: vcu_startup_selftest_fail
+    level: major
+    impact: 上电自检/版本校验失败，进入降级运行模式
+    expect: derate
+- at: 4.5
+  inject:
+    node: vcu
+    fault: train_time_sync_loss
+    level: major
+    impact: 列车级时钟同步丢失，事件时序与录像对齐异常
+    expect: derate
+- at: 6.0
+  inject:
+    node: vcu
+    fault: cab_display_blank
+    level: minor
+    impact: 司机显示屏无显示（HMI 故障），信息呈现降级
+    expect: warning
+- at: 10.0
+  recover: vcu_startup_selftest_fail
+- at: 11.5
+  recover: train_time_sync_loss
+- at: 13.0
+  recover: cab_display_blank

@@ -1,0 +1,13 @@
+# 场景扩容 Wave A（无孤儿覆盖）：door_side_mismatch
+name: 开门侧与停站侧不一致编排
+desc: 演示故障序列：开门侧与停站侧不一致。
+steps:
+- at: 3.0
+  inject:
+    node: bogie
+    fault: door_side_mismatch
+    level: major
+    impact: 开门许可侧与停站/ATO 指定侧不符，禁止开门
+    expect: warning
+- at: 10.0
+  recover: door_side_mismatch

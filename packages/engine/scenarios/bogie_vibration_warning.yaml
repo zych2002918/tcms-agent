@@ -1,0 +1,15 @@
+# 场景 25：走行部振动异常 → 告警建议（真实运营：轴承早期损伤征兆，先告警再安排检查）
+# F-TCMS-026 bogie_vibration_high (minor, warning) —— 走行部/转向架振动加速度超限
+name: 走行部振动异常告警
+desc: 演示故障序列：走行部振动异常。
+steps:
+  - at: 2.0
+    action: inject
+    node: vcu
+    fault: bogie_vibration_high
+    level: minor
+    impact: 转向架振动加速度超限，轴承早期损伤征兆
+    expect: warning
+  - at: 10.0
+    action: recover
+    fault: bogie_vibration_high

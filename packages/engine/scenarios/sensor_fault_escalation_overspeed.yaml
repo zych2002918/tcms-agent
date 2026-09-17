@@ -1,0 +1,34 @@
+# 场景 22：传感器故障演化升级（真实运营：漂移 → 卡死 → 超速无人监督）
+# F-TCMS-015 speed_sensor_drift (minor) → F-TCMS-016 sensor_stuck (minor)
+# → F-TCMS-002 overspeed (major)：传感器先轻微漂移再卡死，车速监督失效后超速
+name: 传感器漂移卡死致超速升级
+desc: 演示故障序列：速度传感器轻微漂移、传感器卡死、超速。
+steps:
+  - at: 1.0
+    action: inject
+    node: vcu
+    fault: speed_sensor_drift
+    level: minor
+    expect: warning
+  - at: 5.0
+    action: inject
+    node: vcu
+    fault: sensor_stuck
+    level: minor
+    expect: warning
+  - at: 10.0
+    action: inject
+    node: vcu
+    fault: overspeed
+    level: major
+    impact: 传感器卡死导致速度监督数据失真，实际超速未被及时捕获
+    expect: derate
+  - at: 18.0
+    action: recover
+    fault: sensor_stuck
+  - at: 19.0
+    action: recover
+    fault: speed_sensor_drift
+  - at: 20.0
+    action: recover
+    fault: overspeed

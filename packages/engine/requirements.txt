@@ -1,0 +1,3 @@
+# 单一依赖源：完整开发/测试/可视化/lint 环境
+# 运行时依赖见 pyproject.toml [project.dependencies]（python-can/cantools/pyyaml）
+-e .[test,viz,lint]

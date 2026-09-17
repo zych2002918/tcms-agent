@@ -1,0 +1,31 @@
+# 场景扩容 Wave C（无孤儿覆盖）：vcu_ram_parity_error, vcu_config_consist_mismatch, tcms_boot_sequence_fault
+name: VCU RAM 奇偶·编组配置不一致·上电时序编排
+desc: 演示故障序列：VCU RAM 奇偶错误、编组配置不一致、上电时序校验失败。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: vcu_ram_parity_error
+    level: major
+    impact: 主控 RAM 奇偶校验错误，触发安全重启
+    expect: derate
+- at: 4.5
+  inject:
+    node: vcu
+    fault: vcu_config_consist_mismatch
+    level: major
+    impact: 编组配置与车辆身份不匹配，限制全列功能
+    expect: derate
+- at: 6.0
+  inject:
+    node: vcu
+    fault: tcms_boot_sequence_fault
+    level: major
+    impact: 上电时序/版本校验失败，服务降级启动
+    expect: derate
+- at: 10.0
+  recover: vcu_ram_parity_error
+- at: 11.5
+  recover: vcu_config_consist_mismatch
+- at: 13.0
+  recover: tcms_boot_sequence_fault

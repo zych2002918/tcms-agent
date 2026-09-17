@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-043 aux_converter_overload (minor, warning) — AuxLoadPercent
+name: 辅助变流器过载
+desc: 演示故障序列：辅助变流器过载。
+steps:
+- at: 3.0
+  inject:
+    node: aux
+    fault: aux_converter_overload
+    level: minor
+    impact: 辅助负载长时间高载，过载预警
+    expect: warning
+- at: 11.0
+  recover: aux_converter_overload

@@ -1,0 +1,25 @@
+# 场景 23：客室空调失效 → 温度过高降级（真实运营：夏季空调失效，限载/降级处理）
+# F-TCMS-024 hvac_cabin_overheat (major, derate) —— 客室温度超过舒适上限持续上升
+name: 客室空调失效温度过高
+desc: 演示故障序列：空调压缩机故障、客室温度过高。
+steps:
+  - at: 2.0
+    action: inject
+    node: vcu
+    fault: hvac_compressor_fault
+    level: minor
+    impact: 空调压缩机异常，制冷能力下降
+    expect: warning
+  - at: 8.0
+    action: inject
+    node: vcu
+    fault: hvac_cabin_overheat
+    level: major
+    impact: 客室温度持续上升超舒适上限，限载/降级运行
+    expect: derate
+  - at: 16.0
+    action: recover
+    fault: hvac_compressor_fault
+  - at: 18.0
+    action: recover
+    fault: hvac_cabin_overheat

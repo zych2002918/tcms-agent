@@ -1,0 +1,22 @@
+# 场景扩容：F-TCMS-065 driver_console_fault + F-TCMS-066 vcu_watchdog_timeout（major）
+name: 司控台失效与 VCU 看门狗超时
+desc: 演示故障序列：司控台指令失效、VCU 应用看门狗超时。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: driver_console_fault
+    level: major
+    impact: 司控台主控制器指令采集异常，人工驾驶指令失效
+    expect: derate
+- at: 4.5
+  inject:
+    node: vcu
+    fault: vcu_watchdog_timeout
+    level: major
+    impact: 主控任务看门狗超时，安全复位重启
+    expect: derate
+- at: 11.0
+  recover: driver_console_fault
+- at: 12.5
+  recover: vcu_watchdog_timeout

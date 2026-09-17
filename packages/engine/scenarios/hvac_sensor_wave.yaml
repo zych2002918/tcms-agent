@@ -1,0 +1,22 @@
+# 场景扩容 Wave A（无孤儿覆盖）：hvac_cabin_temp_sensor_fault, hvac_condenser_fault
+name: 客室温感失效与冷凝风机故障编排
+desc: 演示故障序列：客室温度传感器失效、冷凝风机故障。
+steps:
+- at: 3.0
+  inject:
+    node: hvac
+    fault: hvac_cabin_temp_sensor_fault
+    level: minor
+    impact: 客室温度采集异常（开路/超量程），温度闭环降级
+    expect: warning
+- at: 4.5
+  inject:
+    node: hvac
+    fault: hvac_condenser_fault
+    level: major
+    impact: 冷凝风机失效致制冷能力下降，客室温度补偿性降级
+    expect: derate
+- at: 10.0
+  recover: hvac_cabin_temp_sensor_fault
+- at: 11.5
+  recover: hvac_condenser_fault

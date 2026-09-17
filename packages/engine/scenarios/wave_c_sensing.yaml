@@ -1,0 +1,58 @@
+# 场景扩容 Wave C（无孤儿覆盖）：speed_pulse_intermittent_loss, sensor_output_stuck_high, sensor_ground_noise, sensor_calibration_drift, position_sensor_sync_fail, analog_frontend_filter_fail
+name: 脉冲丢失·卡高位·地噪·标定漂移·定位·滤波编排
+desc: 演示故障序列：速度脉冲间歇丢失、传感器输出卡高位、模拟采集地噪声、传感器标定漂移、测速定位同步失败、模拟前端滤波异常。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: speed_pulse_intermittent_loss
+    level: major
+    impact: 速度脉冲间歇丢失（接触/干扰），触发降级判据
+    expect: derate
+- at: 4.5
+  inject:
+    node: vcu
+    fault: sensor_output_stuck_high
+    level: major
+    impact: 传感器输出恒在高位（对电源短路）
+    expect: warning
+- at: 6.0
+  inject:
+    node: vcu
+    fault: sensor_ground_noise
+    level: minor
+    impact: 模拟采集地噪声上升（共模干扰）
+    expect: warning
+- at: 7.5
+  inject:
+    node: vcu
+    fault: sensor_calibration_drift
+    level: minor
+    impact: 传感器零点/增益漂移（老化）
+    expect: warning
+- at: 9.0
+  inject:
+    node: vcu
+    fault: position_sensor_sync_fail
+    level: major
+    impact: 测速/定位里程同步失败（两源冲突）
+    expect: derate
+- at: 10.0
+  recover: speed_pulse_intermittent_loss
+- at: 10.5
+  inject:
+    node: vcu
+    fault: analog_frontend_filter_fail
+    level: minor
+    impact: 模拟前端滤波特性异常（噪声抑制下降）
+    expect: warning
+- at: 11.5
+  recover: sensor_output_stuck_high
+- at: 13.0
+  recover: sensor_ground_noise
+- at: 14.5
+  recover: sensor_calibration_drift
+- at: 16.0
+  recover: position_sensor_sync_fail
+- at: 17.5
+  recover: analog_frontend_filter_fail

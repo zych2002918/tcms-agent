@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-042 aux_voltage_out_of_range (major, derate) — AuxVoltage 越限
+name: 辅助电压越限
+desc: 演示故障序列：辅助电压越限。
+steps:
+- at: 3.0
+  inject:
+    node: aux
+    fault: aux_voltage_out_of_range
+    level: major
+    impact: 辅助母线电压超出允许范围，负载降级保护
+    expect: derate
+- at: 11.0
+  recover: aux_voltage_out_of_range

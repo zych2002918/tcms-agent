@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-058 bogie_sensor_fault (minor, warning) — BogieSensorFault
+name: 走行部监测传感器失效
+desc: 演示故障序列：走行部监测传感器失效。
+steps:
+- at: 3.0
+  inject:
+    node: bogie
+    fault: bogie_sensor_fault
+    level: minor
+    impact: 振动/轴温监测传感器链路失效，监测降级告警
+    expect: warning
+- at: 11.0
+  recover: bogie_sensor_fault

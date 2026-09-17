@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCMS-CAN-Test — 列车网络控制 CAN 报文自动化测试框架</title>
+<style>
+  :root {
+    --primary: #2f6fd0; --green: #2e9e44; --red: #d62728; --bg: #f7f9fc;
+    --card: #ffffff; --text: #1a1a2e; --muted: #5a6b85;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+  .hero { background: linear-gradient(135deg, #1a2a4a 0%, #2f6fd0 100%); color: #fff; padding: 56px 24px 48px; text-align: center; }
+  .hero h1 { font-size: 2.1rem; margin-bottom: 12px; }
+  .hero p { font-size: 1.05rem; opacity: .92; max-width: 760px; margin: 0 auto 20px; }
+  .badges { margin-top: 18px; }
+  .badges span { display: inline-block; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.35); padding: 4px 14px; border-radius: 20px; font-size: .85rem; margin: 4px 6px; }
+  .container { max-width: 1080px; margin: 0 auto; padding: 32px 20px 64px; }
+  .section { margin: 36px 0; }
+  .section h2 { font-size: 1.35rem; color: var(--primary); border-left: 4px solid var(--primary); padding-left: 12px; margin-bottom: 16px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,.06); border: 1px solid #e6ebf2; }
+  .card h3 { font-size: 1.02rem; color: var(--primary); margin-bottom: 8px; }
+  .card p { font-size: .92rem; color: var(--muted); }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-top: 8px; }
+  .stat { background: var(--card); border-radius: 10px; text-align: center; padding: 18px 10px; border: 1px solid #e6ebf2; }
+  .stat .num { font-size: 1.7rem; font-weight: 700; color: var(--primary); }
+  .stat .lbl { font-size: .85rem; color: var(--muted); margin-top: 4px; }
+  .figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+  .figure { background: var(--card); border-radius: 12px; padding: 14px; border: 1px solid #e6ebf2; text-align: center; }
+  .figure img { max-width: 100%; border-radius: 8px; border: 1px solid #e6ebf2; }
+  .figure p { font-size: .85rem; color: var(--muted); margin-top: 8px; }
+  code { background: #eef2f8; padding: 2px 7px; border-radius: 5px; font-size: .88em; font-family: Consolas, monospace; }
+  a { color: var(--primary); }
+  .footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 24px; border-top: 1px solid #e6ebf2; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>🚄 TCMS-CAN-Test</h1>
+  <p>列车网络控制系统（TCMS）CAN 总线报文自动化测试框架 —— 虚拟总线 · DBC 协议库 · 安全联锁逻辑 · 紧急制动管理 · 覆盖率门禁 CI</p>
+  <div class="badges">
+    <span>✅ 960 tests</span>
+    <span>📊 97.96% coverage</span>
+    <span>🐍 Python 3.10–3.13</span>
+    <span>🔒 MIT License</span>
+    <span>🧯 203 FMEA 故障条目</span>
+    <span>🔗 SR-01~52 追溯</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="section">
+    <h2>项目速览</h2>
+    <div class="stat-grid">
+      <div class="stat"><div class="num" id="stat-tests">—</div><div class="lbl">自动化用例（最新 CI）</div></div>
+      <div class="stat"><div class="num" id="stat-cov">—</div><div class="lbl">语句覆盖率（门禁 97%）</div></div>
+      <div class="stat"><div class="num">44</div><div class="lbl">测试文件</div></div>
+      <div class="stat"><div class="num">8</div><div class="lbl">DBC 报文协议</div></div>
+      <div class="stat"><div class="num">18</div><div class="lbl">安全需求 SR 映射</div></div>
+      <div class="stat"><div class="num">26</div><div class="lbl">FMEA 故障条目</div></div>
+      <div class="stat"><div class="num">25</div><div class="lbl">YAML 故障场景</div></div>
+      <div class="stat"><div class="num">34</div><div class="lbl">tcms 模块</div></div>
+    </div>
+    <p style="margin-top:10px;font-size:.88rem;color:var(--muted)">
+      用例/覆盖率由 <code>docs/reports/latest.json</code>（CI 每 push 生成）实时驱动；
+      未加载到时显示仓库最新提交静态值。
+    </p>
+    <p style="margin-top:8px">
+      📊 <a href="reports/TREND.md">多版本 JUnit 趋势报告</a> ·
+      <a href="reports/report.html">最新 pytest HTML 报告</a> ·
+      <a href="reports/TREND.txt">ASCII 趋势</a>
+      <span style="color:var(--muted)">（CI 每轮渲染生成，经 GitHub Pages 部署后可用；仓库 main 分支不收录这些运行时产物）</span>
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>核心能力</h2>
+    <div class="cards">
+      <div class="card"><h3>🔌 虚拟 CAN 总线 + DUT 仿真</h3><p>TCMSNodeSimulator 按 DBC 周期（50/100/500ms）自动发送报文，支持故障注入：节点失活 / 越界 / 抖动 / 总线短路断路。</p></div>
+      <div class="card"><h3>🛑 紧急制动管理（EBM）</h3><p>驾驶模式 × 原因 × 处置矩阵决策，SIL2/SIL4 双通道表决，司机缓解操作序列（手柄回零 + 按钮保持 ≥3s），自愈限次。</p></div>
+      <div class="card"><h3>🛡️ 安全联锁逻辑</h3><p>门-车联锁、超速-制动联锁、牵引-制动互锁、方向-速度联动、车门-站台联动 —— 任何违规显式返回原因。</p></div>
+      <div class="card"><h3>📈 系统级网络指标</h3><p>WCRT 可调度性分析（Tindell 迭代）、总线负载率（位级帧模型）、CAN 错误状态机（ISO 11898-1 TEC/REC）。</p></div>
+      <div class="card"><h3>📼 事件时序记录器</h3><p>帧 × 安全事件统一时间线（黑匣子语义），事故冻结窗口，JSON/CSV 导出，完整回放链（.asc → 告警断言）。</p></div>
+      <div class="card"><h3>🧪 工程化质量</h3><p>960 用例 · 属性测试（hypothesis）· 模糊测试 · CI 五 job（pr-smoke → lint → 测试矩阵 → demo-smoke → dist-smoke）· 覆盖率门禁 97% · 失败现场自动导出 · JUnit 趋势报表 · wheel 分发冒烟。</p></div>
+      <div class="card"><h3>📋 测试工程师工作流</h3><p>FMEA 故障字典（203 条）→ YAML 场景编排（104 个）→ 分层执行（smoke/全量）→ RTM 需求追溯（SR-01~52）→ HTML/JUnit/Allure 多格式报告 → 趋势分析。</p></div>
+      <div class="card"><h3>🎬 可运行示例</h3><p>examples/demo_trip.asc（146 帧真实格式日志）→ replay_demo.py 5 步剧情断言；demo.py 9 步全场景 25 项自证断言 —— 文档示例也进回归。</p></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>状态机可视化（面试素材）</h2>
+    <div class="figures">
+      <div class="figure"><img src="state_ebm.png" alt="EBM 状态机"><p>EBM 紧急制动管理状态机（六态）</p></div>
+      <div class="figure"><img src="state_atp.png" alt="ATP 状态机"><p>ATP 速度监督分级（Warning/SBI/EBI）</p></div>
+      <div class="figure"><img src="state_errstate.png" alt="CAN 错误状态机"><p>CAN 错误状态机（ISO 11898-1）</p></div>
+      <div class="figure"><img src="state_door.png" alt="门控状态机"><p>车门控制状态机（Closed/Open/Fault/Unknown）</p></div>
+      <div class="figure"><img src="state_overspeed.png" alt="超速防护状态机"><p>超速防护状态机（安全 → 超速 → EBM 联动）</p></div>
+      <div class="figure"><img src="timeline_demo.png" alt="时序图"><p>事件时序甘特图（帧 × 安全事件统一时间线）</p></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>安全论证（EN 50128 思路）</h2>
+    <p>详见 <a href="safety_case.md">docs/safety_case.md</a> —— 安全需求（SR-01~SR-52）→ 实现模块 → 测试证据 → 覆盖率门禁的可追溯证据链；追溯矩阵见仓库 <a href="https://github.com/zych2002918/tcms-can-test/blob/main/tests/rtm.csv">tests/rtm.csv</a>（机器可读）。</p>
+    <p style="margin-top:8px"><code>SIL 不是标上去的，是映射出来的</code> —— 每条安全需求都有实现模块、专项测试与覆盖率证据。</p>
+  </div>
+
+  <div class="section">
+    <h2>面试讲解</h2>
+    <p>详见 <a href="interview_guide.md">docs/interview_guide.md</a> —— 60 秒 STAR 叙事 + 六层面试话术 + 高频追问 Q&A（HR 级 / 技术级 / 诚实边界）+ 现场演示脚本 + 数字速查卡。</p>
+  </div>
+
+  <div class="section">
+    <h2>快速开始</h2>
+    <p style="margin-bottom:10px">完整文档见 <a href="https://github.com/zych2002918/tcms-can-test">GitHub 仓库</a>。</p>
+    <pre style="background:#1a2a4a;color:#cfe3ff;border-radius:10px;padding:18px;font-size:.88rem;overflow-x:auto;line-height:1.6"><code>git clone https://github.com/zych2002918/tcms-can-test.git
+cd tcms-can-test
+python -m venv .venv && .venv/Scripts/activate
+pip install -r requirements.txt
+python run.py                 # 全部测试 + HTML 报告
+python demo.py                # 全场景演示（面试用）</code></pre>
+  </div>
+
+</div>
+
+<script>
+  // 从 CI 生成的 docs/reports/latest.json 动态刷新用例数/覆盖率（部署后生效）
+  // fetch 失败（本地直接打开）则回退到仓库最新提交的静态值。
+  (function () {
+    var fallback = { tests: 960, coverage: 97.96 };
+    function apply(data) {
+      var t = document.getElementById('stat-tests');
+      var c = document.getElementById('stat-cov');
+      if (t) t.textContent = data.tests || fallback.tests;
+      if (c) c.textContent = (data.coverage || fallback.coverage) + '%';
+    }
+    fetch('reports/latest.json', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+      .then(apply)
+      .catch(function () { apply(fallback); });
+  })();
+</script>
+
+<div class="footer">
+  TCMS-CAN-Test · 教学/求职展示用途（报文协议为模拟设计，非真实车型协议）· MIT License · © 2026 zych2002918
+</div>
+
+</body>
+</html>
