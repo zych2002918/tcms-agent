@@ -34,6 +34,10 @@ node_modules/
 # ---- uv ----
 .uv-cache/
 
+# ---- 离线分发物（不打进 git：uv 本体 ~49 MB / 依赖缓存更大）----
+# 它们由打包脚本在生成「新电脑点击即用」压缩包时放入，见 scripts/build_release.ps1
+_offline/
+
 # ---- 编辑器 / 系统 ----
 .vscode/
 .idea/
