@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tcms-ai-testgen"
+dynamic = ["version"]
+description = "LLM 测试用例生成器（TCMS CAN 版）：从 DBC/需求/场景模板生成 pytest 用例并量化评估生成质量"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "zych2002918", email = "1612836914@qq.com" }]
+keywords = ["LLM", "test-generation", "pytest", "TCMS", "CAN", "AI-testing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+# 真实 LLM 调用（DeepSeek/OpenAI 兼容）；离线 mock 模式不依赖此组
+llm = [
+    "openai>=1.0",
+]
+test = [
+    "pytest>=8.0",
+    "pytest-html>=4.0",
+    "pytest-cov>=4.0",
+]
+lint = ["ruff>=0.5"]
+
+[project.scripts]
+tcms-ai-testgen = "tcms_ai_testgen.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+packages = ["tcms_ai_testgen"]
+
+[tool.setuptools.dynamic]
+version = { attr = "tcms_ai_testgen._version.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+strict_markers = true
+markers = [
+    "llm: 需要真实 LLM API（默认跳过，CI 只跑 mock 离线模式）",
+    "smoke: 冒烟层——核心链路快速验证（PR 必跑）",
+]
+
+[tool.coverage.run]
+source = ["tcms_ai_testgen"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 90
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]

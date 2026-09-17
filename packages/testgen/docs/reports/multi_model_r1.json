@@ -1,0 +1,58 @@
+{
+  "note": "多模型 × 多批正式对比（deepseek 家族 @ 百炼，temperature 0.3，固定请求模板）",
+  "batches_per_model": 3,
+  "num_per_batch": 8,
+  "mutation": false,
+  "timestamp": "2026-09-06 12:46:14",
+  "results": {
+    "deepseek-r1": {
+      "model": "deepseek-r1",
+      "batches": 3,
+      "parse_rate": {
+        "median": 0.75,
+        "mean": 0.833,
+        "min": 0.75,
+        "max": 1.0,
+        "spread": 0.25,
+        "per_batch": [
+          0.75,
+          1.0,
+          0.75
+        ]
+      },
+      "compile_rate": {
+        "median": 1.0,
+        "mean": 0.944,
+        "min": 0.833,
+        "max": 1.0,
+        "spread": 0.167,
+        "per_batch": [
+          0.8333333333333334,
+          1.0,
+          1.0
+        ]
+      },
+      "exec_pass_rate": {
+        "median": 0.833,
+        "mean": 0.836,
+        "min": 0.8,
+        "max": 0.875,
+        "spread": 0.075,
+        "per_batch": [
+          0.8,
+          0.875,
+          0.8333333333333334
+        ]
+      },
+      "mutation": {},
+      "hallucination_total": 9,
+      "hallucination_samples": [
+        ">       with pytest.raises(EncodeError):",
+        "E       Failed: DID NOT RAISE EncodeError",
+        "FAILED tests/test_ai_generated_p2.py::test_heartbeat_enum_boundary - Failed: ...",
+        ">       with pytest.raises(EncodeError):",
+        "E       Failed: DID NOT RAISE EncodeError"
+      ]
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "source": "llm:deepseek-v3.2",
+  "requested": 8,
+  "generation_seconds": 21.49,
+  "real_exec_seconds": 3.18,
+  "parsed": 7,
+  "failures": 1,
+  "parse_rate": 0.875,
+  "compile_rate": 1.0,
+  "exec_pass_rate": 1.0,
+  "hallucination_caught": [],
+  "mutation": [
+    {
+      "mutation": "door_fault_ignored",
+      "total": 7,
+      "relevant": 3,
+      "killed": 1,
+      "survived": 2,
+      "kill_rate": 0.333,
+      "overall_kill_rate": 0.143
+    },
+    {
+      "mutation": "encode_never_rejects",
+      "total": 7,
+      "relevant": 4,
+      "killed": 4,
+      "survived": 0,
+      "kill_rate": 1.0,
+      "overall_kill_rate": 0.571
+    },
+    {
+      "mutation": "overspeed_action_flipped",
+      "total": 7,
+      "relevant": 0,
+      "killed": 0,
+      "survived": 0,
+      "kill_rate": 0.0,
+      "overall_kill_rate": 0.0
+    }
+  ],
+  "note": "真 LLM 数字仅代表该模型该次输出（temperature 0.3）；与 mock/规则基线对照见 p3 报告"
+}

@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.coverage
+coverage.json
+.ruff_cache/
+.hypothesis/
+
+# Env / secrets
+.env
+*.key
+DEEPSEEK_API_KEY*
+
+# OS
+Thumbs.db
+.DS_Store

@@ -1,0 +1,72 @@
+{
+  "demo": "p4-reflect-loop",
+  "model": "deepseek-v3.2",
+  "note": "batch-2",
+  "generated": {
+    "parsed": 7,
+    "failures": 1
+  },
+  "round1": {
+    "passed": 5,
+    "failed": 2
+  },
+  "reflect": {
+    "total": 7,
+    "healed": 0,
+    "stable": 5,
+    "not_progressed": 2,
+    "self_heal_rate": 0.0,
+    "outcomes": [
+      {
+        "name": "test_alarm_level_info_valid",
+        "r1": "FAIL",
+        "r2": "FAIL",
+        "transition": "not_progressed",
+        "kind": "class2"
+      },
+      {
+        "name": "test_alarm_level_emergency_valid",
+        "r1": "FAIL",
+        "r2": "FAIL",
+        "transition": "not_progressed",
+        "kind": "class2"
+      },
+      {
+        "name": "test_alarm_level_out_of_range_rejected",
+        "r1": "PASS",
+        "r2": "SKIP",
+        "transition": "stable",
+        "kind": ""
+      },
+      {
+        "name": "test_speed_max_boundary_valid",
+        "r1": "PASS",
+        "r2": "SKIP",
+        "transition": "stable",
+        "kind": ""
+      },
+      {
+        "name": "test_speed_over_max_rejected",
+        "r1": "PASS",
+        "r2": "SKIP",
+        "transition": "stable",
+        "kind": ""
+      },
+      {
+        "name": "test_door2_fault_detected",
+        "r1": "PASS",
+        "r2": "SKIP",
+        "transition": "stable",
+        "kind": ""
+      },
+      {
+        "name": "test_door_open_state_detected",
+        "r1": "PASS",
+        "r2": "SKIP",
+        "transition": "stable",
+        "kind": ""
+      }
+    ]
+  },
+  "elapsed_seconds": 31.9
+}

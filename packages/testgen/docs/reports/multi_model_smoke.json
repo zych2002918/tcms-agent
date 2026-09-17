@@ -1,0 +1,127 @@
+{
+  "note": "多模型 × 多批正式对比（deepseek 家族 @ 百炼，temperature 0.3，固定请求模板）",
+  "batches_per_model": 1,
+  "num_per_batch": 6,
+  "mutation": false,
+  "timestamp": "2026-09-06 12:20:37",
+  "results": {
+    "deepseek-v4-flash": {
+      "model": "deepseek-v4-flash",
+      "batches": 1,
+      "parse_rate": {
+        "median": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "spread": 0.0,
+        "per_batch": [
+          1.0
+        ]
+      },
+      "compile_rate": {
+        "median": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "spread": 0.0,
+        "per_batch": [
+          1.0
+        ]
+      },
+      "exec_pass_rate": {
+        "median": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "spread": 0.0,
+        "per_batch": [
+          1.0
+        ]
+      },
+      "mutation": {},
+      "hallucination_total": 0,
+      "hallucination_samples": []
+    },
+    "deepseek-v3.2": {
+      "model": "deepseek-v3.2",
+      "batches": 1,
+      "parse_rate": {
+        "median": 0.833,
+        "mean": 0.833,
+        "min": 0.833,
+        "max": 0.833,
+        "spread": 0.0,
+        "per_batch": [
+          0.833
+        ]
+      },
+      "compile_rate": {
+        "median": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "spread": 0.0,
+        "per_batch": [
+          1.0
+        ]
+      },
+      "exec_pass_rate": {
+        "median": 0.8,
+        "mean": 0.8,
+        "min": 0.8,
+        "max": 0.8,
+        "spread": 0.0,
+        "per_batch": [
+          0.8
+        ]
+      },
+      "mutation": {},
+      "hallucination_total": 3,
+      "hallucination_samples": [
+        ">       with pytest.raises(EncodeError):",
+        "E       Failed: DID NOT RAISE EncodeError",
+        "FAILED tests/test_ai_generated_p2.py::test_node_status_invalid_rejected - Fai..."
+      ]
+    },
+    "deepseek-r1": {
+      "model": "deepseek-r1",
+      "batches": 1,
+      "parse_rate": {
+        "median": 0.833,
+        "mean": 0.833,
+        "min": 0.833,
+        "max": 0.833,
+        "spread": 0.0,
+        "per_batch": [
+          0.833
+        ]
+      },
+      "compile_rate": {
+        "median": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "spread": 0.0,
+        "per_batch": [
+          1.0
+        ]
+      },
+      "exec_pass_rate": {
+        "median": 0.6,
+        "mean": 0.6,
+        "min": 0.6,
+        "max": 0.6,
+        "spread": 0.0,
+        "per_batch": [
+          0.6
+        ]
+      },
+      "mutation": {},
+      "hallucination_total": 2,
+      "hallucination_samples": [
+        "FAILED tests/test_ai_generated_p2.py::test_heartbeat_loss_detection - Asserti...",
+        "FAILED tests/test_ai_generated_p2.py::test_door_open_alarm_trigger - IndexErr..."
+      ]
+    }
+  }
+}

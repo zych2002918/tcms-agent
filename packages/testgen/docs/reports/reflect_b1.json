@@ -1,0 +1,79 @@
+{
+  "demo": "p4-reflect-loop",
+  "model": "deepseek-v3.2",
+  "note": "batch-1",
+  "generated": {
+    "parsed": 8,
+    "failures": 0
+  },
+  "round1": {
+    "passed": 6,
+    "failed": 2
+  },
+  "reflect": {
+    "total": 8,
+    "healed": 1,
+    "stable": 6,
+    "not_progressed": 1,
+    "self_heal_rate": 0.5,
+    "outcomes": [
+      {
+        "name": "test_alarm_level_invalid_rejected",
+        "r1": "PASS",
+        "r2": "PASS",
+        "transition": "stable",
+        "kind": ""
+      },
+      {
+        "name": "test_alarm_level_valid_encoded",
+        "r1": "FAIL",
+        "r2": "PASS",
+        "transition": "healed",
+        "kind": "class1"
+      },
+      {
+        "name": "test_speed_over_max_rejected",
+        "r1": "PASS",
+        "r2": "PASS",
+        "transition": "stable",
+        "kind": ""
+      },
+      {
+        "name": "test_speed_valid_encoded",
+        "r1": "PASS",
+        "r2": "PASS",
+        "transition": "stable",
+        "kind": ""
+      },
+      {
+        "name": "test_door_fault_detected",
+        "r1": "PASS",
+        "r2": "PASS",
+        "transition": "stable",
+        "kind": ""
+      },
+      {
+        "name": "test_door_open_detected",
+        "r1": "PASS",
+        "r2": "PASS",
+        "transition": "stable",
+        "kind": ""
+      },
+      {
+        "name": "test_heartbeat_missing_fault",
+        "r1": "FAIL",
+        "r2": "FAIL",
+        "transition": "not_progressed",
+        "kind": "class1"
+      },
+      {
+        "name": "test_heartbeat_counter_rollover",
+        "r1": "PASS",
+        "r2": "PASS",
+        "transition": "stable",
+        "kind": ""
+      }
+    ]
+  },
+  "elapsed_seconds": 36.7
+}
