@@ -1231,17 +1231,48 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
             )
         except NoFaultMatch as e:
             # 规则零命中 → ① 若是“仅告警/降级但仍可运行”类盘点问题：先用规则直接枚举真实故障作答；
-            # ② 否则走 KB 检索澄清（“你可能指这些”），给候选而非硬 422
+            # ② 只说了「现象」没说故障名（如「不能发车」）：反查哪些真实故障会表达该现象；
+            # ③ 否则走 KB 检索澄清（“你可能指这些”），给候选而非硬 422
+            from ..agent.freeform import faults_for_situation  # noqa: PLC0415
+
             enum = rule_enum_runnable(asset_model, req.goal)
             rag_cands, evidence = _rag_fault_candidates(asset_model, retriever, req.goal)
+            sit_cands, sit_groups = faults_for_situation(asset_model, req.goal)
             resp: dict = {
                 "goal": req.goal,
                 "no_match": True,
                 "detail": str(e),
                 "suggested_faults": rag_cands[:5],
                 "rag_evidence": evidence,
-                "followup_question": "上面哪个最接近你想验证的？回复/点选故障名即可继续。",
+                # 默认引导只在**真有候选**时才说“上面哪个”——否则“上面”指向空气，
+                # 是比没提示更糟的提示（用户会去找并不存在的列表）。
+                "followup_question": (
+                    "上面哪个最接近你想验证的？回复/点选故障名即可继续。"
+                    if rag_cands
+                    else "换一种说法：把「故障对象」也说出来，例如「车门故障 不能发车」。"
+                ),
             }
+            if sit_cands and not rag_cands:
+                # 现象反查：词典里正是用现象写的 desc（door_fault.desc = 「…，禁止发车」），
+                # 所以「不能发车」能查到 6 条真实故障。注意这里**不推断处置**：
+                # 同一现象对应不同 action（6 条里 5 条 derate、1 条 warning），
+                # 硬映射就是编造；让用户点选后由字典给出处置。
+                resp["suggested_faults"] = sit_cands[:5]
+                total_sit = len(sit_cands)
+                shown_note = f"共 {total_sit} 条" + ("（这里显示前 5 条）" if total_sit > 5 else "")
+                resp["situation"] = {
+                    "groups": sit_groups,
+                    "total": total_sit,
+                    "note": (
+                        f"「{'/'.join(sit_groups)}」是现象而不是故障名，所以不能直接当目标用。"
+                        f"字典里有 {shown_note}真实故障的描述就是这个现象——"
+                        "点选一条，处置由字典给出。"
+                    ),
+                }
+                resp["followup_question"] = (
+                    f"你要的是「{'/'.join(sit_groups)}」这个现象吧？"
+                    f"字典里{shown_note}真实故障会表达它——点选一条即可让 Agent 去查证。"
+                )
             if enum:
                 shown = enum.get("data", {}).get("shown") or []
                 resp["kb_answer"] = enum["reply"]

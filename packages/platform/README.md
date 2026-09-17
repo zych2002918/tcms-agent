@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-2dd4a0)](#快速开始)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Web_UI-4ca6ff)](#)
 [![React](https://img.shields.io/badge/React-18+-8b7cf6)](#)
-[![pytest](https://img.shields.io/badge/pytest-255%20passed-2dd4a0)](#测试--门禁)
+[![pytest](https://img.shields.io/badge/pytest-279%20passed-2dd4a0)](#测试--门禁)
 [![CI](https://github.com/zych2002918/tcms-ai-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/zych2002918/tcms-ai-platform/actions)
 [![license](https://img.shields.io/badge/license-MIT-8ca0c0)](#license)
 
@@ -126,14 +126,14 @@ bash start.sh
 
 | 门禁 | 结果 | 说明 |
 |---|---|---|
-| `pytest -q` | **255 passed + 1 skipped** | 检索 14 golden、诊断 8 golden、30 条对抗集、图谱通道契约、上游路径护栏、多轮/澄清/MCP/function-calling 契约… |
+| `pytest -q` | **279 passed + 1 skipped** | 检索 14 golden、诊断 8 golden、30 条对抗集、图谱通道契约、上游路径护栏、多轮/澄清/MCP/function-calling 契约… |
 | `ruff check src tests` | clean | |
 | `pnpm vitest run` | 16/16 | 播放器状态机/3D 布局纯逻辑 |
 | `node e2e/graph-interact.mjs` | 5/5 | 图谱单击详情/双击跳转/返回/3D 交互（真浏览器） |
 | GitHub Actions | ✅ 绿 | push/PR：pytest+ruff → vitest（monorepo 内直接使用 packages/engine） |
 
 ```bash
-python -m pytest tests -q                 # 255 passed + 1 skipped
+python -m pytest tests -q                 # 279 passed + 1 skipped
 python -m ruff check src tests            # All checks passed
 cd web && pnpm test                       # vitest 16/16
 ```

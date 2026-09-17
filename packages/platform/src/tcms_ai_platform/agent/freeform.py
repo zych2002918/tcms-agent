@@ -71,6 +71,105 @@ class NoFaultMatch(ValueError):
     """自然语言目标里找不到任何故障字典条目（调用方转 422）。"""
 
 
+# ---------------------------------------------------------------------------
+# 现象/处境反查
+# ---------------------------------------------------------------------------
+#
+# 为什么需要这一层：界面上给用户的提示把「不能发车」列为"期望"的例子，
+# 用户照着输入，得到的却是"未识别出任何故障"。用户的疑问很直接：
+# **这明明是提示词里的一个，为什么搜不到？**
+#
+# 症结在于「不能发车」根本不是任何故障的**名字**，它是**现象**。而词典恰恰是用
+# 现象写的 desc —— 例如 door_fault.desc = 「车门状态不可信，禁止发车」。
+# 也就是说数据是关联的，只是匹配方向反了：
+# `_score_candidates` 要求"故障文本 ⊂ 用户目标"，而这里是"用户目标 ⊂ 故障文本"。
+#
+# 因此本层做**反查**：用户只说了现象 → 找出哪些真实故障会表达这个现象。
+# 一条纪律：**现象不映射到 action**。同一个现象可能对应不同处置
+# （「不能发车」的 6 条故障里 5 条是 derate、1 条是 warning），
+# 硬映射成某个 action 就是编造；交给用户点选故障后，处置自然由字典给出。
+
+#: 现象分组：同组内视为同义（用户说口语版，词典写书面版）
+_SITUATION_GROUPS: dict[str, tuple[str, ...]] = {
+    "departure_inhibit": (
+        "不能发车", "禁止发车", "不发车", "无法发车", "不允许发车", "不得发车",
+        "不能开车", "无法开车", "不能动车", "禁止动车", "不能出库", "禁止出库",
+    ),
+    "cannot_close": ("不能关门", "无法关门", "关不上门", "车门关不上", "门关不上"),
+}
+
+#: 现象分组的中文说法（给用户看的，不是故障名）
+_SITUATION_ZH: dict[str, str] = {
+    "departure_inhibit": "不能/禁止发车",
+    "cannot_close": "车门关不上",
+}
+
+
+def _norm_loose(s: str) -> str:
+    """宽松归一化：去空白与常见虚词，便于口语与书面语对齐。"""
+    out = _norm(s)
+    for ch in ("的", "了", "是", "会", "被", "要"):
+        out = out.replace(ch, "")
+    return out
+
+
+def find_situations(goal: str) -> list[str]:
+    """目标里出现了哪些已知现象分组（可多个）。"""
+    g = _norm_loose(goal)
+    return [
+        name
+        for name, syns in _SITUATION_GROUPS.items()
+        if any(_norm_loose(s) in g for s in syns)
+    ]
+
+
+def faults_for_situation(model: AssetModel, goal: str, limit: int | None = None) -> tuple[list[dict], list[str]]:
+    """只说了现象、没说故障名时，反查哪些真实故障会表达这个现象。
+
+    返回 `(候选列表, 命中的现象分组中文名)`。候选**全部来自故障字典**，
+    并附上它是在哪个字段命中的（`matched_field`）——便于用户判断相关性。
+
+    `limit=None` 表示**不截断**：调用方若要限量展示，请自己切片并**如实报总数**
+    （"有 6 条，这里显示 5 条"），不要把切片长度当总数——那是另一种数字不诚实。
+
+    找不到已知现象时返回 `([], [])`，调用方据此走原有的通用引导
+    （不编造候选是硬约束）。
+    """
+    groups = find_situations(goal)
+    if not groups:
+        return [], []
+
+    out: dict[str, dict] = {}
+    for name in groups:
+        syns = tuple(_norm_loose(s) for s in _SITUATION_GROUPS[name])
+        for f in model.faults_by_key.values():
+            fields = (
+                ("name", f.name or ""),
+                ("desc", f.desc or ""),
+                ("action_note", getattr(f, "action_note", "") or ""),
+            )
+            for field, text in fields:
+                t = _norm_loose(text)
+                if any(s in t for s in syns):
+                    if f.key not in out:
+                        out[f.key] = {
+                            "key": f.key,
+                            "name": f.name,
+                            "level": f.level or "",
+                            "action": f.action or "",
+                            "confidence": 0,
+                            "matched_on": f"situation:{name}@{field}",
+                            "matched_field": field,
+                            "matched_text": text[:80],
+                        }
+                    break
+
+    # 排序：先按处置严重度（更"拦得住车"的靠前），再按故障键稳定排序
+    order = {"emergency_brake": 0, "shutdown": 1, "derate": 2, "warning": 3, "none": 4}
+    cands = sorted(out.values(), key=lambda d: (order.get(d["action"], 9), d["key"]))
+    return (cands[:limit] if limit else cands), [_SITUATION_ZH.get(g, g) for g in groups]
+
+
 def _norm(s: str) -> str:
     """小写 + 去空白（比较用，保留中文原样）。"""
     return "".join(s.lower().split())
@@ -91,8 +190,13 @@ def _strip_latin(s: str) -> str:
 
 
 def _bigram_overlap(text_a: str, text_b: str) -> float:
-    """两文本字符 2-gram 交集覆盖率（容忍语序/插词，如「CRC报文校验错误」vs
-    「报文 CRC 校验错误」）。返回 a 中 bigram 被 b 覆盖的比例（0~1）。"""
+    """**text_a 的**字符 2-gram 被 text_b 覆盖的比例（0~1）。
+
+    方向很重要，别传反：返回的是"a 有多少被 b 覆盖"。
+    判断"用户这句话是否提到了某个故障"时，要让**故障名当 a、用户目标当 b** ——
+    问的是"故障名有没有被用户说出来"，而不是"用户这句话有多少落在故障名里"
+    （后者会被长句稀释，见 `_score_candidates` 里的实测说明）。
+    """
     a = _norm(text_a)
     b = _norm(text_b)
     if len(a) < 2 or len(b) < 2:
@@ -102,6 +206,20 @@ def _bigram_overlap(text_a: str, text_b: str) -> float:
     if not ba:
         return 0.0
     return len(ba & bb) / len(ba)
+
+
+def _both_ends_in(name_zh: str, goal_zh: str) -> bool:
+    """故障名的**首尾两字**是否都出现在目标里。
+
+    用来把「中间插词」与「只重合一半」分开：
+        「紧急制动执行失败」 vs 目标含「紧急制动…失败」 → 首(紧急)尾(失败)都在 → True
+        「开门到位超时」     vs 目标含「开门到位灯闪…」→ 尾(超时)不在       → False
+    只匹配到前缀通常是巧合（长句里恰好出现同一段开头），不构成"用户提到了这个故障"。
+    名称过短（≤2 字）时首尾同字，退化为普通的子串包含判断。
+    """
+    if len(name_zh) <= 2:
+        return name_zh in goal_zh
+    return name_zh[:2] in goal_zh and name_zh[-2:] in goal_zh
 
 
 def _score_candidates(goal: str, faults: list) -> list[dict]:
@@ -133,10 +251,30 @@ def _score_candidates(goal: str, faults: list) -> list[dict]:
             score += 3.0
             matched_on.append("name")
             spec_len = max(spec_len, len(base_zh))
-        # 名称中文 bigram 覆盖 ≥ 0.6 → 语义近似命中（容忍语序/插词；阈值防误伤）
-        elif base_zh and _bigram_overlap(goal_zh, base_zh) >= 0.6:
-            score += 2.5
-            matched_on.append("name")
+        # 名称中文 bigram 覆盖 ≥ 0.5 **且首尾都锚住** → 语义近似命中（容忍语序/插词）
+        #
+        # 三个条件都是被实例逼出来的，别随手改：
+        #  1) 方向必须是 (故障名, 用户目标)：问"故障名有没有被用户说出来"。
+        #     先前写成 (goal, base) 是反的——算的是"用户这句话有多少落在故障名里"，
+        #     长句会被稀释。实例：「验证紧急制动失败必须停车」对故障
+        #     「紧急制动执行失败」在旧方向下只有 0.36（卡在 0.6 门外），
+        #     而界面上的输入提示正是拿这句当例子。
+        #  2) 阈值 0.5：16 条无关样本对全部 203 条故障的最大覆盖率是 0.33，
+        #     而应命中的最低是 0.57 —— 0.5 落在中间，两侧都有余量。
+        #  3) 首尾锚定：只看覆盖率会把**长句里碰巧重合的前缀**也算命中。
+        #     实例：目标「开门到位灯闪，门状态可能不可信」（症状式描述）对故障
+        #     「开门到位超时」覆盖率 0.60（比上面那个 0.57 还高！），
+        #     但它只匹配到「开门到位」前缀、尾部「超时」根本没出现 ——
+        #     那是巧合不是提及。要求首尾都在，就把"中间插词"（真容忍）与
+        #     "只重合一半"（假阳性）分开了。该回归正是被评测门禁
+        #     （T-DIAGNOSE-LAMP 基线）抓出来的。
+        elif base_zh and _bigram_overlap(base_zh, goal_zh) >= 0.5 and _both_ends_in(base_zh, goal_zh):
+            # 权重 1.5 = 精确子串命中（3.0）的**一半**：「明确命中」要求最高分 ≥3.0
+            # 且与第二名差距 ≥1.0；近似命中若也拿 2.5，就会出现
+            # 「精确 3.0 vs 近似 2.5」差距仅 0.5，把本该确定的结果降级成歧义
+            # （实例：door_fault 与 rear_door_fault 撞车，置信度 0.95→0.85）。
+            score += 1.5
+            matched_on.append("name~")
             spec_len = max(spec_len, len(base_zh))
         # 描述字段子串命中（降权防误伤）
         for field, weight, label in (

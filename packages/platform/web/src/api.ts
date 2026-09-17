@@ -560,7 +560,15 @@ export interface AgentFreeResp extends AgentRunResp {
     level: string;
     confidence: number;
     matched_on: string;
+    /** 现象反查时：在故障的哪个字段命中（name/desc/action_note） */
+    matched_field?: string;
+    matched_text?: string;
   }[];
+  /**
+   * 现象反查结果：用户只说了「现象」（如"不能发车"）而没说故障名时，
+   * 后端顺着现象反查真实故障，并说明为什么这些候选与他说的现象有关。
+   */
+  situation?: { groups: string[]; total?: number; note: string };
   rag_evidence?: { doc_id: string; kind: string; score: number; text: string }[];
   followup_question?: string;
   /** 无 LLM/未锚定时，对“仅告警/降级但仍可运行”类盘点问题返回的规则枚举回答 */

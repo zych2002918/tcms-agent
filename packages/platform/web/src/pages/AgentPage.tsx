@@ -699,14 +699,26 @@ export function AgentPage() {
         </div>
       )}
 
-      {/* 自由目标没锚定 → 引导：RAG 候选（可点选续跑）或换说法示例 */}
+      {/* 自由目标没锚定 → 引导：RAG 候选 / 现象反查候选（都可点选续跑）或换说法示例 */}
       {goalHint && phase === "done" && (
         <div className="panel px-4 py-5 step-in">
           <EmptyState
             icon="?"
-            title="这句未能锚定到具体故障"
-            desc={`${goalHint}${freeResp?.suggested_faults?.length ? " —— 但 AI 检索到了几个可能相关的真实故障，点选即可让 Agent 去查证：" : " —— 试试让目标里出现故障对象（如：车门故障 / 超速 / 心跳丢失）和期望（如：不能发车 / 降级 / 停车）。"}`}
+            title={freeResp?.situation ? "这句话说的是「现象」，不是故障名" : "这句未能锚定到具体故障"}
+            desc={`${goalHint}${
+              freeResp?.suggested_faults?.length
+                ? freeResp.situation
+                  ? " —— 但可以顺着现象反查出这些真实故障，点选即可让 Agent 去查证："
+                  : " —— 但 AI 检索到了几个可能相关的真实故障，点选即可让 Agent 去查证："
+                : " —— 注意「期望词」要**和故障对象一起**说才有效：只写「不能发车」这类现象词系统锚不到故障；写成「车门故障 不能发车」即可。"
+            }`}
           />
+          {/* 现象反查的来由：让用户明白为什么这些候选与他说的现象有关 */}
+          {freeResp?.situation && (
+            <p className="text-[12px] text-ink-faint text-center max-w-xl mx-auto -mt-1 pb-2 leading-5">
+              {freeResp.situation.note}
+            </p>
+          )}
           {freeResp && freeResp.suggested_faults && freeResp.suggested_faults.length > 0 && (
             <div className="flex flex-wrap gap-1.5 justify-center pb-3">
               {freeResp.suggested_faults.map((s) => (
@@ -714,7 +726,9 @@ export function AgentPage() {
                   key={s.key}
                   type="button"
                   className="tag text-info border-info/40 bg-info/10 hover:bg-info/20 cursor-pointer transition-colors text-left"
-                  title={`等级 ${s.level ?? "?"} · 处置 ${s.action ?? "?"}（点击直接用这个故障让 Agent 查证）`}
+                  title={`等级 ${s.level ?? "?"} · 处置 ${s.action ?? "?"}${
+                    s.matched_on ? ` · 命中依据 ${s.matched_on}` : ""
+                  }（点击直接用这个故障让 Agent 查证）`}
                   onClick={() => void runFreeGoal(`验证${s.name ?? s.key}（${s.key}）`)}
                 >
                   {s.name ?? s.key} <span className="opacity-70">({s.key})</span>

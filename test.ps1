@@ -26,7 +26,7 @@ Say '[1/4] 环境自检...'
 if ($LASTEXITCODE -ne 0) { $failed++ }
 
 Write-Host ''
-Say '[2/4] 全量回归（约 5 分钟；预期 1554 通过 + 4 条件性跳过）...'
+Say '[2/4] 全量回归（约 5 分钟；预期 1578 通过 + 4 条件性跳过）...'
 & $Uv run pytest -q -rs --no-header -p no:cacheprovider
 if ($LASTEXITCODE -ne 0) { $failed++ }
 
