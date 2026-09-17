@@ -115,6 +115,40 @@ uv run tcms-agent nolib --verify                  # 框架 vs 手写对照
 
 ---
 
+## 打包分发（给新电脑用）
+
+要把整个项目交给一台**没装过任何环境**的电脑，用仓库自带的打包脚本生成一个压缩包：
+
+```bash
+uv run python scripts/build_release.py            # 标准包（含包内 uv，约 22 MB）
+uv run python scripts/build_release.py --offline  # 额外带依赖缓存，可全程离线
+uv run python scripts/build_release.py --no-uv    # 最小包（不含 uv）
+```
+
+产物在 `dist/tcms-agent-v<版本>-<日期>.zip`。收件人解压后**双击 `start.bat`** 即可：
+
+| 入口 | 作用 |
+|---|---|
+| `start.bat` | 启动 Web 界面（自动装 uv → 同步依赖 → 开浏览器） |
+| `agent-demo.bat` | 让 Agent 现场跑一遍完整链路（离线，无需密钥） |
+| `test.bat` | 自检 + 全量回归 + 静态检查 + 评测基线 |
+| `使用说明.txt` | 新电脑上的三步走与常见问题 |
+
+新电脑上**不需要**：Python、Node.js、API key、数据库。前端构建产物已入库，
+包内自带 uv，`.python-version` 让 uv 自动准备 Python 3.11。
+
+打包脚本会做三项自检（对**包内实际内容**而非源目录）：单一顶层文件夹、
+关键入口齐全、Windows 脚本为 CRLF 且 `.ps1` 带 UTF-8 BOM。
+
+> **两个真实踩过的坑**（都已固化为脚本里的断言）：
+> ① `git ls-files` 默认把非 ASCII 路径转义成八进制，用它会**静默漏掉**中文名文件
+> （本仓第一次打包就这样漏了 `使用说明.txt`）——必须用 `-z`；
+> ② `.bat` 与 `.ps1` 里的中文对编码极其敏感：cmd 按 OEM 代码页解析 `.bat`，
+> PowerShell 5.1 无 BOM 时按 ANSI 解析 `.ps1`。因此 `.bat` 保持纯 ASCII 只做壳，
+> 中文与逻辑全在 **UTF-8 with BOM** 的 `.ps1` 里，行尾由 `.gitattributes` 强制 CRLF。
+
+---
+
 ## 测试与门禁
 
 | 成员 | 命令（成员目录内） | 门禁 |
