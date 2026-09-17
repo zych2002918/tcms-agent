@@ -132,7 +132,7 @@ uv run python scripts/build_release.py --no-uv    # 最小包（不含 uv）
 | `start.bat` | 启动 Web 界面（自动装 uv → 同步依赖 → 开浏览器） |
 | `agent-demo.bat` | 让 Agent 现场跑一遍完整链路（离线，无需密钥） |
 | `test.bat` | 自检 + 全量回归 + 静态检查 + 评测基线 |
-| `使用说明.txt` | 新电脑上的三步走与常见问题 |
+| `0-先读我-使用说明.txt` | 新电脑上的三步走与常见问题 |
 
 新电脑上**不需要**：Python、Node.js、API key、数据库。前端构建产物已入库，
 包内自带 uv，`.python-version` 让 uv 自动准备 Python 3.11。
@@ -142,7 +142,7 @@ uv run python scripts/build_release.py --no-uv    # 最小包（不含 uv）
 
 > **两个真实踩过的坑**（都已固化为脚本里的断言）：
 > ① `git ls-files` 默认把非 ASCII 路径转义成八进制，用它会**静默漏掉**中文名文件
-> （本仓第一次打包就这样漏了 `使用说明.txt`）——必须用 `-z`；
+> （本仓第一次打包就这样漏了 `0-先读我-使用说明.txt`）——必须用 `-z`；
 > ② `.bat` 与 `.ps1` 里的中文对编码极其敏感：cmd 按 OEM 代码页解析 `.bat`，
 > PowerShell 5.1 无 BOM 时按 ANSI 解析 `.ps1`。因此 `.bat` 保持纯 ASCII 只做壳，
 > 中文与逻辑全在 **UTF-8 with BOM** 的 `.ps1` 里，行尾由 `.gitattributes` 强制 CRLF。
@@ -172,7 +172,7 @@ uv run python scripts/build_release.py --no-uv    # 最小包（不含 uv）
 | 文档 | 内容 |
 |---|---|
 | `docs/ARCHITECTURE.md` | 架构说明（现状，非愿景）：图拓扑、四级权限、子进程执行、审批拆分、四层记忆、RAG、评测、nolib 对照 |
-| `docs/decisions.md` | 18 条 ADR：每条含背景 → 决策 → 理由 → 代价，以及**踩过的坑** |
+| `docs/decisions.md` | 22 条 ADR：每条含背景 → 决策 → 理由 → 代价，以及**踩过的坑** |
 | `packages/agent/README.md` | Agent 使用说明 |
 
 **这个项目的性格**：文档里写的每个数字都能在代码或测试里指到；

@@ -1801,9 +1801,28 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
         # 静态资源（/assets/...）
         app.mount("/assets", StaticFiles(directory=_web_dist / "assets"), name="assets")
 
-        # SPA fallback：非 /api 的未知路径回 index.html（前端路由）
+        # SPA fallback：**非 /api** 的未知路径回 index.html（前端路由）
+        #
+        # 注意这里必须真的判断 /api：此前的实现只在注释里写了"非 /api"，
+        # 代码却没有这个分支，于是**任何未知的 /api 路径都返回 200 + HTML**。
+        # 后果很实际：前端 req() 里 r.ok 为真，接着 r.json() 抛
+        # 「Unexpected token '<'」，把"路径不存在"伪装成"解析失败"；
+        # 方法用错（如对 POST 端点发 GET）本该是 405，也被同样吞掉。
+        # 一个接口层的 404 必须能被调用方看见。
         @app.get("/{full_path:path}", include_in_schema=False)
-        def spa(full_path: str) -> FileResponse:
+        def spa(full_path: str):
+            if full_path == "api" or full_path.startswith("api/"):
+                want = "/" + full_path
+                # 路径其实存在、只是方法不对 → 给 405。
+                # 一律回 404 会让人去查"接口是不是被删了"，查错方向。
+                for rt in app.routes:
+                    if getattr(rt, "path", None) == want:
+                        allow = sorted(set(getattr(rt, "methods", None) or ()) - {"HEAD", "OPTIONS"})
+                        if allow:
+                            raise HTTPException(
+                                405, f"方法不允许: {want} 只支持 {', '.join(allow)}"
+                            )
+                raise HTTPException(404, f"接口不存在: {want}")
             f = _web_dist / full_path
             if full_path and f.is_file():
                 return FileResponse(f)

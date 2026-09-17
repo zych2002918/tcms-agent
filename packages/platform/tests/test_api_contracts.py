@@ -118,3 +118,47 @@ def test_contract_kb_stats_symptom_causal(client):
     assert sc["symptoms"] == 12 and sc["indicates"] == 41 and sc["causes"] == 13
     assert sc["total_edges"] == 54
     assert s["graph"]["by_kind"]["symptom"] == 12
+
+
+# ---------------------------------------------------------------------------
+# /api 命名空间不得被前端兜底吞掉
+# ---------------------------------------------------------------------------
+#
+# 起因：一次巡检发现**任何未知的 /api 路径都返回 200 + index.html**。
+# 前端的 req() 只看 r.ok，于是 r.ok 为真、接着 r.json() 抛
+# 「Unexpected token '<'」——把"路径不存在"伪装成"解析失败"；
+# 方法用错（对 POST 端点发 GET）本该是 405，也被同样吞掉。
+#
+# 根因是 SPA 兜底路由 `@app.get("/{full_path:path}")`：注释写着"非 /api 的
+# 未知路径回 index.html"，代码里却没有那个判断——**注释承诺了，代码没做**。
+# 一个接口层的 404 必须能被调用方看见，否则排错会往完全错误的方向走。
+
+
+@NEEDS_UPSTREAM
+def test_unknown_api_path_returns_json_404_not_html(client):
+    """未知 /api 路径必须给 JSON 404，不能拿前端页面顶替。"""
+    for p in ("/api/nope", "/api/agent/nope", "/api/this-does-not-exist", "/api"):
+        r = client.get(p)
+        assert r.status_code == 404, f"{p} 应为 404，实际 {r.status_code}"
+        assert "json" in r.headers.get("content-type", ""), f"{p} 返回的不是 JSON"
+        assert "接口不存在" in r.json().get("detail", ""), r.text
+
+
+@NEEDS_UPSTREAM
+def test_wrong_method_on_api_returns_405_not_html(client):
+    """方法用错要给 405（端点确实存在），而不是"不存在"或 HTML。
+
+    一律回 404 会让人去查"接口是不是被删了"，方向就错了。
+    """
+    r = client.get("/api/kb/search")  # 该端点只支持 POST
+    assert r.status_code == 405, f"应为 405，实际 {r.status_code}: {r.text[:80]}"
+    assert "只支持 POST" in r.json().get("detail", ""), r.text
+
+
+@NEEDS_UPSTREAM
+def test_spa_fallback_still_serves_frontend_routes(client):
+    """修这个 bug 不能把前端路由一起弄坏：真实页面仍须回 SPA 外壳。"""
+    for p in ("/", "/agent", "/faultlab", "/graph", "/settings", "/agnet"):
+        r = client.get(p)
+        assert r.status_code == 200, f"{p} -> {r.status_code}"
+        assert 'id="root"' in r.text, f"{p} 没有返回 SPA 外壳"

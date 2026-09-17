@@ -43,7 +43,10 @@ REQUIRED = [
     "_tools/common.ps1",
     "agent-demo.bat",
     "test.bat",
-    "使用说明.txt",
+    # 命令行入口：新电脑通常没有全局 uv，必须靠它兜住（否则说明书的进阶命令全废）
+    "tcms.bat",
+    "_tools/tcms.ps1",
+    "0-先读我-使用说明.txt",
     "README.md",
     "pyproject.toml",
     "uv.lock",
@@ -62,9 +65,9 @@ def tracked_files() -> list[str]:
     """取跟踪文件清单。
 
     必须用 `-z`：`git ls-files` 默认受 core.quotePath 影响，会把非 ASCII 路径
-    转义成八进制（例如 `使用说明.txt` 变成 `"\\344\\275\\277..."`），
+    转义成八进制（例如 `0-先读我-使用说明.txt` 变成 `"\\344\\275\\277..."`），
     于是这些文件会被当成「找不到」而**静默漏掉**——本仓第一次打包就是这样
-    漏了 `使用说明.txt`，靠包内自检才发现。
+    漏了 `0-先读我-使用说明.txt`，靠包内自检才发现。
     """
     out = subprocess.run(
         ["git", "ls-files", "-z"],

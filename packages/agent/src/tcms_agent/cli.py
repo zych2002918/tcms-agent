@@ -117,7 +117,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     approver = None
     if max_level >= Permission.PERSIST:
         if args.yes:
-            print("[!] --yes：所有持久化写入将被**自动批准**（不推荐，仅用于受控演示）。")
+            print("[!] --yes：所有持久化写入将被自动批准（不推荐，仅用于受控演示）。")
             approver = lambda _p: {"approved": True, "reason": "--yes 自动批准"}  # noqa: E731
         elif args.no:
             print("[i] --no：持久化写入将一律被拒绝。")
@@ -250,6 +250,24 @@ def cmd_eval_run(args: argparse.Namespace) -> int:
         arms = [all_arms[a] for a in want]
     else:
         arms = default_arms()
+        # 不带 --arms 时会**连模型臂一起跑**：真调 API（花钱、约 5 分钟）。
+        # 新手照着说明书直接敲 `eval run`，如果之后配了 key 就会静默产生费用，
+        # 所以这里必须先把要跑什么、哪些要花钱说清楚。
+        llm_arms = [a.name for a in arms if getattr(a, "requires_llm", False)]
+        runnable = [a.name for a in arms if a.available()[0]]
+        print(f"未指定 --arms → 跑全部 {len(arms)} 个臂：{runnable}")
+        if llm_arms:
+            from .models import llm_available  # noqa: PLC0415
+
+            if llm_available():
+                print(
+                    f"[!] 其中 {llm_arms} 是「模型臂」：会真实调用你配置的 API"
+                    f"（产生费用、约需数分钟）。只想跑离线臂请用："
+                    f"  tcms-agent eval run --arms {','.join(a for a in runnable if a not in llm_arms)}"
+                )
+            else:
+                print(f"[i] 其中 {llm_arms} 需要 API key，当前未配置 → 会自动跳过（不产生费用）。")
+        print()
 
     wd = Path(args.workdir) if args.workdir else None
     reports, skipped = run_arms(arms, workdir=wd, keep=bool(args.keep))
