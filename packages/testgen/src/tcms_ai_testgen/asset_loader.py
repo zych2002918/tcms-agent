@@ -368,21 +368,43 @@ def load_assets(
 PACKAGE_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = PACKAGE_ROOT.parent.parent.parent
 
-#: 上游 tcms-can-test 仓库名（与 REPO_ROOT 平级，物理路径可由环境变量覆盖）
-UPSTREAM_REPO_DIR_NAME = "tcms-can-test"
+#: 上游引擎目录名候选（按顺序探测）：
+#: - "engine"       → monorepo 布局（<repo>/packages/engine）
+#: - "tcms-can-test" → 旧的双仓平级布局（<dir>/tcms-can-test）
+UPSTREAM_REPO_DIR_NAMES = ("engine", "tcms-can-test")
+
+#: 兼容旧名：默认候选目录名（monorepo 优先）
+UPSTREAM_REPO_DIR_NAME = UPSTREAM_REPO_DIR_NAMES[0]
+
+#: 真实上游的标志文件（用于判定一个候选目录是否真的是引擎根）
+_UPSTREAM_MARKER = Path("tcms") / "tcms.dbc"
+
+
+def _looks_like_upstream(root: Path) -> bool:
+    """候选目录是否是真上游引擎根（有 DBC 与 scenarios）。"""
+    return (root / _UPSTREAM_MARKER).is_file() and (root / "scenarios").is_dir()
 
 
 def default_upstream_root() -> Path:
-    """返回上游仓库根目录的默认猜测。
+    """返回上游引擎根目录的默认猜测。
 
-    优先环境变量 ``TCMS_UPSTREAM_ROOT``，其次 ``REPO_ROOT / tcms-can-test``
-    （E:/DSHworkplace/objects/ 平级布局）。供 examples / 后续 P2 使用，
-    不存在时由调用方决定是否降级（demo 打印提示，不崩溃）。
+    解析顺序（monorepo 优先，旧布局兼容）：
+      1. 环境变量 ``TCMS_UPSTREAM_ROOT``（显式指定，最高优先级）
+      2. 环境变量 ``TCMS_UPSTREAM_DIR``（与 platform 侧命名对齐）
+      3. ``REPO_ROOT / engine``        —— monorepo：<repo>/packages/engine
+      4. ``REPO_ROOT / tcms-can-test`` —— 旧双仓平级布局
+    找不到时返回第一个候选路径（不抛错），由调用方决定是否降级
+    （demo 打印提示、测试 skip，均不崩溃）。
     """
-    env = os.environ.get("TCMS_UPSTREAM_ROOT")
-    if env:
-        return Path(env)
-    return REPO_ROOT / UPSTREAM_REPO_DIR_NAME
+    for key in ("TCMS_UPSTREAM_ROOT", "TCMS_UPSTREAM_DIR"):
+        env = os.environ.get(key)
+        if env and Path(env):
+            return Path(env)
+    for name in UPSTREAM_REPO_DIR_NAMES:
+        cand = REPO_ROOT / name
+        if _looks_like_upstream(cand):
+            return cand
+    return REPO_ROOT / UPSTREAM_REPO_DIR_NAMES[0]
 
 
 __all__ = [

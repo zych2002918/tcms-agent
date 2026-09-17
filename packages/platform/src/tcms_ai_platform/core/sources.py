@@ -38,7 +38,7 @@ class AssetSource:
     """解析结果：资产从哪读 + 引擎从哪 import。"""
 
     root: Path | None  # 活上游根（None = 用内置快照）
-    mode: str  # "upstream-dir" | "sibling" | "bundled"
+    mode: str  # "upstream-dir" | "user-settings" | "monorepo" | "sibling" | "bundled"
     dbc: Path
     faults: Path
     scenarios_dir: Path
@@ -123,19 +123,24 @@ def resolve_asset_source() -> AssetSource:
                 engine_hint=f"TCMS_UPSTREAM_DIR → {root}",
             )
 
-    # 2. 兄弟目录（开发态：与 tcms-can-test 相邻 clone）
-    sibling = REPO_ROOT.parent / "tcms-can-test"
-    if (sibling / DBC_REL).is_file():
-        return AssetSource(
-            root=sibling,
-            mode="sibling",
-            dbc=sibling / DBC_REL,
-            faults=sibling / FAULTS_REL,
-            scenarios_dir=sibling / SCENARIOS_REL,
-            rtm=sibling / RTM_REL,
-            engine_available=True,
-            engine_hint=f"兄弟目录 → {sibling}",
-        )
+    # 2. 同仓/兄弟目录（开发态）。两种布局都支持：
+    #    - monorepo：<repo>/packages/platform + <repo>/packages/engine
+    #    - 旧双仓平级：<dir>/tcms-ai-platform + <dir>/tcms-can-test
+    for cand, mode, hint in (
+        (REPO_ROOT.parent / "engine", "monorepo", "同仓成员"),
+        (REPO_ROOT.parent / "tcms-can-test", "sibling", "兄弟目录"),
+    ):
+        if (cand / DBC_REL).is_file():
+            return AssetSource(
+                root=cand,
+                mode=mode,
+                dbc=cand / DBC_REL,
+                faults=cand / FAULTS_REL,
+                scenarios_dir=cand / SCENARIOS_REL,
+                rtm=cand / RTM_REL,
+                engine_available=True,
+                engine_hint=f"{hint} → {cand}",
+            )
 
     # 3. 内置快照（默认，随 wheel 分发）
     return AssetSource(

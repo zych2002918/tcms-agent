@@ -1,0 +1,67 @@
+# TCMS × AI —— monorepo 工作区根配置
+#
+# 虚拟工作区：本层不打包任何代码，只做成员聚合与共享工具配置。
+#
+# 成员（packages/*）：
+#   engine    领域引擎与真实资产（原 tcms-can-test）
+#   platform  资产模型 + 知识底座 + Web（原 tcms-ai-platform）
+#   testgen   受约束生成与自愈评测（原 tcms-ai-testgen）
+#   agent     ★ LangGraph 全流程测试工程师 Agent（本项目主战场）
+#
+# 常用命令（仓库根执行）：
+#   uv sync                     安装全部成员 + dev 依赖
+#   uv run pytest               跑全部包的测试
+#   uv run ruff check .         全仓 lint
+#   uv run python -m tcms_agent --help   运行 Agent
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[dependency-groups]
+# 全仓开发依赖：装齐后可在仓库根一把跑 `uv run pytest`（覆盖全部成员）
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.5",
+    # 以下为各成员 test extra 的并集，保证根级一把梭不缺插件（engine 侧需要）
+    "pytest-html>=4.0",
+    "allure-pytest>=2.13",
+    "hypothesis>=6.0",
+]
+
+# ---------------------------------------------------------------------------
+# pytest：从仓库根一把跑全部成员测试
+# ---------------------------------------------------------------------------
+# 注意：各成员自带的 [tool.pytest.ini_options] 只在「以该成员为 rootdir」时生效
+# （CI 按成员分 job 跑，以保留各自的覆盖率门禁）。根配置是开发态一把梭的便利入口。
+[tool.pytest.ini_options]
+testpaths = ["packages"]
+norecursedirs = [
+    "*.egg-info", ".venv", "venv", "node_modules",
+    "build", "dist", "dist_check", "e2e", "docs", ".git",
+]
+# 各成员 marker 的并集（strict_markers 下必须全部声明）
+strict_markers = true
+markers = [
+    "smoke: 冒烟层——核心路径快速验证（PR 必跑）",
+    "safety: 安全相关用例（EBM/联锁/看门狗/Bus-Off 等）",
+    "hardware: 需要真实 CAN 硬件接口，CI 默认跳过",
+    "slow: 深度用例（属性/模糊/长时多节点）",
+    "severity: 用例严重度 severity('blocker'|'critical'|'major'|'minor')",
+    "llm: 需要真实 LLM API（默认跳过，CI 只跑 mock 离线模式）",
+]
+
+# ---------------------------------------------------------------------------
+# ruff：全仓统一口径
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+    ".venv", "node_modules", "build", "dist", "dist_check",
+    "packages/*/build", "packages/*/dist",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]

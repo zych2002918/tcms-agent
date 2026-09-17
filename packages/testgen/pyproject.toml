@@ -37,6 +37,11 @@ test = [
     "pytest-cov>=4.0",
 ]
 lint = ["ruff>=0.5"]
+# 真实上游引擎（真实执行 / 变异杀毒需要；monorepo 内由工作区提供）
+upstream = ["tcms-can-test"]
+
+[tool.uv.sources]
+tcms-can-test = { workspace = true }
 
 [project.scripts]
 tcms-ai-testgen = "tcms_ai_testgen.cli:main"

@@ -11,7 +11,7 @@ from tcms_ai_platform.core import AssetLoadError, load_asset_model
 from tcms_ai_platform.server.app import create_app
 
 # 上游根（与本仓库同级的兄弟目录）
-UPSTREAM = Path(__file__).resolve().parents[2] / "tcms-can-test"
+UPSTREAM = Path(__file__).resolve().parents[2] / "engine"  # monorepo: packages/engine
 NEEDS_UPSTREAM = pytest.mark.skipif(
     not UPSTREAM.is_dir(), reason=f"上游 tcms-can-test 不存在: {UPSTREAM}"
 )

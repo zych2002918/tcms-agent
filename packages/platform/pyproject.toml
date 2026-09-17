@@ -37,13 +37,15 @@ test = [
 ]
 lint = ["ruff>=0.5"]
 # 真实引擎（场景执行/Agent 需要；不装则资产浏览/知识图谱仍可用）
-upstream = [
-    "tcms-can-test @ git+https://github.com/zych2002918/tcms-can-test.git",
-]
+# monorepo 内由工作区直接提供（见 [tool.uv.sources]），不再走 git URL
+upstream = ["tcms-can-test"]
 
 [project.scripts]
 tcms-platform = "tcms_ai_platform.server.app:main"
 tcms-platform-doctor = "tcms_ai_platform.cli:doctor"
+
+[tool.uv.sources]
+tcms-can-test = { workspace = true }
 
 [tool.setuptools]
 package-dir = { "" = "src" }

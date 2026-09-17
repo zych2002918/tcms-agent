@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-UPSTREAM = Path(__file__).resolve().parents[2] / "tcms-can-test"
+UPSTREAM = Path(__file__).resolve().parents[2] / "engine"  # monorepo: packages/engine
 NEEDS_UPSTREAM = pytest.mark.skipif(
     not UPSTREAM.is_dir(), reason=f"上游 tcms-can-test 不存在: {UPSTREAM}"
 )

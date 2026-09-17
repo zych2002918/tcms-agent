@@ -1,0 +1,149 @@
+# TCMS × AI —— monorepo 统一 CI
+#
+# 合并三仓后最大的收益：**不再需要 checkout「别的仓库」当兄弟目录**。
+# 上游引擎就是本仓的 packages/engine，所有 job 直接用工作区内的相对路径。
+#
+# 设计原则：
+#   - 每个成员一个 job，以该成员为 rootdir 跑 → 保留各自的覆盖率门禁与 marker 配置；
+#   - job 之间无 checkout 耦合，路径全为仓内相对路径；
+#   - lint 与成员测试并行；成员之间互不阻塞（fail-fast: false）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 上游引擎位置（成员测试统一使用；monorepo 内是仓内相对路径）
+  TCMS_UPSTREAM_DIR: ${{ github.workspace }}/packages/engine
+  TCMS_UPSTREAM_ROOT: ${{ github.workspace }}/packages/engine
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 全仓 lint（ruff 口径由根 pyproject 统一）
+  # ---------------------------------------------------------------------------
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install "ruff>=0.5"
+      - name: Ruff check (all members)
+        run: ruff check packages
+      - name: 工作区定义校验（uv.lock 可用）
+        uses: astral-sh/setup-uv@v5
+      - name: uv lock --check
+        run: uv lock --check
+
+  # ---------------------------------------------------------------------------
+  # packages/engine —— 领域引擎（独立包，无内部依赖）
+  # ---------------------------------------------------------------------------
+  engine:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: packages/engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Smoke layer (core safety paths)
+        run: python -m pytest tests/ -m smoke -q --tb=short
+      - name: Full regression (coverage gate from pyproject: fail_under)
+        run: |
+          python -m pytest tests/ -q --tb=short \
+            --junitxml=reports/junit-py${{ matrix.python-version }}.xml \
+            --cov=tcms --cov-report=term --cov-report=json
+      - name: Upload coverage JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-coverage-py${{ matrix.python-version }}
+          path: packages/engine/coverage.json
+      - name: Upload JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-junit-py${{ matrix.python-version }}
+          path: packages/engine/reports/junit-py${{ matrix.python-version }}.xml
+
+  # ---------------------------------------------------------------------------
+  # packages/platform —— 平台 + 知识底座 + Web（依赖 engine）
+  # ---------------------------------------------------------------------------
+  platform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install engine (workspace member) + platform
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ../engine
+          pip install -e ".[test,lint]"
+      - name: Ruff lint
+        run: python -m ruff check src tests
+      - name: Pytest（真实上游资产门禁）
+        run: python -m pytest -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - name: Frontend pure-logic tests
+        working-directory: packages/platform/web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm vitest run
+
+  # ---------------------------------------------------------------------------
+  # packages/testgen —— 受约束生成与自愈评测（依赖 engine 做真实执行）
+  # ---------------------------------------------------------------------------
+  testgen:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: packages/testgen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install engine (workspace member) + testgen
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ../engine
+          pip install -e ".[test,lint]"
+      - name: Lint
+        run: ruff check .
+      - name: Test with coverage gate
+        run: pytest tests --cov=tcms_ai_testgen --cov-fail-under=90 -q
+      - name: Selfcheck (real-exec mode against upstream engine)
+        run: python scripts/selfcheck.py

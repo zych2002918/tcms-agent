@@ -1,9 +1,17 @@
-﻿# Python
+# monorepo 根 .gitignore
+#
+# ⚠️ 关键约定：**构建产物模式必须锚定到根**（`/dist/`、`/build/`），
+# 不能裸写 `dist/`。裸模式会匹配任意层级，从而吞掉
+# `packages/platform/web/dist/`（该目录是刻意入库的前端构建产物——
+# 「任意 clone 即可跑出界面」，见 packages/platform/.gitignore 的说明）。
+# 各成员目录内的构建产物由各自的 .gitignore 就近管理。
+
+# ---- Python ----
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 venv/
-*.egg-info/
 .pytest_cache/
 .ruff_cache/
 .hypothesis/
@@ -11,27 +19,27 @@ venv/
 coverage.json
 htmlcov/
 
-# build artifacts
-build/
-dist/
-dist_check/
+# ---- 根级构建产物（锚定，勿裸写）----
+/build/
+/dist/
+/dist_check/
 
-# runtime
+# ---- 运行时产物 ----
 server.log
 _server.log
-*.db
-*.sqlite3
 
-# Node
+# ---- Node（依赖目录；前端产物 packages/platform/web/dist 有意入库，不忽略）----
 node_modules/
-web/dist/
 
-# editors / OS
+# ---- uv ----
+.uv-cache/
+
+# ---- 编辑器 / 系统 ----
 .vscode/
 .idea/
 Thumbs.db
 Desktop.ini
 
-# local secrets and settings
+# ---- 本地密钥与设置（绝不入库）----
 .env
 *.local

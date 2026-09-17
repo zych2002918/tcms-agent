@@ -1,10 +1,12 @@
-name: Release
+name: Release (engine)
 
-# 打 tag 即发布：v* tag 触发后全量回归 + 构建 sdist/wheel + GitHub Release
+# 打 tag 即发布：`engine-v*` tag 触发后全量回归 + 构建 sdist/wheel + GitHub Release。
+# monorepo 约定：各成员用「成员名-v*」前缀区分 tag（engine-v1.13.0 / agent-v0.2.0 …），
+# 避免三仓合一后 tag 命名空间冲突。
 on:
   push:
     tags:
-      - "v*"
+      - "engine-v*"
 
 permissions:
   contents: write
@@ -12,6 +14,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/engine
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -36,7 +41,7 @@ jobs:
           python -m venv /tmp/venv-rel
           /tmp/venv-rel/bin/python -m pip install dist/*.whl
           cd /tmp
-          /tmp/venv-rel/bin/python "$GITHUB_WORKSPACE/scripts/check_dist.py"
+          /tmp/venv-rel/bin/python "$GITHUB_WORKSPACE/packages/engine/scripts/check_dist.py"
           /tmp/venv-rel/bin/tcms-test --version
       - name: Generate release notes
         run: |
