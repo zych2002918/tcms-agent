@@ -147,3 +147,38 @@ jobs:
         run: pytest tests --cov=tcms_ai_testgen --cov-fail-under=90 -q
       - name: Selfcheck (real-exec mode against upstream engine)
         run: python scripts/selfcheck.py
+
+  # ---------------------------------------------------------------------------
+  # packages/agent —— LangGraph Agent（离线规则臂，**不需要任何 API key**）
+  # ---------------------------------------------------------------------------
+  agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install workspace members (engine + platform + agent)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ../engine
+          pip install -e ../platform
+          pip install -e ".[test,lint]"
+      - name: Ruff lint
+        run: ruff check src tests
+      - name: Pytest（离线规则臂端到端：图 / 工具门禁 / 引用校验 / 轨迹回放）
+        env:
+          TCMS_UPSTREAM_DIR: ${{ github.workspace }}/packages/engine
+          TCMS_AGENT_DB: ${{ runner.temp }}/tcms-agent-ci.sqlite
+        run: pytest -q
+      - name: CLI smoke (tools / doctor)
+        env:
+          TCMS_UPSTREAM_DIR: ${{ github.workspace }}/packages/engine
+          TCMS_AGENT_DB: ${{ runner.temp }}/tcms-agent-ci.sqlite
+        run: |
+          python -m tcms_agent.cli tools | head -20
+          python -m tcms_agent.cli doctor

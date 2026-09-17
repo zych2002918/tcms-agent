@@ -1,0 +1,129 @@
+# 架构说明（Architecture）
+
+> 本文描述 **现状**（已落地的代码），不是愿景。每条陈述都能在代码里指到。
+> 未落地的部分统一标注 ⬜ 并注明计划里程碑。
+
+---
+
+## 1. 分层与依赖方向
+
+```
+packages/agent      认知层：循环 / 工具面 / 记忆 / 评测        ⬅ 本项目主战场
+      ↓ 只依赖库（不依赖 Web 层）
+packages/platform   知识底座：资产模型 + 图谱 + 混合检索 + FastAPI + Web UI
+      ↓
+packages/engine     领域引擎：CAN 仿真 / DBC 编解码 / 场景执行 / 安全逻辑 / 真实资产
+packages/testgen    生成与自证（依赖 engine，与 platform 并列）
+```
+
+**单向依赖**，同层不互相 import。agent 只以**库**方式使用 platform：
+这意味着 agent 可以脱离 FastAPI 单独跑（CLI / 评测 / CI），也让 UI 与 Agent
+可以各自演进。
+
+### 为什么 agent 不直接用 platform 的 Web API
+Web 层是给人用的契约（HTTP/JSON、面向页面），Agent 需要的是**低延迟、可审计、
+可批量调用的函数级工具面**。走 HTTP 会把"工具调用"变成"网络请求"，既慢又难做
+权限门禁与审计。因此 agent 直接 import platform 的库函数，再用自己的注册表包一层。
+
+---
+
+## 2. Agent 运行时（packages/agent）
+
+### 2.1 图拓扑（LangGraph StateGraph）
+
+```
+START → plan → agent ─┬─(有工具调用 且 预算未超)→ act → agent   ← ReAct 循环
+                      └─(收尾 / 预算耗尽)────────→ verify → report → END
+```
+
+| 节点 | 职责 | 关键设计 |
+|---|---|---|
+| `plan` | 目标 → 计划清单 + 锚定目标故障 | 用 platform 的**规则**解析器（`freeform.parse_free_goal`），不猜故障键 |
+| `agent` | LLM 决策：调哪个工具 / 收尾 | **唯一的自由决策节点**；system prompt 里的工具清单由注册表生成，不手写 |
+| `act` | 经注册表执行工具调用 | 权限门禁 + 审计 + 观察回填，全部收口在一处 |
+| `verify` | **引用强制校验** | 结论引用的每个资产 id 回真实图谱核对；幻觉引用在此被机器抓住 |
+| `report` | 汇总终局判定 | 产出结构化 verdict（供评测体系直接消费） |
+
+**为什么 verify 是独立节点而不是塞进 report**：校验必须是一等公民。它产出的
+结构化 verdict 既供人读，也供评测消费（M6 指标直接取它）。藏在报告生成里就没法
+对"校验本身"做回归测试。
+
+### 2.2 状态与 reducer
+
+`AgentState`（`state.py`）用 LangGraph 的 reducer 语义：
+
+| 字段 | reducer | 含义 |
+|---|---|---|
+| `messages` | `add_messages` | 对话/工具消息自动追加，ReAct 的载体 |
+| `trace` | `operator.add` | **审计事件流累加**，轨迹是一等产物 |
+| `evidence` / `sources` | `operator.add` | 证据与引用累加 |
+| `steps` | 无（覆盖） | **显式预算计数器**，不依赖框架内部计数 |
+
+设计要点：预算必须是**可审计的显式状态**，而不是藏在运行时里的黑盒。
+
+### 2.3 工具面与四级权限
+
+`permissions.py` 定义副作用分级，`tools/registry.py` 强制执行：
+
+| 级别 | 含义 | 管控 | 现状 |
+|---|---|---|---|
+| **R0 只读** | 知识底座查询 / 资产枚举 / 图谱 | 自由调用 | ✅ 7 个工具 |
+| **R1 沙箱写** | 生成测试意图、编译检查 | 写临时目录，可丢弃 | ⬜ M3 |
+| **R2 真执行** | 跑场景 / 跑 pytest | 只读环境 + 超时 + 产物归档 | ⬜ M3 |
+| **R3 持久化** | 写记忆、提交用例集 | **人工审批**（human-in-the-loop） | ⬜ M3 |
+
+**权限是双保险**，不是提示词礼貌：
+1. 超过级别的工具**不出现在**送给模型的 schema 里；
+2. 即便模型绕过 schema 直接点名，`invoke()` 也会拒绝执行并记审计。
+
+**为什么不用 LangGraph 的 `ToolNode` 直接跑**：`ToolNode` 不认识"权限级别"。
+在安全关键域，每次调用都必须先过门禁、再留审计，所以执行路径必须自己收口。
+
+### 2.4 离线规则臂（`models.py`）
+
+无 API key 时不是"给个假回复"，而是换上一个**确定性规则参考实现**：
+它走**同一张图、同一套工具、同一套权限与审计**，只是决策由规则（而非 LLM）做出。
+
+带来三个好处：
+1. 离线运行也真实覆盖 harness 的全部基础设施（测试可信的前提）；
+2. 产出轨迹作为 LLM 的**对照基线**（M6 的 A/B 就是"规则臂 vs LLM 臂"）；
+3. 结果 100% 可复现，适合作回归门禁。
+
+`model_kind ∈ {"llm", "offline-rule"}` 如实标注，**绝不把规则结果说成 AI 决策**。
+
+### 2.5 轨迹持久化与回放
+
+每次运行绑定 `thread_id`，`SqliteSaver` 在**每个超级步后**落盘完整状态：
+- 可回放（`AgentRunner.history(thread_id)` 逐超级步查看）
+- 可续跑（崩溃后从最后快照继续）
+- 可审计（状态即证据）
+
+这是 M5 情景记忆的底座——**记忆不另建一套存储，直接长在轨迹上**。
+
+---
+
+## 3. 与 platform 的复用边界
+
+| 能力 | 来源 | 说明 |
+|---|---|---|
+| 资产模型（故障/场景/需求/DBC） | platform `core` | 单一真源，不重复解析 |
+| 知识图谱（655 节点 / 54 因果边） | platform `knowledge` | 复用 |
+| 混合检索（BM25 + 向量 + RRF） | platform `knowledge` | 复用（M4 升级为真 embedding + 图谱入融合） |
+| 上游目录解析 | platform `core.sources.resolve_asset_source` | **不另写一套路径猜测**（原三仓 `mcp_server` 硬编码兄弟目录导致 pip 安装即崩，是前车之鉴） |
+| LLM key 解析 | platform `agent.llm_backend` | 复用四级链，避免两套解析漂移 |
+| 5 个只读工具实现 | platform `agent.toolassist` | 直接包装，避免两套实现分叉 |
+| 工具权限 / 审计 / 循环 / 记忆 / 评测 | **agent 自研** | 这些是框架与 platform 都给不了的差异点 |
+
+---
+
+## 4. 尚未落地（诚实清单）
+
+| 项 | 状态 | 里程碑 |
+|---|---|---|
+| LLM 参与 `plan` 节点 | ⬜ 当前用规则（锚定真实资产，可复现） | M2 |
+| 上下文预算裁剪 / 压缩 | ⬜ 当前只做单条结果截断 | M2 |
+| 写权限工具（R1/R2/R3）+ 审批 | ⬜ | M3 |
+| 真 embedding / 图谱入融合 / rerank | ⬜ 复用 platform 现状（两路 RRF） | M4 |
+| 情景/程序性记忆 + 离线巩固 | ⬜ 轨迹已落盘，检索与巩固未做 | M5 |
+| 评测任务集 / A-B 门禁 | ⬜ | M6 |
+| `nolib/` 手写最小 loop 对比 | ⬜ | M7 |
