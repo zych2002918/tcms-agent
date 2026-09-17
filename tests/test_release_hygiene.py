@@ -86,13 +86,33 @@ def test_shell_scripts_use_lf() -> None:
 
 
 def test_every_launcher_mentioned_in_readme_exists() -> None:
-    """说明文档里提到的启动入口必须真实存在——对新用户那是唯一指引。"""
+    """说明文档里提到的启动入口必须真实存在——对新用户那是唯一指引。
+
+    **注意 `_offline/` 要特殊对待**：它是**发布物**而不是仓库内容
+    （内含 49 MB 的 uv.exe，刻意不入 git，由打包脚本放进去）。
+    本测试第一版直接断言 `(ROOT / "_offline").exists()`，
+    本地因为它被上一次打包创建过而通过，**在 CI 的干净检出上必红**——
+    典型的"因为错误的原因通过"。现在改为断言"打包脚本确实会放入它"，
+    那才是这句话真正该守的东西。
+    """
     doc = NOVICE_DOC
     assert doc.is_file(), f"缺少《{NOVICE_DOC.name}》（新用户的唯一指引）"
     text = doc.read_text(encoding="utf-8")
-    for entry in ("start.bat", "agent-demo.bat", "test.bat", "tcms.bat", "_offline"):
+
+    # ① 仓库里就有的入口：必须真的存在
+    for entry in ("start.bat", "agent-demo.bat", "test.bat", "tcms.bat"):
         assert entry in text, f"《{NOVICE_DOC.name}》没有提到 {entry}"
         assert (ROOT / entry).exists(), f"《{NOVICE_DOC.name}》提到的 {entry} 实际不存在"
+
+    # ② 发布物：文档要提到，且打包脚本要负责放进去（不在 git 里是正常的）
+    assert "_offline" in text, f"《{NOVICE_DOC.name}》没有提到 _offline"
+    builder = (ROOT / "scripts" / "build_release.py").read_text(encoding="utf-8")
+    assert "_offline" in builder, (
+        "打包脚本没有把 _offline 放进包，但新手文档告诉用户去那里找 uv.exe"
+    )
+    assert (ROOT / "_offline").exists() or "uv.exe" in builder, (
+        "打包脚本里看不出会放入 uv.exe"
+    )
 
 
 def test_novice_doc_does_not_tell_users_to_run_bare_uv() -> None:
