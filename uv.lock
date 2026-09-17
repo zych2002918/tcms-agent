@@ -2545,7 +2545,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'lint'", specifier = ">=0.5" },
     { name = "tcms-can-test", marker = "extra == 'upstream'", editable = "packages/engine" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.29" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.53.0" },
 ]
 provides-extras = ["test", "lint", "upstream"]
 
