@@ -4,6 +4,7 @@
 > 领域 Agent**：真实资产 → 领域引擎 → 知识底座 → Agent 查证/造用例/真跑 → 机器自证。
 > **全部离线可跑，无需任何 API key。**
 
+[![CI](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.11+-2dd4a0)](#快速开始)
 [![tests](https://img.shields.io/badge/tests-1528%20passed-2dd4a0)](#测试与门禁)
 [![License](https://img.shields.io/badge/license-MIT-8ca0c0)](#license)
