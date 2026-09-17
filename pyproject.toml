@@ -21,7 +21,7 @@ members = ["packages/*"]
 # 全仓开发依赖：装齐后可在仓库根一把跑 `uv run pytest`（覆盖全部成员）
 dev = [
     "pytest>=8.0",
-    "pytest-cov>=4.0",
+    "pytest-cov>=7.1.0",
     "ruff>=0.5",
     # 以下为各成员 test extra 的并集，保证根级一把梭不缺插件（engine 侧需要）
     "pytest-html>=4.0",
