@@ -5,7 +5,7 @@
 > **全部离线可跑，无需任何 API key。**
 
 [![Python](https://img.shields.io/badge/Python-3.11+-2dd4a0)](#快速开始)
-[![tests](https://img.shields.io/badge/tests-1522%20passed-2dd4a0)](#测试与门禁)
+[![tests](https://img.shields.io/badge/tests-1528%20passed-2dd4a0)](#测试与门禁)
 [![License](https://img.shields.io/badge/license-MIT-8ca0c0)](#license)
 
 ---
@@ -118,15 +118,17 @@ uv run tcms-agent nolib --verify                  # 框架 vs 手写对照
 
 | 成员 | 命令（成员目录内） | 门禁 |
 |---|---|---|
-| engine | `pytest tests -q` | 覆盖率 `fail_under=97` |
-| platform | `pytest -q` | ruff + pytest + vitest |
-| testgen | `pytest tests --cov=tcms_ai_testgen` | 覆盖率 `fail_under=90` |
-| **agent** | `pytest -q` | 含**评测回归门禁**：规则臂 ≥10/11 且零幻觉 |
-| 全仓 | `uv run pytest`（仓库根） | 一把梭 |
+| engine | `pytest tests -q` | 覆盖率 `fail_under=97`（960 collected） |
+| platform | `pytest -q` | ruff + pytest + vitest（240 passed + 1 skipped） |
+| testgen | `pytest tests --cov=tcms_ai_testgen` | 覆盖率 `fail_under=90`（165 passed） |
+| **agent** | `pytest -q` | 含**评测回归门禁**：规则臂 ≥10/11 且零幻觉（164 passed + 2 skipped） |
+| 全仓 | `uv run pytest`（仓库根） | 一把梭：**1528 passed + 4 skipped** |
 
-CI 见 `.github/workflows/ci.yml`：按成员分 job，**不 checkout 外部仓库**。
-根 `conftest.py` 有一道护栏：monorepo 下找不到上游引擎时**大声中止**，
-而不是放任几百条测试集体静默跳过（这个坑踩过两次）。
+> 4 条 skip 全部是**条件性**的：真语义向量通道 ×2、真实 CAN 硬件 ×1、平台语义通道 ×1。
+> 根 `conftest.py` 有一道护栏：monorepo 下找不到上游引擎时**大声中止**，
+> 而不是放任几百条测试集体静默跳过（这个坑踩过两次）。
+>
+> **数字口径**：本表由实测填写（`uv run pytest`）。宁可改数字，也不要让 README 说一个跑不出来的值。
 
 ---
 

@@ -381,10 +381,16 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
             ensure_engine_importable(source)
             scenario_dir = source.scenarios_dir
     else:
-        # 显式传入 asset_model（测试）：场景目录取上游根，无则退回内置
+        # 显式传入 asset_model（测试 / 内置快照）：场景目录取上游根，无则退回内置快照。
+        # 这里曾经写成 parents[2]/"_assets"/"scenarios" —— 少了一层，指向 src/_assets
+        # （实际在 src/tcms_ai_platform/_assets），内置快照场景下会拿到不存在的目录。
+        # 现在直接用 sources 里的内置快照助手，不再手拼路径。
+        from ..core.sources import bundled_scenarios_fallback
+
         src_root = Path(str(asset_model.source_upstream))
         candidate = src_root / "scenarios"
-        scenario_dir = candidate if candidate.is_dir() else Path(__file__).resolve().parents[2] / "_assets" / "scenarios"
+        fallback = bundled_scenarios_fallback()
+        scenario_dir = candidate if candidate.is_dir() else (fallback or candidate)
     _app_model = asset_model
     _app_upstream = scenario_dir
 

@@ -49,8 +49,18 @@ _READ_TOOLS: list[dict] = [
 
 
 def build_context(upstream: str | Path | None = None) -> SimpleNamespace:
-    """构建 {m, g, hr, runner}；runner 默认 None（引擎未接线=诚实说明）。"""
+    """构建 {m, g, hr, runner}；runner 默认 None（引擎未接线=诚实说明）。
+
+    `upstream=None` 时走平台自己的**四级资产解析链**（`resolve_asset_source`：
+    用户设置 → 环境变量 → 同仓成员 packages/engine → 内置快照）。
+
+    这里曾经手拼过一个指向旧"双仓平级 clone"布局的兄弟目录路径——
+    三仓合一后它指向不存在的目录，导致 **pip 安装的用户一启动就崩**。
+    教训：**能用平台的解析链就不要自己拼路径**；自己拼的路径不会随布局演进而更新。
+    """
     from tcms_ai_platform.core import load_asset_model
+    from tcms_ai_platform.core.loader import load_from_source
+    from tcms_ai_platform.core.sources import resolve_asset_source
     from tcms_ai_platform.domain import enrich_graph
     from tcms_ai_platform.knowledge import (
         HybridRetriever,
@@ -60,8 +70,9 @@ def build_context(upstream: str | Path | None = None) -> SimpleNamespace:
     )
 
     if upstream is None:
-        upstream = Path(__file__).resolve().parents[4] / "tcms-can-test"
-    m = load_asset_model(upstream)
+        m = load_from_source(resolve_asset_source())  # 活上游 / 内置快照都能处理
+    else:
+        m = load_asset_model(Path(upstream))
     g = build_knowledge_graph(m)
     vs = VectorStore()
     vs.add_many(build_docs_from_asset(m))

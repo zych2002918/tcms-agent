@@ -23,7 +23,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-UPSTREAM = Path(__file__).resolve().parents[2] / "tcms-can-test"
+# 上游目录走平台的解析链（活上游 / 同仓成员 / 内置快照），不手拼路径——
+# 三仓合一后旧的 "../tcms-can-test" 兄弟目录假设已失效，手拼路径不会自动更新。
+from tcms_ai_platform.core.sources import resolve_asset_source  # noqa: E402
+
+_SRC = resolve_asset_source()
+UPSTREAM = _SRC.root or _SRC.scenarios_dir.parent
 ROOT = Path(__file__).resolve().parent.parent
 
 from tcms_ai_platform.core import load_asset_model  # noqa: E402

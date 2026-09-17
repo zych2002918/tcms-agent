@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-2dd4a0)](#快速开始)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Web_UI-4ca6ff)](#)
 [![React](https://img.shields.io/badge/React-18+-8b7cf6)](#)
-[![pytest](https://img.shields.io/badge/pytest-221%20passed-2dd4a0)](#测试--门禁)
+[![pytest](https://img.shields.io/badge/pytest-240%20passed-2dd4a0)](#测试--门禁)
 [![CI](https://github.com/zych2002918/tcms-ai-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/zych2002918/tcms-ai-platform/actions)
 [![license](https://img.shields.io/badge/license-MIT-8ca0c0)](#license)
 
@@ -126,17 +126,20 @@ bash start.sh
 
 | 门禁 | 结果 | 说明 |
 |---|---|---|
-| `pytest -q` | **221 passed + 1 skipped** | 检索 14 golden、诊断 8 golden、26 条对抗集、多轮/澄清/MCP/function-calling 契约… |
+| `pytest -q` | **240 passed + 1 skipped** | 检索 15 golden、诊断 8 golden、30 条对抗集、图谱通道契约、上游路径护栏、多轮/澄清/MCP/function-calling 契约… |
 | `ruff check src tests` | clean | |
 | `pnpm vitest run` | 16/16 | 播放器状态机/3D 布局纯逻辑 |
 | `node e2e/graph-interact.mjs` | 5/5 | 图谱单击详情/双击跳转/返回/3D 交互（真浏览器） |
-| GitHub Actions | ✅ 绿 | push/PR：pytest+ruff → vitest（双仓自动带真实上游） |
+| GitHub Actions | ✅ 绿 | push/PR：pytest+ruff → vitest（monorepo 内直接使用 packages/engine） |
 
 ```bash
-python -m pytest tests -q                 # 221 passed + 1 skipped
+python -m pytest tests -q                 # 240 passed + 1 skipped
 python -m ruff check src tests            # All checks passed
 cd web && pnpm test                       # vitest 16/16
 ```
+
+> 数字口径：本表由实测填写（`uv run pytest packages/platform`）。发现过期请直接改——
+> 宁可改数字，也不要让 README 说一个跑不出来的值。
 
 **诚实边界（项目的性格）**：默认离线确定性检索不叫"语义检索"；6 维评审是 KB 锚定规则而非 LLM 自夸；derived 候选显式标注"仅示意"；无 key/失败一律诚实降级——**不被演示骗、能被数据证**，是设计目标而不是免责声明。
 
@@ -174,7 +177,7 @@ tcms-ai-platform/
 
 | 仓库 | 关系 | 说明 |
 |---|---|---|
-| `tcms-can-test` | **上游引擎** | 真实资产 + 可执行仿真；平台以 `pip install -e ".[upstream]"` 依赖 |
+| `tcms-can-test` | **上游引擎** | 真实资产 + 可执行仿真；**monorepo 内即 `packages/engine`**（`uv sync` 自动装好） |
 | `tcms-ai-platform` | **本仓库** | 平台 + 生成器（ai-testgen 并入 `ai-testgen/`） |
 | `ai-testgen/` | 独立包 | LLM 生成测试 + 变异杀毒/自愈评测的"怎么证明 AI 用例好"答案 |
 
