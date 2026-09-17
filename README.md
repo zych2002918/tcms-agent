@@ -149,4 +149,12 @@ uv run tcms-agent nolib --verify                  # 框架 vs 手写对照
 
 ## License
 
-MIT —— 见各成员目录下的 `LICENSE`。
+MIT —— 根目录 [`LICENSE`](LICENSE) 覆盖整合后的 monorepo 整体。
+
+三个原仓库各自的 LICENSE 仍保留在成员目录下，四者同为 MIT、版权归同一作者：
+
+```
+packages/engine/LICENSE      （原 tcms-can-test）
+packages/platform/LICENSE    （原 tcms-ai-platform）
+packages/testgen/LICENSE     （原 tcms-ai-testgen）
+```

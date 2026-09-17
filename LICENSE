@@ -19,13 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-本仓由三个原独立仓库整合而成，各自的 LICENSE 仍保留在对应成员目录下：
-
-    packages/engine/LICENSE      （原 tcms-can-test）
-    packages/platform/LICENSE    （原 tcms-ai-platform）
-    packages/testgen/LICENSE     （原 tcms-ai-testgen）
-
-四者均为 MIT，版权归同一作者所有。根目录这份 LICENSE 覆盖整合后的 monorepo 整体。
