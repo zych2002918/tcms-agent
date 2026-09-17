@@ -226,6 +226,79 @@ def cmd_memory_consolidate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_eval_tasks(args: argparse.Namespace) -> int:
+    from .eval import load_tasks
+
+    tasks = load_tasks(Path(args.file) if args.file else None)
+    print(f"任务集共 {len(tasks)} 条：")
+    for t in tasks:
+        extra = f"  期望故障={t.expect_fault}" if t.expect_fault else ""
+        print(f"  {t.id:24} [{t.kind:11}] {t.goal}{extra}")
+    return 0
+
+
+def cmd_eval_run(args: argparse.Namespace) -> int:
+    from .eval import default_arms, render_reports, run_arms
+
+    all_arms = {a.name: a for a in default_arms()}
+    if args.arms:
+        want = [a.strip() for a in args.arms.split(",") if a.strip()]
+        unknown = [a for a in want if a not in all_arms]
+        if unknown:
+            print(f"未知的臂: {unknown}（可用: {list(all_arms)}）")
+            return 2
+        arms = [all_arms[a] for a in want]
+    else:
+        arms = default_arms()
+
+    wd = Path(args.workdir) if args.workdir else None
+    reports, skipped = run_arms(arms, workdir=wd, keep=bool(args.keep))
+    print(render_reports(reports, skipped))
+    if args.out:
+        payload = {n: r.to_dict() for n, r in reports.items()}
+        Path(args.out).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\n报告已写出：{args.out}")
+    return 0
+
+
+def cmd_eval_gate(args: argparse.Namespace) -> int:
+    """候选臂 vs 基线臂的回归门禁（读两份报告 JSON）。"""
+    from .eval.metrics import EvalReport, compare
+    from .eval.tasks import TaskVerdict
+
+    def _load(p: str) -> EvalReport:
+        raw = json.loads(Path(p).read_text(encoding="utf-8"))
+        vs = [
+            TaskVerdict(
+                task_id=v["task_id"],
+                kind=v["kind"],
+                matched=bool(v["matched"]),
+                reason=v.get("reason", ""),
+                passed=bool(v.get("passed")),
+                steps=int(v.get("steps") or 0),
+                tool_calls=int(v.get("tool_calls") or 0),
+                refs_checked=int(v.get("refs_checked") or 0),
+                refs_fabricated=int(v.get("refs_fabricated") or 0),
+                tool_failures=int(v.get("tool_failures") or 0),
+                duration_ms=int(v.get("duration_ms") or 0),
+            )
+            for v in raw.get("verdicts", [])
+        ]
+        return EvalReport(
+            arm=raw.get("arm", "?"),
+            model_kind=raw.get("model_kind", "?"),
+            metrics=raw.get("metrics", {}),
+            verdicts=vs,
+        )
+
+    cand = _load(args.candidate)
+    base = _load(args.baseline)
+    result = compare(cand, base)
+    print(f"候选臂 [{cand.arm}]  vs  基线臂 [{base.arm}]")
+    print("\n".join(result.summary_lines()))
+    return 0 if result.passed else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="tcms-agent",
@@ -288,6 +361,26 @@ def build_parser() -> argparse.ArgumentParser:
     mc.add_argument("--write", action="store_true", help="通过门禁后写入程序性记忆")
     mc.add_argument("--memory", help="记忆目录")
     mc.set_defaults(func=cmd_memory_consolidate)
+
+    # ---- eval：任务集 / 多臂对照 / 门禁 ----
+    e = sub.add_parser("eval", help="评测：任务集 / 多臂对照 / A-B 回归门禁")
+    esub = e.add_subparsers(dest="ecmd", required=True)
+
+    et = esub.add_parser("tasks", help="列出评测任务集")
+    et.add_argument("--file", help="自定义任务集 YAML")
+    et.set_defaults(func=cmd_eval_tasks)
+
+    er = esub.add_parser("run", help="跑多臂对照评测")
+    er.add_argument("--arms", help="逗号分隔的臂名（缺省全部可用的臂）")
+    er.add_argument("--workdir", help="评测工作目录（每臂独立记忆）")
+    er.add_argument("--keep", action="store_true", help="保留工作目录产物")
+    er.add_argument("--out", help="把报告写成 JSON（供 gate 比对）")
+    er.set_defaults(func=cmd_eval_run)
+
+    eg = esub.add_parser("gate", help="回归门禁：候选 vs 基线")
+    eg.add_argument("--candidate", required=True, help="候选臂报告 JSON")
+    eg.add_argument("--baseline", required=True, help="基线臂报告 JSON")
+    eg.set_defaults(func=cmd_eval_gate)
     return p
 
 

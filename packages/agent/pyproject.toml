@@ -58,7 +58,12 @@ packages = [
     "tcms_agent",
     "tcms_agent.tools",
     "tcms_agent.memory",
+    "tcms_agent.eval",
 ]
+
+[tool.setuptools.package-data]
+# 评测任务集随包分发（否则装完就跑不了评测）
+"tcms_agent.eval" = ["data/*.yaml"]
 
 [tool.setuptools.dynamic]
 version = { attr = "tcms_agent._version.__version__" }

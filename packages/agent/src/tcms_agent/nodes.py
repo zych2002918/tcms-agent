@@ -244,6 +244,36 @@ def _sources_from(tool_name: str, result: dict) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def _outcome_digest(tool: str, result: dict) -> dict:
+    """从工具结果里抽出一小段**机器可判的结论字段**，随证据一起留存。
+
+    为什么需要它：评测（R7）要能回答"这条自造用例到底跑通了没有"这类问题，
+    而 `ok=True` 只说明"工具没抛异常"——一个断言失败的自造用例，工具调用本身
+    仍然是成功的。只靠 ok 字段会得出错误结论，所以把关键结论显式摘出来。
+    """
+    if not isinstance(result, dict):
+        return {}
+    keys_by_tool: dict[str, tuple[str, ...]] = {
+        "run_draft": ("all_passed", "passed", "failed", "total", "exec_pass_rate"),
+        "draft_test_case": ("draft_id", "compiled"),
+        "verify_fault_action": ("verified", "fault", "expected_action", "scenario"),
+        "run_scenario": ("scenario", "all_passed", "passed", "failed"),
+        "symptom_diagnose": ("matched", "no_match", "symptom_key"),
+        "kb_search": ("query",),
+        "fault_detail": ("key", "action", "level"),
+        "write_memory": ("written", "kind", "refs_verified"),
+    }
+    out: dict = {}
+    for k in keys_by_tool.get(tool, ()):
+        if k in result:
+            out[k] = result[k]
+    if tool == "kb_search":
+        out["hits"] = len(result.get("hits") or [])
+    if tool == "symptom_diagnose":
+        out["candidates"] = len(result.get("candidates") or [])
+    return out
+
+
 def _observe(
     registry: ToolRegistry,
     name: str,
@@ -264,6 +294,7 @@ def _observe(
         "ok": not err,
         "error": err,
         "sources": found,
+        "outcome": _outcome_digest(name, result),
         "result_digest": registry.audit[-1].result_digest if registry.audit else "",
     }
     event = _e(
@@ -548,6 +579,22 @@ def extract_citations(text: str) -> list[str]:
 def make_verify_node(knowledge: KnowledgeContext) -> Callable[[AgentState], dict]:
     """校验：引用真实性（工具链 + 结论正文）+ 目标故障是否被证据覆盖 + 是否有可用证据。"""
 
+    # 全部真实资产 id（供"截断提及"判定用）。节点在每次构图时创建一次，故预计算一次即可。
+    all_ids: set[str] = set(knowledge.graph.nodes)
+    all_ids |= {f"fault:{k}" for k in knowledge.model.faults_by_key}
+    all_ids |= {f"scenario:{s.file}" for s in knowledge.model.scenarios.values()}
+
+    def _truncated_mention(ref: str) -> str | None:
+        """ref 是否是某个真实资产 id 的**前缀**（即"写法不全"而非"编造"）。
+
+        为什么需要这个区分：真实资产 id 可能含空格（如 `standard:ISO 11898-1`），
+        而正文里的引用由正则抽取，遇空格即截断 → 得到 `standard:ISO`。
+        若一律判为幻觉，就会**误杀**正常引用（R7 的评测首轮就抓到了这个假阳性）。
+        判据：存在真实 id 以它开头 → 视为截断提及（记为 truncated，不记为 fabricated）。
+        """
+        cands = [i for i in all_ids if i.startswith(ref) and i != ref]
+        return min(cands, key=len) if cands else None
+
     def verify_node(state: AgentState) -> dict:
         sources = list(dict.fromkeys(state.get("sources") or []))
 
@@ -562,6 +609,7 @@ def make_verify_node(knowledge: KnowledgeContext) -> Callable[[AgentState], dict
 
         checked: list[dict] = []
         fabricated: list[str] = []
+        truncated: list[dict] = []
         for ref in sources:
             ok, how = check_reference(ref, knowledge)
             checked.append({"ref": ref, "exists": ok, "via": how, "from": "tool"})
@@ -569,6 +617,21 @@ def make_verify_node(knowledge: KnowledgeContext) -> Callable[[AgentState], dict
                 fabricated.append(ref)
         for ref in answer_refs:
             ok, how = check_reference(ref, knowledge)
+            if not ok:
+                full = _truncated_mention(ref)
+                if full is not None:
+                    # 写法不全（如被正则截断）≠ 编造：如实记为 truncated，不算幻觉
+                    checked.append(
+                        {
+                            "ref": ref,
+                            "exists": True,
+                            "via": f"截断提及 → {full}",
+                            "from": "answer_text",
+                            "truncated_to": full,
+                        }
+                    )
+                    truncated.append({"ref": ref, "full": full})
+                    continue
             checked.append({"ref": ref, "exists": ok, "via": how, "from": "answer_text"})
             if not ok:
                 fabricated.append(ref)
@@ -608,6 +671,7 @@ def make_verify_node(knowledge: KnowledgeContext) -> Callable[[AgentState], dict
             "refs_from_answer": len(answer_refs),
             "refs_fabricated": fabricated,
             "refs_fabricated_in_answer": fab_answer,
+            "refs_truncated": truncated,
             "refs": checked,
             "goal_fault": goal_fault,
             "fault_covered": fault_covered,

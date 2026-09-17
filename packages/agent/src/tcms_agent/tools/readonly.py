@@ -23,18 +23,24 @@ from .registry import ToolSpec
 # ---------------------------------------------------------------------------
 
 
-def _bind(name: str, runner: Callable[..., dict], ctx: KnowledgeContext) -> Callable[[dict], dict]:
+def _bind(
+    name: str,
+    runner: Callable[..., dict],
+    ctx: KnowledgeContext,
+    *,
+    rerank: bool = True,
+) -> Callable[[dict], dict]:
     """把 platform 的 run_tool_safe(name, args, m, g, hr) 绑成单参可调用。
 
     `kb_search` 额外做一步**特征重排**：融合阶段（RRF）只用排名，丢掉了"这条为什么
     被召回"的信息；重排把通道共识 / 查询覆盖 / id 字面命中 / 类型先验捡回来。
     实测（14 条检索 golden）：min_at 达标持平 14/14，**期望项进 top-1 由 12/14 升到 14/14**，
-    且没有任何一条被排差。
+    且没有任何一条被排差。`rerank=False` 时保持原序，供 A/B 对照使用。
     """
 
     def _call(args: dict[str, Any]) -> dict:
         res = runner(name, args, ctx.model, ctx.graph, ctx.retriever)
-        if name == "kb_search" and isinstance(res, dict) and res.get("hits"):
+        if rerank and name == "kb_search" and isinstance(res, dict) and res.get("hits"):
             from ..rerank import apply_to_kb_result
 
             res = apply_to_kb_result(str(args.get("query") or ""), res)
@@ -44,7 +50,7 @@ def _bind(name: str, runner: Callable[..., dict], ctx: KnowledgeContext) -> Call
     return _call
 
 
-def _platform_tool_specs(ctx: KnowledgeContext) -> list[ToolSpec]:
+def _platform_tool_specs(ctx: KnowledgeContext, *, rerank: bool = True) -> list[ToolSpec]:
     from tcms_ai_platform.agent.toolassist import TOOL_SCHEMAS, run_tool_safe
 
     specs: list[ToolSpec] = []
@@ -57,7 +63,7 @@ def _platform_tool_specs(ctx: KnowledgeContext) -> list[ToolSpec]:
                 description=str(fn["description"]),
                 level=Permission.READ,
                 parameters=dict(fn["parameters"]),
-                func=_bind(name, run_tool_safe, ctx),
+                func=_bind(name, run_tool_safe, ctx, rerank=rerank),
             )
         )
     return specs
@@ -208,9 +214,9 @@ _AGENT_NATIVE: list[tuple[str, str, dict, Callable[[KnowledgeContext, dict], dic
 ]
 
 
-def build_readonly_tools(ctx: KnowledgeContext) -> list[ToolSpec]:
-    """构建全部 R0 只读工具（复用的 5 个 + 原生补强的 2 个）。"""
-    specs = _platform_tool_specs(ctx)
+def build_readonly_tools(ctx: KnowledgeContext, *, rerank: bool = True) -> list[ToolSpec]:
+    """构建全部 R0 只读工具（复用的 5 个 + 原生补强的 2 个 + DSL 参考/草稿清单）。"""
+    specs = _platform_tool_specs(ctx, rerank=rerank)
     for name, desc, params, fn in _AGENT_NATIVE:
         specs.append(
             ToolSpec(

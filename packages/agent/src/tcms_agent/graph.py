@@ -60,7 +60,7 @@ def build_registry(
         R3 持久化  ✅ 2 个（write_memory / promote_artifact）+ 人工审批 + 引用门禁
     """
     registry = ToolRegistry(max_level=cfg.max_level)
-    registry.register_all(build_readonly_tools(knowledge))  # R0
+    registry.register_all(build_readonly_tools(knowledge, rerank=cfg.rerank_enabled))  # R0
     sandbox = ExecutionSandbox(root=cfg.sandbox_dir, run_id=run_id)
     registry.register_all(
         build_execution_tools(knowledge, sandbox, timeout_s=cfg.exec_timeout_s)  # R2

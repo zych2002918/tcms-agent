@@ -92,6 +92,13 @@ class AgentConfig:
     日志是自动追加的派生索引，不含人工判断，因此不需要审批；
     真正会污染长期记忆的是**程序性技能**，那条路径走 write_memory（需审批 + 门禁）。"""
 
+    # --- 检索 ---
+    rerank_enabled: bool = True
+    """是否对 `kb_search` 结果做特征重排。
+
+    保留开关是为了能把它当作**对照臂**来度量（R7 的 A/B）：
+    "重排有用"应当由 golden 数字说话，而不是由实现者声称。"""
+
     approval_required: bool = True
     """R3 工具是否强制人工审批。
 

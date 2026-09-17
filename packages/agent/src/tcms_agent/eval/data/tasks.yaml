@@ -1,0 +1,78 @@
+# Agent 评测任务集（R7）：机器断言"这个 Agent 到底能不能干活"
+#
+# 纪律（继承原三仓）：
+#   - 期望值全部锚定**真实资产**（faults.yaml 的键、真实症状键），不手写期望文本；
+#   - 每条任务都必须能在**无 API key** 的离线规则臂下判定，这样评测能无条件进 CI；
+#   - 负例（应当诚实失败的目标）与正例同等重要：一个"什么都说好"的 Agent 必须被扣分；
+#   - **已知缺口如实保留，不为好看而调参**：措辞类任务（见 T-VERIFY-CRC-LOOSE）
+#     就是规则臂的真实短板，写进任务集才能被度量、被对照。
+#
+# kind 决定判定方式（见 tasks.py::check）：
+#   verify       期望目标被真实引擎/知识底座验证成功，且解析出的故障键正确
+#   author       期望 Agent 自己写用例并真跑通过
+#   diagnose     期望症状诊断命中（多跳因果链）
+#   honest_fail  期望**不通过**（目标与 TCMS 无关、或形式不适配时应如实拒绝，而不是硬猜）
+#
+# 首轮评测（规则臂）产出的两条真实结论，已据此调整任务集：
+#   1) 规则解析器依赖"措辞与资产命名重合度"。故障真实名是「报文 CRC 校验错误」，
+#      而目标写「报文 CRC 错误」时解析失败（NoFaultMatch）——这是**解析器的真实短板**，
+#      不是任务写错。因此保留两条：一条用资产原名（测 verify 能力），
+#      一条用口语省略说法（测措辞鲁棒性，规则臂预期失败）。
+#   2) 问句式输入（「车门关不上还能发车吗」）不是症状描述，症状资产按现象描述组织，
+#      匹配不上属正常。成功标准应是"如实不通过、不硬猜"，故归入 honest_fail。
+
+schema_version: 1
+tasks:
+  # ---- 验证类：目标应被真实引擎验证成功 ----
+  - id: T-VERIFY-DOOR
+    kind: verify
+    goal: 验证车门故障必须触发降级处置
+    expect_fault: door_fault
+
+  - id: T-VERIFY-OVERSPEED
+    kind: verify
+    goal: 验证超速必须触发降级处置
+    expect_fault: overspeed
+
+  - id: T-VERIFY-BUS
+    kind: verify
+    goal: 验证总线短路必须触发停车处置
+    expect_fault: bus_short
+
+  - id: T-VERIFY-CRC
+    kind: verify
+    goal: 验证报文 CRC 校验错误必须触发告警
+    expect_fault: crc_error_frame
+
+  # ---- 措辞鲁棒性：口语省略说法（规则臂已知缺口，用于度量差距）----
+  - id: T-VERIFY-CRC-LOOSE
+    kind: verify
+    goal: 验证报文 CRC 错误必须触发告警
+    expect_fault: crc_error_frame
+
+  # ---- 造用例类：Agent 自己写用例并真跑通过 ----
+  - id: T-AUTHOR-DOOR
+    kind: author
+    goal: 为车门故障编写一条回归用例并验证它在真实引擎上能通过
+
+  # ---- 症状诊断类：现象式描述应命中症状资产 ----
+  - id: T-DIAGNOSE-DASH
+    kind: diagnose
+    goal: 仪表盘闪烁但无故障码
+
+  - id: T-DIAGNOSE-LAMP
+    kind: diagnose
+    goal: 开门到位灯闪，门状态可能不可信
+
+  # ---- 负例：应当如实不通过（不硬猜）----
+  - id: T-HONEST-OFFTOPIC
+    kind: honest_fail
+    goal: 今天天气不错，帮我看看
+
+  - id: T-HONEST-POEM
+    kind: honest_fail
+    goal: 帮我写一首关于春天的诗
+
+  - id: T-HONEST-QUESTION
+    kind: honest_fail
+    goal: 车门关不上还能发车吗

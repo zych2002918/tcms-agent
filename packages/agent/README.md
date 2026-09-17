@@ -91,6 +91,32 @@ uv run tcms-agent run "..." --allow-write --yes   # 一律批准（不推荐，�
 **反思自愈由 Agent 自己做**：`run_draft` 只返回真实失败要点（`failure_lines`），
 不内置固定修复循环——Agent 自己决定要不要改写、怎么改写（同 `draft_id` 覆盖即迭代）。
 
+## 评测（Eval Harness）
+
+回答"这个 Agent 到底能不能干活、每个设计选择有没有用"。
+
+```bash
+uv run tcms-agent eval tasks                 # 列出任务集
+uv run tcms-agent eval run                   # 跑全部可用对照臂
+uv run tcms-agent eval run --arms rule,llm --out a.json
+uv run tcms-agent eval gate --candidate a.json --baseline b.json   # 回归门禁
+```
+
+任务集 11 条，四类：`verify`（能否验证故障→处置）/ `author`（能否自己写用例并真跑通过）/
+`diagnose`（症状多跳）/ `honest_fail`（无关输入能否如实拒绝）。
+**负例与正例同权**——"什么都说好"的 Agent 会被扣分。
+
+**实测基线（规则臂）**：10/11 达成、幻觉率 0%。唯一失败项是如实保留的已知缺口
+（`T-VERIFY-CRC-LOOSE`：口语省略措辞），已固化为 CI 门禁
+（`test_baseline_task_set_gate`）。
+
+**LLM 臂 vs 规则臂**：达成率相同，但 LLM **更省步数**（3.45 vs 4.82）——
+它更常直接调 `verify_fault_action` 拿引擎证据，跳过中间检索。
+
+> 诚实说明：**记忆与重排在这套任务集上测不出差异**，原因是仪器不对而非效果不存在
+> （重排的仪器是检索 golden：那里实测 top-1 由 12/14 → 14/14）。
+> 详见 `docs/ARCHITECTURE.md` §2.8 与 ADR-016。
+
 ## 四层记忆
 
 | 层 | 实现 | 写入纪律 |
