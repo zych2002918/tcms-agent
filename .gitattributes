@@ -1,0 +1,17 @@
+# 行尾规范化
+#
+# 背景：Windows 的 cmd.exe 解析 .bat 时对 LF-only 行尾并不可靠
+# （尤其在多行块与标签跳转处），PowerShell 脚本同理宜用 CRLF。
+# 因此这里对 Windows 脚本强制 CRLF，对 shell 脚本强制 LF。
+#
+# 注意：.ps1 还必须带 **UTF-8 BOM** —— PowerShell 5.1 读无 BOM 的脚本时
+# 按 ANSI 解析，中文会乱码。BOM 不属于行尾范畴，git 不会动它，
+# 但用编辑器另存时容易被去掉，故在此说明。
+
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+*.sh   text eol=lf
+
+# 文本文件按内容自动判定（不改变现有行为）
+* text=auto
