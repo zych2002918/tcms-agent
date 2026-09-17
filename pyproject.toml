@@ -36,6 +36,10 @@ dev = [
 # （CI 按成员分 job 跑，以保留各自的覆盖率门禁）。根配置是开发态一把梭的便利入口。
 [tool.pytest.ini_options]
 testpaths = ["packages"]
+# monorepo 必需：各成员 tests/ 目录下存在同名文件（如 platform 与 testgen 都有
+# test_agent.py）。默认的 prepend 导入模式会因「import file mismatch」直接中断收集；
+# importlib 模式按完整路径建模块，天然隔离同名文件。
+addopts = "--import-mode=importlib"
 norecursedirs = [
     "*.egg-info", ".venv", "venv", "node_modules",
     "build", "dist", "dist_check", "e2e", "docs", ".git",
