@@ -299,6 +299,35 @@ def cmd_eval_gate(args: argparse.Namespace) -> int:
     return 0 if result.passed else 1
 
 
+def cmd_nolib(args: argparse.Namespace) -> int:
+    """框架版 vs 手写最小 loop 的对照报告（含同集实测与能力验证）。"""
+    import tempfile
+
+    from .knowledge import build_knowledge
+    from .nolib import capability_matrix, code_size, parity_report, render, verify_capabilities
+
+    code = code_size()
+    caps = capability_matrix()
+    parity = None
+    if not args.no_parity:
+        from .eval import load_tasks
+
+        k = build_knowledge()
+        wd = Path(args.workdir) if args.workdir else Path(tempfile.mkdtemp(prefix="tcms-nolib-"))
+        parity = parity_report(load_tasks(), AgentConfig(offline=True), k, wd)
+    print(render(code, caps, parity))
+
+    if args.verify:
+        k = build_knowledge()
+        wd = Path(args.workdir) if args.workdir else Path(tempfile.mkdtemp(prefix="tcms-cap-"))
+        checks = verify_capabilities(AgentConfig(offline=True), k, wd)
+        print("\n四、能力差异的事实验证")
+        for name, ok in checks.items():
+            print(f"  {'[OK]' if ok else '[!!]'} {name}")
+        return 0 if all(checks.values()) else 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="tcms-agent",
@@ -381,6 +410,13 @@ def build_parser() -> argparse.ArgumentParser:
     eg.add_argument("--candidate", required=True, help="候选臂报告 JSON")
     eg.add_argument("--baseline", required=True, help="基线臂报告 JSON")
     eg.set_defaults(func=cmd_eval_gate)
+
+    # ---- nolib：框架版 vs 手写最小 loop 对照 ----
+    nl = sub.add_parser("nolib", help="框架版 vs 手写最小 loop 的对照报告")
+    nl.add_argument("--no-parity", action="store_true", help="跳过同集实测（只出静态对照）")
+    nl.add_argument("--verify", action="store_true", help="额外做能力差异的事实验证")
+    nl.add_argument("--workdir", help="对照用的工作目录")
+    nl.set_defaults(func=cmd_nolib)
     return p
 
 

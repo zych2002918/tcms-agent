@@ -35,6 +35,11 @@ class Arm:
     name: str
     overrides: dict[str, Any]
     requires_llm: bool = False
+    engine: str = "graph"
+    """编排引擎：`graph`（LangGraph）或 `nolib`（手写最小 loop）。
+
+    同一套任务、同一批节点、同一套工具，只有编排层不同 —— 这样才能隔离出
+    "框架到底提供了什么"。"""
 
     def available(self) -> tuple[bool, str]:
         if self.requires_llm and not llm_available():
@@ -53,6 +58,7 @@ def default_arms() -> list[Arm]:
     return [
         Arm("rule", {"offline": True}),
         Arm("rule-no-rerank", {"offline": True, "rerank_enabled": False}),
+        Arm("nolib", {"offline": True}, engine="nolib"),
         Arm("llm", {"offline": False}, requires_llm=True),
         Arm("llm-no-memory", {"offline": False, "memory_enabled": False}, requires_llm=True),
     ]
@@ -86,7 +92,16 @@ def run_arm(
         **arm.overrides,
     )
     ctx = knowledge or build_knowledge(cfg.upstream)
-    runner = AgentRunner(cfg, ctx)
+    if arm.engine == "nolib":
+        from ..nolib import run_goal
+
+        def _run_one(t: EvalTask, rnd: int):
+            return run_goal(t.goal, cfg=cfg, knowledge=ctx, run_id=f"{arm.name}-r{rnd}-{t.id}")
+    else:
+        runner = AgentRunner(cfg, ctx)
+
+        def _run_one(t: EvalTask, rnd: int):
+            return runner.run(t.goal, thread_id=f"{arm.name}-r{rnd}-{t.id}")
 
     from .tasks import TaskVerdict
 
@@ -98,7 +113,7 @@ def run_arm(
         for t in tasks:
             t0 = time.perf_counter()
             try:
-                res = runner.run(t.goal, thread_id=f"{arm.name}-r{rnd}-{t.id}")
+                res = _run_one(t, rnd)
                 model_kind = res.model_kind
                 res.verdict["duration_ms"] = int((time.perf_counter() - t0) * 1000)
                 verdicts.append(check(t, res))

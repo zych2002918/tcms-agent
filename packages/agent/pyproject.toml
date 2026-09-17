@@ -59,6 +59,7 @@ packages = [
     "tcms_agent.tools",
     "tcms_agent.memory",
     "tcms_agent.eval",
+    "tcms_agent.nolib",
 ]
 
 [tool.setuptools.package-data]

@@ -102,6 +102,7 @@ def make_recall_node(memory_dir: Any, *, enabled: bool = True) -> Callable[[Agen
             idx = build_index(Path(memory_dir))
             hits = idx.recall(goal, k_episodic=3, k_procedural=2, include_self=state.get("run_id"))
             ctx = format_memory_context(hits)
+            channel = idx.channel
         except Exception as e:  # noqa: BLE001 - 记忆不可用不该阻断任务
             return {
                 "memory_context": "",
@@ -111,8 +112,9 @@ def make_recall_node(memory_dir: Any, *, enabled: bool = True) -> Callable[[Agen
             f"召回 {len(hits)} 条历史记忆"
             f"（过往运行 {sum(1 for h in hits if h.kind == 'episodic')} / "
             f"沉淀技能 {sum(1 for h in hits if h.kind == 'procedural')}）"
+            f" · 向量通道 {channel}"
             if hits
-            else "无相关历史记忆（首次遇到这类目标）"
+            else f"无相关历史记忆（首次遇到这类目标） · 向量通道 {channel}"
         )
         return {
             "memory_context": ctx,

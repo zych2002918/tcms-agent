@@ -60,16 +60,34 @@ def _cos(a: Any, b: Any) -> float:
 
 
 class MemoryIndex:
-    """把 RunRecord 与技能文档索引成可召回的向量集合。"""
+    """把 RunRecord 与技能文档索引成可召回的向量集合。
+
+    ## 向量通道可插拔（与知识底座同一条解析链）
+
+    `embedder=None` 时走 platform 的 `make_kb_embedder()`：
+    - 默认 `HashedEmbedder`（字符级哈希，离线、确定性、可复现）；
+    - 设 `TCMS_EMBEDDER=api` 且配有 key 时切 `ApiEmbedder`（**真语义**，
+      OpenAI 兼容 /embeddings，失败逐条降级回哈希）。
+
+    诚实口径：默认通道衡量的是**字符重合度**，不是语义——
+    「车厢门打不开」召回不到「车门故障」。真语义通道能把这类近义召回补上，
+    但它依赖外部服务、不可离线复现，因此**默认关闭**，作为可选增强显式开启。
+    两条通道用同一套接口，切换不影响调用方。
+    """
 
     def __init__(self, embedder: Any = None):
         if embedder is None:
-            from tcms_ai_platform.knowledge.vector import HashedEmbedder
+            from tcms_ai_platform.agent.llm_backend import make_kb_embedder
 
-            embedder = HashedEmbedder()
+            embedder = make_kb_embedder()
         self.embedder = embedder
         self._vecs: list[Any] = []
         self._hits: list[MemoryHit] = []
+
+    @property
+    def channel(self) -> str:
+        """当前向量通道名（供自证与显示：不要把哈希通道说成语义检索）。"""
+        return type(self.embedder).__name__
 
     # ---- 构建 ----
 
@@ -176,7 +194,7 @@ class MemoryIndex:
 
 
 def build_index(memory_dir: Path, skills: list[dict[str, Any]] | None = None) -> MemoryIndex:
-    """从运行日志 + 技能库构建索引。"""
+    """从运行日志 + 技能库构建索引（向量通道按 TCMS_EMBEDDER 解析）。"""
     idx = MemoryIndex()
     idx.add_episodic(RunJournal.under(memory_dir).read_all())
     idx.add_procedural(skills if skills is not None else load_skills(memory_dir))

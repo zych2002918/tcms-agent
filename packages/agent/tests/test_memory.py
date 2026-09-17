@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,7 @@ from tcms_agent.config import AgentConfig
 from tcms_agent.knowledge import KnowledgeContext
 from tcms_agent.memory.consolidate import Proposal, consolidate, gate, mine
 from tcms_agent.memory.journal import RunJournal, RunRecord
-from tcms_agent.memory.recall import build_index, format_memory_context, load_skills
+from tcms_agent.memory.recall import MemoryIndex, build_index, format_memory_context, load_skills
 from tcms_agent.nodes import check_reference
 from tcms_agent.runner import AgentRunner, AgentRunResult
 
@@ -302,6 +303,85 @@ def test_skill_files_have_auditable_frontmatter(tmp_path: Path, knowledge: Knowl
     meta, body = files[0].read_text(encoding="utf-8").split("\n---\n", 1)
     assert "evidence" in meta and "pattern" in meta and "refs_verified" in meta
     assert body.strip(), "技能正文不能为空"
+
+
+# ---------------------------------------------------------------------------
+# 向量通道可插拔（字符级默认 / 真语义可选）
+# ---------------------------------------------------------------------------
+
+
+def _semantic_on() -> bool:
+    return (os.environ.get("TCMS_EMBEDDER") or "").strip().lower() in ("api", "1", "on", "true")
+
+
+@pytest.mark.skipif(
+    _semantic_on(), reason="已显式开启真语义通道（TCMS_EMBEDDER=api），默认通道断言不适用"
+)
+def test_default_channel_is_deterministic_when_semantic_off(tmp_path: Path) -> None:
+    """未开启真语义时，默认必须是离线可复现的字符级通道。"""
+    idx = build_index(tmp_path / "memory")
+    assert idx.channel == "HashedEmbedder", f"默认通道应为字符级: {idx.channel}"
+
+
+@pytest.mark.skipif(not _semantic_on(), reason="需 TCMS_EMBEDDER=api 才会走真语义通道")
+def test_default_channel_follows_env_when_semantic_on(tmp_path: Path) -> None:
+    """显式开启后，同一条解析链应切到真语义通道（调用方代码零改动）。"""
+    idx = build_index(tmp_path / "memory")
+    assert idx.channel == "ApiEmbedder", f"应切到真语义通道: {idx.channel}"
+
+
+def test_index_accepts_a_pluggable_embedder(tmp_path: Path) -> None:
+    """可插拔：调用方可以注入任意 embedder（接口只有 embed(text)->向量）。"""
+    import numpy as np
+
+    class FakeEmbedder:
+        def embed(self, text: str):
+            v = np.zeros(8, dtype=float)
+            v[len(text) % 8] = 1.0
+            return v
+
+    idx = MemoryIndex(embedder=FakeEmbedder())
+    assert idx.channel == "FakeEmbedder"
+    idx.add_episodic([_rec("r1", GOAL_A)])
+    assert isinstance(idx.recall(GOAL_A), list), "换通道不应改变调用方式"
+
+
+def test_recall_trace_reports_the_active_channel(tmp_path: Path) -> None:
+    """轨迹要能看出用的哪条通道——不同通道可信度不同，不能混为一谈。
+
+    断言的是"如实报出**当前**通道"，而不是写死某个通道名（否则一切到语义通道就误报）。
+    """
+    from tcms_agent.memory.recall import build_index as _bi
+    from tcms_agent.nodes import make_recall_node
+
+    active = _bi(tmp_path / "memory").channel
+    node = make_recall_node(tmp_path / "memory", enabled=True)
+    out = node({"goal": GOAL_A, "run_id": "x", "steps": 0})  # type: ignore[arg-type]
+    detail = out["trace"][0]["detail"]
+    assert "向量通道" in detail, detail
+    assert active in detail, f"应报出当前通道 {active}: {detail}"
+
+
+@pytest.mark.skipif(
+    not _semantic_on(),
+    reason="真语义通道未启用（TCMS_EMBEDDER!=api）；默认通道是字符级，不把哈希当语义",
+)
+def test_semantic_channel_improves_synonym_recall(tmp_path: Path) -> None:
+    """**可选增强的实测证据**：近义查询在真语义通道下显著更准。
+
+    实测（本机 DashScope 兼容端点，text-embedding-v3）：
+        「车厢门打不开怎么办」（车厢门≈车门）
+          字符级通道 → 相似度 0.113（几乎淹没在噪声里）
+          真语义通道 → 相似度 0.515（正确强命中）
+    条件执行：未开真通道时跳过，**绝不把哈希余弦当语义证据**。
+    """
+    idx = build_index(tmp_path / "memory")
+    assert idx.channel == "ApiEmbedder", f"应走真语义通道，实际 {idx.channel}"
+    idx.add_episodic([_rec("r1", GOAL_A, goal_fault="door_fault")])
+    hits = idx.recall("车厢门打不开怎么办", k_episodic=1)
+    assert hits, "近义查询应能召回"
+    assert hits[0].id == "r1"
+    assert hits[0].score >= 0.3, f"语义通道下应为强命中，实际 {hits[0].score}"
 
 
 def test_engineered_example_of_pollution_being_blocked(tmp_path: Path, knowledge: KnowledgeContext) -> None:
