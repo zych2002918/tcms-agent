@@ -42,6 +42,11 @@ jobs:
         uses: astral-sh/setup-uv@v5
       - name: uv lock --check
         run: uv lock --check
+      # 分发卫生：.ps1 的 BOM / .bat 的纯 ASCII / 行尾 / 说明文档里的入口是否存在。
+      # 这些约束**只在别人拿到压缩包时才会出事**，本机怎么跑都是好的，
+      # 所以必须进 CI —— 而且它们此前确实被漏在 testpaths 之外（见下一条 job 注释）。
+      - name: 分发卫生测试（不需安装依赖）
+        run: uv run --no-project pytest tests -q -p no:cacheprovider
 
   # ---------------------------------------------------------------------------
   # packages/engine —— 领域引擎（独立包，无内部依赖）

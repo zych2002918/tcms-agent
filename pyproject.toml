@@ -35,7 +35,10 @@ dev = [
 # 注意：各成员自带的 [tool.pytest.ini_options] 只在「以该成员为 rootdir」时生效
 # （CI 按成员分 job 跑，以保留各自的覆盖率门禁）。根配置是开发态一把梭的便利入口。
 [tool.pytest.ini_options]
-testpaths = ["packages"]
+# 根 tests/ 是**分发卫生**测试（BOM/行尾/说明文档入口），
+# 必须一并收集：此前只写 packages，导致这些测试既不进回归也不进 CI，
+# 而它们守的恰恰是只在别人拿到包时才出事的约束。
+testpaths = ["packages", "tests"]
 # monorepo 必需：各成员 tests/ 目录下存在同名文件（如 platform 与 testgen 都有
 # test_agent.py）。默认的 prepend 导入模式会因「import file mismatch」直接中断收集；
 # importlib 模式按完整路径建模块，天然隔离同名文件。
