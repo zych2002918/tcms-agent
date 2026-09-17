@@ -80,12 +80,16 @@ class AgentRunner:
         path.parent.mkdir(parents=True, exist_ok=True)
         return sqlite3.connect(str(path), check_same_thread=False)
 
-    def build(self, conn: sqlite3.Connection):
-        """用给定连接构建（带 checkpoint 的）图；返回 (graph, registry, model_kind)。"""
+    def build(self, conn: sqlite3.Connection, run_id: str = "adhoc"):
+        """用给定连接构建（带 checkpoint 的）图；返回 (graph, registry, model_kind)。
+
+        run_id 会传给执行沙箱做产物归档目录名，因此同一次运行的所有执行产物
+        都落在同一个目录下，便于事后整体复核。
+        """
         from langgraph.checkpoint.sqlite import SqliteSaver
 
         saver = SqliteSaver(conn)
-        return build_graph(self.knowledge, self.cfg, checkpointer=saver)
+        return build_graph(self.knowledge, self.cfg, checkpointer=saver, run_id=run_id)
 
     # ---- 运行 ----
 
@@ -94,7 +98,7 @@ class AgentRunner:
         tid = thread_id or f"run-{uuid.uuid4().hex[:12]}"
         conn = self._connect()
         try:
-            graph, registry, model_kind = self.build(conn)
+            graph, registry, model_kind = self.build(conn, run_id=tid)
             init = {
                 "goal": goal,
                 "messages": [HumanMessage(goal)],

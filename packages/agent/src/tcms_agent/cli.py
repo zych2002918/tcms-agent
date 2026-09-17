@@ -38,7 +38,7 @@ def cmd_tools(args: argparse.Namespace) -> int:
     cfg = AgentConfig(upstream=Path(args.upstream) if args.upstream else None)
     reg = build_registry(k, cfg)
     print(f"知识底座：{json.dumps(k.stats(), ensure_ascii=False)}")
-    print(f"\n工具面（本次开放到 {max(cfg.allow_levels).label}）：")
+    print(f"\n工具面（本次开放到 {cfg.max_level.label}）：")
     for t in reg.describe():
         mark = "✓" if t["allowed"] else "✗"
         print(f"  {mark} [{t['level_label']}] {t['name']}")

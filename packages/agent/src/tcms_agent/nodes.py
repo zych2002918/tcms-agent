@@ -167,6 +167,14 @@ def _sources_from(tool_name: str, result: dict) -> list[str]:
             out.append(f"symptom:{result['symptom_key']}")
     elif tool_name == "kb_filter_assets":
         out += [f"fault:{i['key']}" for i in (result.get("items") or []) if i.get("key")]
+    elif tool_name == "run_scenario" and result.get("scenario"):
+        out.append(f"scenario:{result['scenario']}")
+    elif tool_name == "verify_fault_action":
+        # 真执行结果同样要过引用校验：引擎跑过的故障键与场景都必须是真实资产
+        if result.get("fault"):
+            out.append(f"fault:{result['fault']}")
+        if result.get("scenario"):
+            out.append(f"scenario:{result['scenario']}")
     return list(dict.fromkeys(out))
 
 

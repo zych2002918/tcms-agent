@@ -34,10 +34,11 @@ def test_trajectory_has_full_node_coverage(cfg, knowledge) -> None:
 
 def test_tool_audit_is_recorded(cfg, knowledge) -> None:
     res = AgentRunner(cfg, knowledge).run(GOAL)
-    assert res.audit["calls"] >= 3
+    assert res.audit["calls"] >= 4, "离线臂现在也会做真执行验证"
     assert res.audit["failed"] == 0
-    assert res.audit["by_level"] == {"R0 只读": res.audit["calls"]}
-    assert len(res.audit["tools_available"]) >= 7
+    # 默认档位 = R0 只读 + R2 真执行；不得出现任何 R3 持久化调用
+    assert set(res.audit["by_level"]) == {"R0 只读", "R2 真实执行"}
+    assert len(res.audit["tools_available"]) == 9, "7 个只读 + 2 个执行"
 
 
 def test_run_is_deterministic(cfg, knowledge) -> None:

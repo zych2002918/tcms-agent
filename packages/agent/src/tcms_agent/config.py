@@ -52,8 +52,22 @@ class AgentConfig:
     """覆盖 base_url；None 表示走 platform 的解析链。"""
 
     # --- 工具权限 ---
-    allow_levels: tuple[Permission, ...] = (Permission.READ,)
-    """本次运行允许暴露给模型的工具级别。M1 只开放 R0 只读。"""
+    max_level: Permission = Permission.EXECUTE
+    """本次运行允许暴露给模型的**最高**工具级别（注册表按 `level <= max_level` 裁剪）。
+
+    默认到 R2 真执行，理由：
+      - 场景执行对被测系统是**只读**的（跑仿真、读断言，不改任何东西），
+        而"能真跑"正是测试工程师 Agent 存在的意义；
+      - 更高的 R3 持久化（写记忆 / 提交用例）默认**关闭**，必须显式开启并过人工审批。
+    需要完全无副作用时（如纯问答、CI 的保守档）设为 `Permission.READ`。
+    """
+
+    # --- 执行 ---
+    exec_timeout_s: float = 60.0
+    """单次场景执行的超时（秒）。超时在独立子进程上强制执行，不是"放弃等待"。"""
+
+    sandbox_dir: Path = field(default_factory=lambda: Path.home() / ".tcms-agent" / "sandbox")
+    """执行产物归档根目录（每次运行一个 run_id 子目录）。"""
 
     # --- 存储 ---
     db_path: Path = field(default_factory=default_db_path)

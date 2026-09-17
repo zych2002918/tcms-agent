@@ -117,27 +117,33 @@ class OfflineScriptedModel(BaseChatModel):
                 return _content_of(m)
         return ""
 
-    def _resolve_fault(self, goal: str) -> str | None:
-        """用规则解析器把自然语言目标解析为真实故障键（无 LLM 参与）。"""
+    def _resolve(self, goal: str) -> tuple[str | None, str | None]:
+        """用规则解析器把目标解析为 (真实故障键, 期望处置)（无 LLM 参与）。"""
         if not goal or self.knowledge is None:
-            return None
+            return None, None
         try:
             from tcms_ai_platform.agent.freeform import parse_free_goal
 
             parsed = parse_free_goal(self.knowledge.model, goal, seq=1, use_llm=False)
-            return str(parsed.fault)
+            return str(parsed.fault), str(parsed.expected)
         except Exception:  # noqa: BLE001 - 解析不出就是解析不出（含 NoFaultMatch）
-            return None
+            return None, None
 
     def _script(self, goal: str) -> list[tuple[str, dict[str, Any]]]:
-        """按可用工具裁剪出的确定性脚本。"""
+        """按可用工具裁剪出的确定性脚本。
+
+        顺序体现测试工程师的工作流：**先查清语义 → 再真执行验证 → 最后下结论**。
+        若真执行工具未被开放（权限档位低），脚本自动跳过该步（诚实降级）。
+        """
         names = set(self.bound_tools)
-        key = self._resolve_fault(goal)
+        key, expected = self._resolve(goal)
         script: list[tuple[str, dict[str, Any]]] = []
         if "kb_search" in names:
             script.append(("kb_search", {"query": goal}))
         if key and "fault_detail" in names:
             script.append(("fault_detail", {"fault_key": key}))
+        if key and expected and "verify_fault_action" in names:
+            script.append(("verify_fault_action", {"fault_key": key, "expected_action": expected}))
         if key and "list_scenarios" in names:
             script.append(("list_scenarios", {"fault_key": key}))
         if not key and "symptom_diagnose" in names:
@@ -172,7 +178,8 @@ class OfflineScriptedModel(BaseChatModel):
         """收尾结论：只用真实工具返回的数据拼装，并显式列出引用。"""
         payloads = self._tool_payloads(messages)
         fd = payloads.get("fault_detail") or {}
-        key = str(fd.get("key") or "") or (self._resolve_fault(goal) or "")
+        key, expected = self._resolve(goal)
+        key = str(fd.get("key") or "") or (key or "")
         lines = ["【离线规则臂结论】目标：", goal, ""]
         if fd.get("key"):
             lines += [
@@ -185,6 +192,21 @@ class OfflineScriptedModel(BaseChatModel):
             lines.append(f"识别到故障键 fault:{key}（fault_detail 未返回详情）")
         else:
             lines.append("未能从目标中解析出真实故障键（未匹配 faults.yaml 任何条目）。")
+        # 真执行结果：这是结论是否成立的**引擎证据**，优先展示
+        vf = payloads.get("verify_fault_action") or {}
+        if vf.get("verified") is not None:
+            if vf.get("verified"):
+                lines += [
+                    "",
+                    f"✅ 真实引擎验证通过：在场景 {vf.get('scenario')} 上，"
+                    f"fault={vf.get('fault')} 的实际处置为 {vf.get('expected_action')}，"
+                    f"断言 {vf.get('engine_assertions')}",
+                ]
+            else:
+                lines += [
+                    "",
+                    f"⚠️ 真实引擎**未**确认该处置：{vf.get('reason') or vf.get('engine_assertions')}",
+                ]
         sc = payloads.get("list_scenarios") or {}
         if sc.get("scenarios"):
             names = [s.get("file") for s in sc["scenarios"][:5]]
@@ -194,6 +216,8 @@ class OfflineScriptedModel(BaseChatModel):
             ids = [h.get("doc_id") for h in kb["hits"][:5]]
             lines.append(f"检索命中：{'、'.join(str(i) for i in ids)}")
         cited = [f"fault:{key}"] if key else []
+        if vf.get("scenario"):
+            cited.append(f"scenario:{vf['scenario']}")
         for h in (kb.get("hits") or [])[:5]:
             if h.get("doc_id"):
                 cited.append(str(h["doc_id"]))

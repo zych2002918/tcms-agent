@@ -7,16 +7,28 @@ from tcms_agent.graph import build_registry
 from tcms_agent.permissions import Permission
 
 
-def test_all_tools_are_readonly(knowledge) -> None:
+def test_readonly_cap_hides_execution_tools(knowledge) -> None:
+    """把档位压到 R0：执行类工具仍在册，但既不进 schema 也不可执行（双保险）。"""
+    reg = build_registry(knowledge, AgentConfig(max_level=Permission.READ))
+    allowed = reg.names()
+    assert len(allowed) == 7, f"R0 档位应恰好放行 7 个只读工具，实际 {allowed}"
+    assert "run_scenario" not in allowed
+    # 但它们在册且被标注为不允许（人能看到"存在但不可用"）
+    assert "run_scenario" in reg.names(allowed_only=False)
+    assert not next(t for t in reg.describe() if t["name"] == "run_scenario")["allowed"]
+
+
+def test_default_face_is_read_plus_execute_only(knowledge) -> None:
+    """默认档位 = R0 + R2：能真跑验证，但**不含**任何持久化（R3）能力。"""
     reg = build_registry(knowledge, AgentConfig())
-    assert len(reg) >= 7, "R0 只读工具应有 7 个（复用 5 + 原生 2）"
-    levels = {t["level"] for t in reg.describe()}
-    assert levels == {int(Permission.READ)}, "M1 的工具面必须全部是 R0 只读"
-    assert all(t["allowed"] for t in reg.describe())
+    levels = {int(t["level"]) for t in reg.describe() if t["allowed"]}
+    assert levels == {int(Permission.READ), int(Permission.EXECUTE)}
+    assert Permission.PERSIST not in {Permission(x) for x in levels}
+    assert len(reg.names()) == 9, "7 个只读 + 2 个执行"
 
 
 def test_expected_tool_names_present(knowledge) -> None:
-    reg = build_registry(knowledge, AgentConfig())
+    reg = build_registry(knowledge, AgentConfig(max_level=Permission.READ))
     names = set(reg.names())
     for expected in (
         "kb_search",

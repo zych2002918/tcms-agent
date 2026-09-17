@@ -29,18 +29,38 @@ from .nodes import (
     make_verify_node,
 )
 from .state import AgentState
+from .tools.execution import ExecutionSandbox, build_execution_tools
 from .tools.readonly import build_readonly_tools
 from .tools.registry import ToolRegistry
 
 
-def build_registry(knowledge: KnowledgeContext, cfg: AgentConfig) -> ToolRegistry:
-    """按配置的权限上限构建工具注册表。
+def build_registry(
+    knowledge: KnowledgeContext,
+    cfg: AgentConfig,
+    run_id: str = "adhoc",
+) -> ToolRegistry:
+    """构建工具注册表：**注册全量工具面**，由 `cfg.max_level` 做门禁。
 
-    M1 只注册 R0 只读工具；R1/R2/R3 的写工具在后续里程碑加入，
-    每次加入都必须同时带上对应的护栏（沙箱 / 超时 / 审批）。
+    为什么注册全量而不是"按档位选择性注册"：
+    选择性注册会让注册表的第二道防线（`invoke()` 拒绝越权调用）永远不被触发——
+    变成形同虚设的代码。注册全量后：
+      - `schemas()` 只吐允许的级别（模型看不到越权工具）；
+      - `invoke()` 对越权调用如实拒绝并记审计（模型绕过 schema 也拦得住）；
+      - `describe()` 能如实告诉人"这个工具存在，但当前档位不给用"。
+    两道防线都真实生效，这才是"双保险"的本意。
+
+    各级别实现进度：
+        R0 只读    ✅ 7 个（复用 platform 5 个 + 原生 2 个）
+        R1 沙箱写  ⬜ 计划于 R4（需同时落地沙箱与丢弃机制）
+        R2 真执行  ✅ 2 个（子进程 + 真超时 + 产物归档）
+        R3 持久化  ⬜ 计划于 R5（需同时落地 human-in-the-loop 审批）
     """
-    registry = ToolRegistry(max_level=max(cfg.allow_levels))
-    registry.register_all(build_readonly_tools(knowledge))
+    registry = ToolRegistry(max_level=cfg.max_level)
+    registry.register_all(build_readonly_tools(knowledge))  # R0
+    sandbox = ExecutionSandbox(root=cfg.sandbox_dir, run_id=run_id)
+    registry.register_all(
+        build_execution_tools(knowledge, sandbox, timeout_s=cfg.exec_timeout_s)  # R2
+    )
     return registry
 
 
@@ -66,6 +86,7 @@ def build_graph(
     knowledge: KnowledgeContext,
     cfg: AgentConfig,
     checkpointer: Any = None,
+    run_id: str = "adhoc",
 ) -> tuple[Any, ToolRegistry, str]:
     """构建并编译 Agent 图。
 
@@ -73,7 +94,7 @@ def build_graph(
     - registry 由调用方持有，用于读取**审计记录**（谁调了什么、耗时、成败）；
     - model_kind ∈ {"llm", "offline-rule"}，必须如实向上汇报，不得混淆。
     """
-    registry = build_registry(knowledge, cfg)
+    registry = build_registry(knowledge, cfg, run_id)
     model, model_kind = build_chat_model(cfg, knowledge)
 
     g = StateGraph(AgentState)
