@@ -248,7 +248,6 @@ def build_chat_model(cfg: AgentConfig, knowledge: Any = None) -> tuple[Any, str]
         return OfflineScriptedModel(knowledge=knowledge, temperature=cfg.temperature), OFFLINE_MODEL_KIND
 
     from langchain_openai import ChatOpenAI
-
     from tcms_ai_platform.agent.llm_backend import _api_key
 
     base, model = resolve_llm_settings(cfg)
