@@ -148,11 +148,38 @@ class OfflineScriptedModel(BaseChatModel):
             script.append(("list_scenarios", {"fault_key": key}))
         if not key and "symptom_diagnose" in names:
             script.append(("symptom_diagnose", {"text": goal}))
+        # 造用例 + 真跑用例：体现"测试工程师"的完整动作（R1 沙箱写 → R2 真执行）
+        if key and expected and "draft_test_case" in names:
+            script.append(("draft_test_case", self._draft_args(key, expected)))
+        if key and "run_draft" in names:
+            script.append(("run_draft", {"draft_id": f"offline-{key}"}))
         # 最后一步：把已验证的结论沉淀进长期记忆（R3，会触发人工审批）。
         # 只有字典与真正执行都确认过才写——这正是"写入门禁"该有的前提。
         if key and "write_memory" in names:
             script.append(("write_memory", self._memory_args(goal, key, expected)))
         return script
+
+    @staticmethod
+    def _draft_args(key: str, expected: str) -> dict[str, Any]:
+        """构造一条受约束用例（testgen DSL）：断言该故障的处置动作等于期望值。"""
+        return {
+            "draft_id": f"offline-{key}",
+            "case": {
+                "name": f"test_{key}_action_is_{expected}",
+                "purpose": f"验证 {key} 的处置动作必须为 {expected}",
+                "preconditions": "系统运行于 auto 模式",
+                "steps": [f"注入故障 {key}", "查询处置动作", "与期望值比对"],
+                "expected": f"{key} 触发 {expected}",
+                "tier": "safety",
+                "execution": {
+                    "kind": "fault_scenario",
+                    "node": "vcu",
+                    "fault": key,
+                    "setup": [],
+                    "expect": [{"op": "expect_action", "args": {"fault": key, "action": expected}}],
+                },
+            },
+        }
 
     @staticmethod
     def _memory_args(goal: str, key: str, expected: str | None) -> dict[str, Any]:
@@ -232,6 +259,21 @@ class OfflineScriptedModel(BaseChatModel):
         if sc.get("scenarios"):
             names = [s.get("file") for s in sc["scenarios"][:5]]
             lines.append(f"候选场景：{'、'.join(str(n) for n in names)}")
+        # 自己造的用例 + 它的真跑结果
+        dr = payloads.get("draft_test_case") or {}
+        rd = payloads.get("run_draft") or {}
+        if dr.get("draft_id"):
+            lines += ["", f"🗒 生成用例：{dr.get('case_file')}（编译 {dr.get('compiled')}）"]
+            if rd.get("all_passed") is True:
+                lines.append(
+                    f"   ✅ 自造用例真跑通过：{rd.get('passed')}/{rd.get('total')} "
+                    f"（exec_pass_rate={rd.get('exec_pass_rate')}）"
+                )
+            elif rd.get("draft_id"):
+                lines.append(
+                    f"   ⚠️ 自造用例真跑未通过：failed={rd.get('failed')} "
+                    f"{'；'.join(str(x) for x in (rd.get('failure_lines') or [])[:2])}"
+                )
         kb = payloads.get("kb_search") or {}
         if kb.get("hits"):
             ids = [h.get("doc_id") for h in kb["hits"][:5]]

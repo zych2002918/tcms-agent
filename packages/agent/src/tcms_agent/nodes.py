@@ -177,6 +177,10 @@ def _sources_from(tool_name: str, result: dict) -> list[str]:
             out.append(f"fault:{result['fault']}")
         if result.get("scenario"):
             out.append(f"scenario:{result['scenario']}")
+    elif tool_name in ("draft_test_case", "run_draft"):
+        # Agent **自己写**的测试所引用的资产同样要能被核实：
+        # 写了 covers:["SR-99"]（不存在）会被引用校验抓出来，而不是"写出来就算数"
+        out += [str(r) for r in (result.get("refs") or []) if r]
     return list(dict.fromkeys(out))
 
 

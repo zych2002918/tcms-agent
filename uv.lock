@@ -2473,6 +2473,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "tcms-ai-platform" },
+    { name = "tcms-ai-testgen" },
     { name = "tcms-can-test" },
 ]
 
@@ -2497,6 +2498,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'lint'", specifier = ">=0.5" },
     { name = "tcms-ai-platform", editable = "packages/platform" },
+    { name = "tcms-ai-testgen", editable = "packages/testgen" },
     { name = "tcms-can-test", editable = "packages/engine" },
 ]
 provides-extras = ["test", "lint"]

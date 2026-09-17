@@ -34,6 +34,7 @@ from .tools.execution import ExecutionSandbox, build_execution_tools
 from .tools.persist import PersistentStore, build_persist_tools
 from .tools.readonly import build_readonly_tools
 from .tools.registry import ToolRegistry
+from .tools.sandbox import DraftSandbox, build_sandbox_tools
 
 
 def build_registry(
@@ -62,6 +63,13 @@ def build_registry(
     sandbox = ExecutionSandbox(root=cfg.sandbox_dir, run_id=run_id)
     registry.register_all(
         build_execution_tools(knowledge, sandbox, timeout_s=cfg.exec_timeout_s)  # R2
+    )
+    # R1 沙箱写 + 配套的 DSL 参考（R0）与用例真跑（R2）
+    drafts = DraftSandbox(root=cfg.sandbox_dir, run_id=run_id)
+    registry.register_all(
+        build_sandbox_tools(
+            knowledge, drafts, upstream=knowledge.upstream, timeout_s=cfg.draft_timeout_s
+        )
     )
     store = PersistentStore(memory_dir=cfg.memory_dir, artifacts_dir=cfg.artifacts_dir)
     registry.register_all(

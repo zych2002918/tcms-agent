@@ -161,3 +161,26 @@
 **代价**：写入路径变长（要构造审批载荷、要处理拒绝分支）。
 另外拒绝不能是静默失败——它要作为工具结果回填给 Agent，并写进报告
 （"被拒：write_memory —— 该写入未发生"），否则"✅ 通过"会误导读者。
+
+---
+
+## ADR-009 · 对外宣称的词表必须 import，不许手抄
+
+**背景**：R1 沙箱写要把 testgen 的 DSL 词表（kind / setup op / assert op）告诉模型，
+否则模型写不出可编译的用例。
+
+**决策**：`dsl_reference` 工具**直接 import** `tcms_ai_testgen.execution` 的
+`EXEC_KINDS / SETUP_OPS / ASSERT_OPS`，不在 agent 侧维护任何副本。
+
+**理由**（这是踩过的坑，不是预防性洁癖）：最初我手抄了一份 op 清单，
+写完防漂移测试后它**立刻失败**——手抄版漏了 `inject_fault` / `recover_fault`，
+且不知道 `expect_encode_error` 同属 setup 与 assert 两个白名单。
+
+手抄的"说明书"危害比没有说明书更大：模型照着它写，却永远编译不过，
+而错误信息显示的是"未知原语"——排查方向会被完全带偏。
+
+**代价**：agent 包对 testgen 产生硬依赖（已写进 `pyproject.toml` 与
+`[tool.uv.sources]`；此前是未声明的隐式依赖，属于缺陷）。
+
+**推广**：同一条纪律适用于所有"对外承诺的接口/枚举"——**能在运行时读取的，
+就不要在文档里复述**。防漂移测试是这条纪律的执行者。

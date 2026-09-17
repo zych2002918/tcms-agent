@@ -7,24 +7,25 @@ from tcms_agent.graph import build_registry
 from tcms_agent.permissions import Permission
 
 
-def test_readonly_cap_hides_execution_tools(knowledge) -> None:
-    """把档位压到 R0：执行类工具仍在册，但既不进 schema 也不可执行（双保险）。"""
+def test_readonly_cap_hides_higher_level_tools(knowledge) -> None:
+    """把档位压到 R0：更高权限的工具仍在册，但既不进 schema 也不可执行（双保险）。"""
     reg = build_registry(knowledge, AgentConfig(max_level=Permission.READ))
     allowed = reg.names()
-    assert len(allowed) == 7, f"R0 档位应恰好放行 7 个只读工具，实际 {allowed}"
-    assert "run_scenario" not in allowed
-    # 但它们在册且被标注为不允许（人能看到"存在但不可用"）
-    assert "run_scenario" in reg.names(allowed_only=False)
-    assert not next(t for t in reg.describe() if t["name"] == "run_scenario")["allowed"]
+    assert len(allowed) == 9, f"R0 档位应恰好放行 9 个只读工具，实际 {allowed}"
+    for hidden in ("run_scenario", "draft_test_case", "write_memory"):
+        assert hidden not in allowed
+        # 但它们在册且被标注为不允许（人能看到"存在但不可用"）
+        assert hidden in reg.names(allowed_only=False)
+        assert not next(t for t in reg.describe() if t["name"] == hidden)["allowed"]
 
 
-def test_default_face_is_read_plus_execute_only(knowledge) -> None:
-    """默认档位 = R0 + R2：能真跑验证，但**不含**任何持久化（R3）能力。"""
+def test_default_face_is_read_plus_sandbox_plus_execute(knowledge) -> None:
+    """默认档位 = R0 + R1 + R2：能查、能造用例、能真跑；**不含**任何持久化（R3）。"""
     reg = build_registry(knowledge, AgentConfig())
     levels = {int(t["level"]) for t in reg.describe() if t["allowed"]}
-    assert levels == {int(Permission.READ), int(Permission.EXECUTE)}
+    assert levels == {int(Permission.READ), int(Permission.SANDBOX), int(Permission.EXECUTE)}
     assert Permission.PERSIST not in {Permission(x) for x in levels}
-    assert len(reg.names()) == 9, "7 个只读 + 2 个执行"
+    assert len(reg.names()) == 13, "9 只读 + 1 沙箱写 + 3 执行"
 
 
 def test_expected_tool_names_present(knowledge) -> None:
@@ -38,6 +39,8 @@ def test_expected_tool_names_present(knowledge) -> None:
         "list_scenarios",
         "fault_detail",
         "list_requirements",
+        "dsl_reference",
+        "list_drafts",
     ):
         assert expected in names, f"缺少工具 {expected}"
 

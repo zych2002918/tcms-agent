@@ -66,6 +66,9 @@ class AgentConfig:
     exec_timeout_s: float = 60.0
     """单次场景执行的超时（秒）。超时在独立子进程上强制执行，不是"放弃等待"。"""
 
+    draft_timeout_s: float = 120.0
+    """单次"生成用例真跑"的超时（秒）。pytest 启动比场景执行慢，因此给更宽的预算。"""
+
     sandbox_dir: Path = field(default_factory=lambda: Path.home() / ".tcms-agent" / "sandbox")
     """执行产物归档根目录（每次运行一个 run_id 子目录）。"""
 

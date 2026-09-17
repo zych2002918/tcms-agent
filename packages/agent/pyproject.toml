@@ -23,6 +23,8 @@ classifiers = [
 dependencies = [
     "tcms-can-test",
     "tcms-ai-platform",
+    # 受约束 DSL 与真实执行器（R1 沙箱写 / 用例真跑复用其 compile_case / run_real）
+    "tcms-ai-testgen",
     # --- 编排框架（选型理由见 docs/decisions.md ADR-001）---
     # LangGraph 提供的正是 harness 需要的基础设施：
     #   checkpointer（轨迹持久化/断点续跑）、interrupt（人在环路审批）、
@@ -48,6 +50,7 @@ tcms-agent = "tcms_agent.cli:main"
 [tool.uv.sources]
 tcms-can-test = { workspace = true }
 tcms-ai-platform = { workspace = true }
+tcms-ai-testgen = { workspace = true }
 
 [tool.setuptools]
 package-dir = { "" = "src" }
