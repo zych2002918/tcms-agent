@@ -1,10 +1,22 @@
 version: 2
+
 updates:
-  - package-ecosystem: "pip"
+  # Python 依赖：必须用 **uv** 生态，不能用 pip。
+  #
+  # 缘由（踩过的坑）：pip 生态只会改 pyproject.toml 里的版本约束，**不会同步 uv.lock**，
+  # 于是 CI 里的 `uv lock --check` 门禁必然失败——5 个 PR 全红。
+  # 门禁本身是对的（声明与锁文件不一致就不该合入），错的是选了不支持 uv.lock 的生态。
+  # uv 生态（Dependabot 自 2025-03 GA）会同时更新 pyproject 与 uv.lock，门禁即可通过。
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      # 合并成一个 PR：否则每个依赖一个 PR，各自跑一遍 10 个 CI job，噪音极大。
+      python-dependencies:
+        patterns:
+          - "*"
     labels:
       - "dependencies"
 
@@ -13,5 +25,9 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
     labels:
       - "ci"
