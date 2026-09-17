@@ -1,0 +1,49 @@
+# 场景扩容 Wave C（无孤儿覆盖）：bogie_wheel_flat_detect, bogie_frame_accel_spike, bogie_spring_settle_uneven, bogie_gear_oil_pressure_low, bogie_damper_temp_high
+name: 踏面擦伤·冲击·沉降·油压·减振器过热编排
+desc: 演示故障序列：车轮踏面擦伤检测、构架冲击事件记录、弹簧沉降不均、齿轮箱润滑压力低、减振器过热。
+steps:
+- at: 3.0
+  inject:
+    node: bogie
+    fault: bogie_wheel_flat_detect
+    level: major
+    impact: 踏面擦伤/扁疤特征检出，限速确认
+    expect: derate
+- at: 4.5
+  inject:
+    node: bogie
+    fault: bogie_frame_accel_spike
+    level: minor
+    impact: 构架加速度冲击事件超限（记录评估）
+    expect: warning
+- at: 6.0
+  inject:
+    node: bogie
+    fault: bogie_spring_settle_uneven
+    level: minor
+    impact: 二系弹簧沉降不均（车体倾斜）
+    expect: warning
+- at: 7.5
+  inject:
+    node: bogie
+    fault: bogie_gear_oil_pressure_low
+    level: major
+    impact: 齿轮箱润滑油压不足（润滑风险）
+    expect: derate
+- at: 9.0
+  inject:
+    node: bogie
+    fault: bogie_damper_temp_high
+    level: major
+    impact: 减振器持续激励过热（阻尼异常）
+    expect: derate
+- at: 10.0
+  recover: bogie_wheel_flat_detect
+- at: 11.5
+  recover: bogie_frame_accel_spike
+- at: 13.0
+  recover: bogie_spring_settle_uneven
+- at: 14.5
+  recover: bogie_gear_oil_pressure_low
+- at: 16.0
+  recover: bogie_damper_temp_high

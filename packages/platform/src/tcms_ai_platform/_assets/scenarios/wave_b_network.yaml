@@ -1,0 +1,22 @@
+# 场景扩容 Wave B（无孤儿覆盖）：node_memory_leak, tcms_log_overflow
+name: 节点内存泄漏与诊断日志溢出编排
+desc: 演示故障序列：节点内存泄漏、诊断记录溢出。
+steps:
+- at: 3.0
+  inject:
+    node: tcms
+    fault: node_memory_leak
+    level: major
+    impact: 节点内存持续增长（泄漏），触发看门狗复位
+    expect: derate
+- at: 4.5
+  inject:
+    node: tcms
+    fault: tcms_log_overflow
+    level: info
+    impact: 诊断/事件日志存储接近上限，早期记录被覆盖
+    expect: none
+- at: 10.0
+  recover: node_memory_leak
+- at: 11.5
+  recover: tcms_log_overflow

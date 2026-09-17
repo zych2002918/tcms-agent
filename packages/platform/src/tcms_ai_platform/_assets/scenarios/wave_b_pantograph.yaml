@@ -1,0 +1,22 @@
+# 场景扩容 Wave B（无孤儿覆盖）：pantograph_drop_in_motion, panto_position_sensor_fail
+name: 运行中降弓·弓位传感器失效编排
+desc: 演示故障序列：运行中意外降弓、弓位传感器失效。
+steps:
+- at: 3.0
+  inject:
+    node: pantograph
+    fault: pantograph_drop_in_motion
+    level: major
+    impact: 运行中弓意外降下（失电惰行），需限速就近处理
+    expect: derate
+- at: 4.5
+  inject:
+    node: pantograph
+    fault: panto_position_sensor_fail
+    level: minor
+    impact: 弓位/压力反馈异常，升降弓判定受扰
+    expect: warning
+- at: 10.0
+  recover: pantograph_drop_in_motion
+- at: 11.5
+  recover: panto_position_sensor_fail

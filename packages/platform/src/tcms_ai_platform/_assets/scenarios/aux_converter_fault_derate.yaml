@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-041 aux_converter_fault (major, derate) — AuxConverterFault
+name: 辅助变流器故障
+desc: 演示故障序列：辅助变流器故障。
+steps:
+- at: 3.0
+  inject:
+    node: aux
+    fault: aux_converter_fault
+    level: major
+    impact: 辅助变流器失效，低压负载降级
+    expect: derate
+- at: 11.0
+  recover: aux_converter_fault

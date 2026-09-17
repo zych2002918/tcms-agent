@@ -1,0 +1,31 @@
+# 场景扩容 Wave B（无孤儿覆盖）：traction_regen_fail, traction_power_cap_violation, traction_dc_ground_fault
+name: 再生制动失效·功率越限·直流接地编排
+desc: 演示故障序列：再生制动失效、牵引功率越限、牵引直流侧接地故障。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: traction_regen_fail
+    level: major
+    impact: 电制动（再生）不可用，需摩擦制动补足（能量回馈失效）
+    expect: derate
+- at: 4.5
+  inject:
+    node: vcu
+    fault: traction_power_cap_violation
+    level: major
+    impact: 牵引功率超出包络（保护性降载）
+    expect: derate
+- at: 6.0
+  inject:
+    node: vcu
+    fault: traction_dc_ground_fault
+    level: critical
+    impact: 直流母线/变流侧接地保护动作，需分断隔离
+    expect: shutdown
+- at: 10.0
+  recover: traction_regen_fail
+- at: 11.5
+  recover: traction_power_cap_violation
+- at: 13.0
+  recover: traction_dc_ground_fault

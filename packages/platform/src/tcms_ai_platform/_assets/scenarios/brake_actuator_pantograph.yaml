@@ -1,0 +1,24 @@
+# 场景 11：制动执行器卡滞 + 受电弓拉弧 —— 制动系统部件故障
+# F-TCMS-020 brake_actuator_stuck (major, derate) + F-TCMS-013 pantograph_arc (critical, emergency_brake)
+# 制动执行器卡滞降级运行；受电弓拉弧风险直接触发紧急制动（最高优先）
+name: 制动卡滞与受电弓拉弧
+desc: 演示故障序列：制动执行器卡滞、受电弓拉弧风险。
+steps:
+  - at: 1.0
+    inject:
+      node: bogie
+      fault: brake_actuator_stuck
+      level: major
+      impact: 制动执行器卡滞，制动力输出受限，请求降级
+      expect: derate
+  - at: 5.0
+    inject:
+      node: bcu
+      fault: pantograph_arc
+      level: critical
+      impact: 受电弓离线拉弧风险，立即紧急制动
+      expect: emergency_brake
+  - at: 8.0
+    recover: pantograph_arc
+  - at: 12.0
+    recover: brake_actuator_stuck

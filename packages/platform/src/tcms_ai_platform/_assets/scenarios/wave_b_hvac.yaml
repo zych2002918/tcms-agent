@@ -1,0 +1,31 @@
+# 场景扩容 Wave B（无孤儿覆盖）：hvac_low_refrigerant, hvac_zone_temp_imbalance, hvac_condensate_pump_fail
+name: 制冷剂不足·分区温差·冷凝水泵编排
+desc: 演示故障序列：空调制冷剂不足、分区温度不均衡、冷凝水泵故障。
+steps:
+- at: 3.0
+  inject:
+    node: hvac
+    fault: hvac_low_refrigerant
+    level: major
+    impact: 制冷剂不足（泄漏），制冷量下降影响客室舒适
+    expect: derate
+- at: 4.5
+  inject:
+    node: hvac
+    fault: hvac_zone_temp_imbalance
+    level: minor
+    impact: 车厢各分区温差超限（风道/风门调节问题）
+    expect: warning
+- at: 6.0
+  inject:
+    node: hvac
+    fault: hvac_condensate_pump_fail
+    level: minor
+    impact: 冷凝水排放泵故障，存在溢水风险
+    expect: warning
+- at: 10.0
+  recover: hvac_low_refrigerant
+- at: 11.5
+  recover: hvac_zone_temp_imbalance
+- at: 13.0
+  recover: hvac_condensate_pump_fail

@@ -1,0 +1,52 @@
+# ============ tcms-ai-platform .gitignore ============
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.json
+.hypothesis/
+
+# 运行产物（仅仓库根/测试运行生成的 reports；ai-testgen/docs/reports 为量化证据，有意入库）
+/reports/
+*.log
+server.log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 前端截图 / 节点依赖
+web/shot-*.png
+web/node_modules/
+e2e/node_modules/
+e2e/package*.json
+
+# TS 构建缓存
+web/*.tsbuildinfo
+
+# e2e 运行截图 / e2e 走查产物（不入库）
+e2e/shots-*.png
+e2e/docs/
+e2e/e2e/
+e2e/theme-graph-verify.mjs
+
+# 本地预览截图
+docs/preview/
+
+# PyInstaller 打包产物（根目录 dist/；web/dist 是前端构建产物，有意入库）
+/dist/
+build/
+tcms-ai-platform.spec
+!packaging/tcms-ai-platform.spec
+
+# e2e 临时验证脚本（不入库）
+e2e/agent-suggest-verify.mjs
+
+# 注意：web/dist 构建产物有意入库（任意 clone 即可跑出界面，P3 决策）

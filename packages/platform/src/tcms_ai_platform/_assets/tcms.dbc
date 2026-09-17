@@ -1,0 +1,294 @@
+VERSION "1.0.0"
+
+
+NS_ :
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_DEF_REL_
+	BA_REL_
+	BA_DEF_DEF_REL_
+	BU_SG_REL_
+	BU_EV_REL_
+	BU_BO_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: TCMS VCU BMS BOGIE BCU HVAC PIS LIGHT FIRE AUX ATO
+
+BO_ 256 TCMS_Heartbeat: 8 TCMS
+ SG_ NodeStatus : 0|8@1+ (1,0) [0|3] "" VCU
+ SG_ RunMode : 8|8@1+ (1,0) [0|4] "" VCU
+ SG_ HeartbeatCounter : 16|8@1+ (1,0) [0|255] "" VCU
+
+BO_ 512 VehicleSpeed: 8 VCU
+ SG_ SpeedKmh : 0|16@1+ (0.1,0) [0|200] "km/h" TCMS
+ SG_ SpeedValid : 16|1@1+ (1,0) [0|1] "" TCMS
+ SG_ SpeedSource : 17|2@1+ (1,0) [0|3] "" TCMS
+
+BO_ 768 TractionBrakeHandle: 8 TCMS
+ SG_ HandlePosition : 0|8@1+ (1,0) [0|16] "" VCU
+ SG_ Direction : 8|2@1+ (1,0) [0|3] "" VCU
+ SG_ TractionActive : 16|1@1+ (1,0) [0|1] "" VCU
+ SG_ BrakeActive : 17|1@1+ (1,0) [0|1] "" VCU
+
+BO_ 1024 DoorControl: 8 BOGIE
+ SG_ Door1State : 0|2@1+ (1,0) [0|3] "" VCU
+ SG_ Door2State : 2|2@1+ (1,0) [0|3] "" VCU
+ SG_ Door3State : 4|2@1+ (1,0) [0|3] "" VCU
+ SG_ Door4State : 6|2@1+ (1,0) [0|3] "" VCU
+ SG_ AllDoorsClosed : 8|1@1+ (1,0) [0|1] "" VCU
+ SG_ DoorOpenPermit : 9|1@1+ (1,0) [0|1] "" VCU
+
+BO_ 1280 AlarmEvent: 8 VCU
+ SG_ AlarmCode : 0|8@1+ (1,0) [0|255] "" TCMS
+ SG_ AlarmLevel : 8|4@1+ (1,0) [0|15] "" TCMS
+ SG_ Overspeed : 16|1@1+ (1,0) [0|1] "" TCMS
+ SG_ DoorNotClosed : 17|1@1+ (1,0) [0|1] "" TCMS
+ SG_ FireAlarm : 18|1@1+ (1,0) [0|1] "" TCMS
+ SG_ PantographDrop : 19|1@1+ (1,0) [0|1] "" TCMS
+ SG_ HvacFault : 20|1@1+ (1,0) [0|1] "" TCMS
+ SG_ BogieVibration : 21|1@1+ (1,0) [0|1] "" TCMS
+ SG_ Reserved1 : 22|2@1+ (1,0) [0|3] "" TCMS
+
+BO_ 1536 PantographStatus: 8 BCU
+ SG_ PantographUp : 0|1@1+ (1,0) [0|1] "" TCMS
+ SG_ PantographFault : 1|1@1+ (1,0) [0|1] "" TCMS
+ SG_ LineVoltage : 8|16@1+ (1,0) [0|30000] "V" TCMS
+ SG_ PantographPressure : 24|8@1+ (0.1,0) [0|10] "bar" TCMS
+
+BO_ 1792 BrakeSystem: 8 BCU
+ SG_ BrakeCylinderPressure : 0|16@1+ (0.1,0) [0|1000] "kPa" TCMS
+ SG_ EmergencyBrakeActive : 16|1@1+ (1,0) [0|1] "" TCMS
+ SG_ BrakeFault : 17|1@1+ (1,0) [0|1] "" TCMS
+ SG_ ReservePressureLow : 18|1@1+ (1,0) [0|1] "" TCMS
+
+BO_ 1920 EnergyStatus: 8 BMS
+ SG_ SocPercent : 0|8@1+ (1,0) [0|100] "%" TCMS
+ SG_ BatteryVoltage : 8|16@1+ (0.1,0) [0|1000] "V" TCMS
+ SG_ BatteryCurrent : 24|16@1+ (0.1,-1000) [-1000|1000] "A" TCMS
+ SG_ BatteryTemp : 40|8@1+ (1,-40) [-40|120] "degC" TCMS
+ SG_ ChargeState : 48|2@1+ (1,0) [0|3] "" TCMS
+
+BO_ 1928 HVAC_CabinStatus: 8 HVAC
+ SG_ CabinTemp : 0|16@1+ (0.1,-40) [-40|120] "degC" TCMS
+ SG_ SetTemp : 16|8@1+ (0.5,0) [0|60] "degC" TCMS
+ SG_ CompressorState : 24|2@1+ (1,0) [0|3] "" TCMS
+ SG_ HvacFaultCode : 32|8@1+ (1,0) [0|255] "" TCMS
+
+BO_ 1936 HVAC_Monitor: 8 HVAC
+ SG_ FilterDirty : 0|1@1+ (1,0) [0|1] "" TCMS
+ SG_ HeaterState : 1|2@1+ (1,0) [0|3] "" TCMS
+ SG_ FreshAirDamper : 3|8@1+ (1,0) [0|100] "%" TCMS
+ SG_ CompressorHours : 16|16@1+ (1,0) [0|65535] "h" TCMS
+ SG_ HvacPowerKw : 32|16@1+ (0.1,0) [0|1000] "kW" TCMS
+
+BO_ 1944 PIS_PassengerInfo: 8 PIS
+ SG_ NextStationCode : 0|8@1+ (1,0) [0|255] "" TCMS
+ SG_ PisDisplayState : 8|2@1+ (1,0) [0|3] "" TCMS
+ SG_ NextStopAnnounce : 10|1@1+ (1,0) [0|1] "" TCMS
+ SG_ EmergencyTalkActive : 11|1@1+ (1,0) [0|1] "" TCMS
+ SG_ PassengerIntercom : 12|1@1+ (1,0) [0|1] "" TCMS
+ SG_ PassengerCount : 16|8@1+ (1,0) [0|255] "" TCMS
+ SG_ PisFaultCode : 24|8@1+ (1,0) [0|255] "" TCMS
+
+BO_ 1952 Light_CabinControl: 8 LIGHT
+ SG_ CabinLightState : 0|2@1+ (1,0) [0|3] "" TCMS
+ SG_ EmergencyLightActive : 2|1@1+ (1,0) [0|1] "" TCMS
+ SG_ LightBrightness : 8|8@1+ (1,0) [0|100] "%" TCMS
+ SG_ LampGroupFault : 16|1@1+ (1,0) [0|1] "" TCMS
+ SG_ LightFaultCode : 17|8@1+ (1,0) [0|255] "" TCMS
+
+BO_ 1960 Fire_Detection: 8 FIRE
+ SG_ SmokeDetectorState : 0|2@1+ (1,0) [0|3] "" TCMS
+ SG_ FireZone : 2|4@1+ (1,0) [0|15] "" TCMS
+ SG_ ExtinguisherReady : 6|1@1+ (1,0) [0|1] "" TCMS
+ SG_ DetectorTestMode : 7|1@1+ (1,0) [0|1] "" TCMS
+ SG_ FireSystemFault : 8|1@1+ (1,0) [0|1] "" TCMS
+
+BO_ 1968 Aux_Converter: 8 AUX
+ SG_ AuxVoltage : 0|16@1+ (0.1,0) [0|1000] "V" TCMS
+ SG_ AuxFrequency : 16|8@1+ (0.5,0) [0|80] "Hz" TCMS
+ SG_ AuxLoadPercent : 24|8@1+ (1,0) [0|100] "%" TCMS
+ SG_ AuxContactorState : 32|2@1+ (1,0) [0|3] "" TCMS
+ SG_ AuxConverterFault : 34|1@1+ (1,0) [0|1] "" TCMS
+ SG_ AuxInverterTemp : 40|8@1+ (1,-40) [-40|200] "degC" TCMS
+ SG_ AuxAmbientTemp : 48|8@1+ (1,-40) [-40|120] "degC" TCMS
+
+BO_ 1976 ATO_Command: 8 ATO
+ SG_ AtoMode : 0|2@1+ (1,0) [0|3] "" TCMS
+ SG_ AtoAvailable : 2|1@1+ (1,0) [0|1] "" TCMS
+ SG_ AtoWarning : 3|1@1+ (1,0) [0|1] "" TCMS
+ SG_ DoorReleaseSide : 4|2@1+ (1,0) [0|3] "" TCMS
+ SG_ TargetSpeed : 8|16@1+ (0.1,0) [0|200] "km/h" TCMS
+
+BO_ 1984 Bogie_Monitor: 8 BOGIE
+ SG_ Axle1Temp : 0|8@1+ (1,-40) [-40|200] "degC" TCMS
+ SG_ Axle2Temp : 8|8@1+ (1,-40) [-40|200] "degC" TCMS
+ SG_ Axle3Temp : 16|8@1+ (1,-40) [-40|200] "degC" TCMS
+ SG_ Axle4Temp : 24|8@1+ (1,-40) [-40|200] "degC" TCMS
+ SG_ GearboxTemp : 32|8@1+ (1,-40) [-40|200] "degC" TCMS
+ SG_ VibrationLevel : 40|8@1+ (0.1,0) [0|50] "mm/s" TCMS
+ SG_ VibrationTrend : 48|8@1+ (1,0) [0|255] "" TCMS
+ SG_ BogieSensorFault : 56|1@1+ (1,0) [0|1] "" TCMS
+
+BO_ 1992 DoorControlRear: 8 BOGIE
+ SG_ Door5State : 0|2@1+ (1,0) [0|3] "" VCU
+ SG_ Door6State : 2|2@1+ (1,0) [0|3] "" VCU
+ SG_ Door7State : 4|2@1+ (1,0) [0|3] "" VCU
+ SG_ Door8State : 6|2@1+ (1,0) [0|3] "" VCU
+ SG_ AllRearDoorsClosed : 8|1@1+ (1,0) [0|1] "" VCU
+ SG_ RearDoorOpenPermit : 9|1@1+ (1,0) [0|1] "" VCU
+ SG_ ObstacleDetected : 10|1@1+ (1,0) [0|1] "" VCU
+ SG_ RearDoorIsolation : 11|1@1+ (1,0) [0|1] "" VCU
+
+BO_ 2000 Gateway_Status: 8 TCMS
+ SG_ MvbSegmentA : 0|1@1+ (1,0) [0|1] "" VCU
+ SG_ MvbSegmentB : 1|1@1+ (1,0) [0|1] "" VCU
+ SG_ WlanLinkQuality : 8|8@1+ (1,0) [0|100] "%" VCU
+ SG_ EtherTrainBackbone : 16|1@1+ (1,0) [0|1] "" VCU
+ SG_ GatewayFault : 17|1@1+ (1,0) [0|1] "" VCU
+
+BO_ 2008 Brake_Wsp: 8 BCU
+ SG_ WheelSpeed1 : 0|12@1+ (0.1,0) [0|400] "km/h" TCMS
+ SG_ WheelSpeed2 : 12|12@1+ (0.1,0) [0|400] "km/h" TCMS
+ SG_ WheelSpeed3 : 24|12@1+ (0.1,0) [0|400] "km/h" TCMS
+ SG_ WheelSpeed4 : 36|12@1+ (0.1,0) [0|400] "km/h" TCMS
+ SG_ SlidePercent : 48|8@1+ (0.1,0) [0|100] "%" TCMS
+ SG_ WspActive : 56|1@1+ (1,0) [0|1] "" TCMS
+ SG_ WspFault : 57|1@1+ (1,0) [0|1] "" TCMS
+
+BO_ 2016 Traction_Converter: 8 VCU
+ SG_ ConvTemp : 0|8@1+ (1,-40) [-40|200] "degC" TCMS
+ SG_ ConvFaultCode : 8|8@1+ (1,0) [0|255] "" TCMS
+ SG_ TracDisable : 16|1@1+ (1,0) [0|1] "" TCMS
+ SG_ DcLinkVoltage : 24|16@1+ (1,0) [0|2000] "V" TCMS
+
+BO_ 2024 Driver_Console: 8 TCMS
+ SG_ MasterController : 0|8@1+ (1,0) [0|100] "%" VCU
+ SG_ CabActive : 8|1@1+ (1,0) [0|1] "" VCU
+ SG_ EmergencyStopPressed : 9|1@1+ (1,0) [0|1] "" VCU
+ SG_ DriverKeyPresent : 10|1@1+ (1,0) [0|1] "" VCU
+
+BO_ 2032 Battery_Charger: 8 BMS
+ SG_ ChargerState : 0|2@1+ (1,0) [0|3] "" TCMS
+ SG_ ChargerCurrent : 8|16@1+ (0.1,-100) [-100|100] "A" TCMS
+ SG_ ChargerTemp : 24|8@1+ (1,-40) [-40|120] "degC" TCMS
+ SG_ ChargerFault : 32|1@1+ (1,0) [0|1] "" TCMS
+
+BA_DEF_ BO_ "GenMsgCycleTime" INT 0 65535;
+BA_DEF_ BO_ "GenMsgSendType" STRING ;
+BA_DEF_ BO_ "GenMsgSegment" STRING ;
+BA_DEF_DEF_ "GenMsgCycleTime" 0;
+BA_DEF_DEF_ "GenMsgSendType" "none";
+BA_DEF_DEF_ "GenMsgSegment" "";
+
+BA_ "GenMsgSegment" BO_ 256 "vehicle";
+BA_ "GenMsgSegment" BO_ 512 "vehicle";
+BA_ "GenMsgSegment" BO_ 768 "vehicle";
+BA_ "GenMsgSegment" BO_ 1024 "vehicle";
+BA_ "GenMsgSegment" BO_ 1536 "vehicle";
+BA_ "GenMsgSegment" BO_ 1792 "vehicle";
+BA_ "GenMsgSegment" BO_ 1920 "vehicle";
+BA_ "GenMsgSegment" BO_ 1976 "vehicle";
+BA_ "GenMsgSegment" BO_ 1984 "vehicle";
+BA_ "GenMsgSegment" BO_ 1992 "vehicle";
+BA_ "GenMsgSegment" BO_ 2008 "vehicle";
+BA_ "GenMsgSegment" BO_ 2016 "vehicle";
+BA_ "GenMsgSegment" BO_ 2024 "vehicle";
+BA_ "GenMsgSegment" BO_ 1928 "comfort";
+BA_ "GenMsgSegment" BO_ 1936 "comfort";
+BA_ "GenMsgSegment" BO_ 1944 "comfort";
+BA_ "GenMsgSegment" BO_ 1952 "comfort";
+BA_ "GenMsgSegment" BO_ 1960 "comfort";
+BA_ "GenMsgSegment" BO_ 1968 "comfort";
+BA_ "GenMsgSegment" BO_ 2032 "comfort";
+BA_ "GenMsgSegment" BO_ 2000 "backbone";
+
+BA_ "GenMsgCycleTime" BO_ 256 100;
+BA_ "GenMsgCycleTime" BO_ 512 100;
+BA_ "GenMsgCycleTime" BO_ 768 50;
+BA_ "GenMsgCycleTime" BO_ 1024 100;
+BA_ "GenMsgCycleTime" BO_ 1280 0;
+BA_ "GenMsgCycleTime" BO_ 1536 500;
+BA_ "GenMsgCycleTime" BO_ 1792 100;
+BA_ "GenMsgCycleTime" BO_ 1920 500;
+BA_ "GenMsgCycleTime" BO_ 1928 250;
+BA_ "GenMsgCycleTime" BO_ 1936 500;
+BA_ "GenMsgCycleTime" BO_ 1944 250;
+BA_ "GenMsgCycleTime" BO_ 1952 500;
+BA_ "GenMsgCycleTime" BO_ 1960 500;
+BA_ "GenMsgCycleTime" BO_ 1968 250;
+BA_ "GenMsgCycleTime" BO_ 1976 100;
+BA_ "GenMsgCycleTime" BO_ 1984 100;
+BA_ "GenMsgCycleTime" BO_ 1992 100;
+BA_ "GenMsgCycleTime" BO_ 2000 500;
+BA_ "GenMsgCycleTime" BO_ 2008 25;
+BA_ "GenMsgCycleTime" BO_ 2016 50;
+BA_ "GenMsgCycleTime" BO_ 2024 50;
+BA_ "GenMsgCycleTime" BO_ 2032 500;
+
+BA_ "GenMsgSendType" BO_ 1280 "event";
+BA_ "GenMsgSendType" BO_ 256 "cyclic";
+BA_ "GenMsgSendType" BO_ 512 "cyclic";
+BA_ "GenMsgSendType" BO_ 768 "cyclic";
+BA_ "GenMsgSendType" BO_ 1024 "cyclic";
+BA_ "GenMsgSendType" BO_ 1536 "cyclic";
+BA_ "GenMsgSendType" BO_ 1792 "cyclic";
+BA_ "GenMsgSendType" BO_ 1920 "cyclic";
+BA_ "GenMsgSendType" BO_ 1928 "cyclic";
+BA_ "GenMsgSendType" BO_ 1936 "cyclic";
+BA_ "GenMsgSendType" BO_ 1944 "cyclic";
+BA_ "GenMsgSendType" BO_ 1952 "cyclic";
+BA_ "GenMsgSendType" BO_ 1960 "cyclic";
+BA_ "GenMsgSendType" BO_ 1968 "cyclic";
+BA_ "GenMsgSendType" BO_ 1976 "cyclic";
+BA_ "GenMsgSendType" BO_ 1984 "cyclic";
+BA_ "GenMsgSendType" BO_ 1992 "cyclic";
+BA_ "GenMsgSendType" BO_ 2000 "cyclic";
+BA_ "GenMsgSendType" BO_ 2008 "cyclic";
+BA_ "GenMsgSendType" BO_ 2016 "cyclic";
+BA_ "GenMsgSendType" BO_ 2024 "cyclic";
+BA_ "GenMsgSendType" BO_ 2032 "cyclic";
+
+VAL_ 256 NodeStatus 0 "PowerOff" 1 "Standby" 2 "Active" 3 "Fault" ;
+VAL_ 256 RunMode 0 "Offline" 1 "Manual" 2 "ATO" 3 "Shunting" 4 "Emergency" ;
+VAL_ 768 Direction 0 "Neutral" 1 "Forward" 2 "Reverse" 3 "Invalid" ;
+VAL_ 1024 Door1State 0 "Closed" 1 "Open" 2 "Fault" 3 "Unknown" ;
+VAL_ 1024 Door2State 0 "Closed" 1 "Open" 2 "Fault" 3 "Unknown" ;
+VAL_ 1024 Door3State 0 "Closed" 1 "Open" 2 "Fault" 3 "Unknown" ;
+VAL_ 1024 Door4State 0 "Closed" 1 "Open" 2 "Fault" 3 "Unknown" ;
+VAL_ 1280 AlarmLevel 0 "Info" 1 "Warning" 2 "Severe" 3 "Emergency" ;
+VAL_ 1920 ChargeState 0 "Idle" 1 "Charging" 2 "Discharging" 3 "Fault" ;
+VAL_ 1928 CompressorState 0 "Off" 1 "Running" 2 "Protected" 3 "Fault" ;
+VAL_ 1936 HeaterState 0 "Off" 1 "On" 2 "Fault" 3 "Reserved" ;
+VAL_ 1944 PisDisplayState 0 "Normal" 1 "Degraded" 2 "Fault" 3 "Unknown" ;
+VAL_ 1952 CabinLightState 0 "Off" 1 "On" 2 "Dimmed" 3 "Fault" ;
+VAL_ 1960 SmokeDetectorState 0 "Normal" 1 "Prealarm" 2 "Alarm" 3 "Fault" ;
+VAL_ 1968 AuxContactorState 0 "Open" 1 "Closed" 2 "Fault" 3 "Unknown" ;
+VAL_ 1976 AtoMode 0 "Idle" 1 "Ready" 2 "Active" 3 "Fault" ;
+VAL_ 1976 DoorReleaseSide 0 "None" 1 "Left" 2 "Right" 3 "Both" ;
+VAL_ 1992 Door5State 0 "Closed" 1 "Open" 2 "Fault" 3 "Unknown" ;
+VAL_ 1992 Door6State 0 "Closed" 1 "Open" 2 "Fault" 3 "Unknown" ;
+VAL_ 1992 Door7State 0 "Closed" 1 "Open" 2 "Fault" 3 "Unknown" ;
+VAL_ 1992 Door8State 0 "Closed" 1 "Open" 2 "Fault" 3 "Unknown" ;
+VAL_ 2032 ChargerState 0 "Idle" 1 "Charging" 2 "Discharging" 3 "Fault" ;

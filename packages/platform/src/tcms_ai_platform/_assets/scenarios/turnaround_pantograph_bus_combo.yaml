@@ -1,0 +1,30 @@
+# 场景 19：真实运维组合 —— 换端折返作业中的信号干扰 + 制动系统维护状态
+# 目的：覆盖既有 13 场景未组合的一类真实运维：列车**站后折返换端**作业中，
+#   受电弓降弓-重新升弓期间网压波动与弓网拉弧风险（pantograph_arc, critical）——
+#   这是折返/出入库最常见的电气运维工况，且与 bus_open_circuit（F-TCMS-018, major, derate）
+#   总线断路叠加：拉弧电磁干扰打到 CAN 总线导致短暂断路，多节点收发异常。
+#   ① bus_open_circuit（major, derate）先出现：换端作业总线断路无 ACK，发送节点 Error-Passive，降级；
+#   ② pantograph_arc（critical, emergency_brake）随后：升弓瞬间网压异常存在拉弧风险，立即紧急制动；
+#   ③ 恢复路径与现场一致：先降弓消弧（arc 缓解），再等总线错误计数器衰减自恢复（断路恢复），
+#      体现 critical 先于 major 恢复的现场处置顺序。
+name: 折返换端弓网拉弧与总线断路运维组合
+desc: 演示故障序列：总线断路、受电弓拉弧风险。
+steps:
+  - at: 1.0
+    inject:
+      node: bus
+      fault: bus_open_circuit
+      level: major
+      impact: 换端作业中总线断路无 ACK，发送节点 TEC 上升至 Error-Passive，链路降级
+      expect: derate
+  - at: 3.0
+    inject:
+      node: pantograph
+      fault: pantograph_arc
+      level: critical
+      impact: 升弓瞬间网压异常，存在弓网拉弧风险，立即紧急制动停车
+      expect: emergency_brake
+  - at: 6.0
+    recover: pantograph_arc
+  - at: 8.0
+    recover: bus_open_circuit

@@ -1,0 +1,29 @@
+# 场景 14：eb_failure 模式变体 —— EB 回路失效在「制动降级运行」背景下复演
+# 目的：eb_failure（F-TCMS-011, critical, emergency_brake）此前仅有单一场景（eb_failure_eb.yaml:
+# 运行中 vcu 注入→15s 简单恢复）。本场景用**不同时间线/节点/恢复路径**再演一次：
+#   制动执行器先卡滞（brake_actuator_stuck, major, derate，降级运行），
+#   随后真正需要紧急制动时才发现 EB 执行回路失效（eb_failure, critical, emergency_brake）——
+#   即「部件故障先于安全功能失效出现」的隐蔽叠加，贴近制动系统两个部件先后失效的真实运维。
+# 恢复路径也不同：eb_failure 经冗余回路投入缓解，brake_actuator_stuck 留待维护复位，
+# 与简单"15s 后全部恢复"的既有场景形成对照。
+name: 制动卡滞下的紧急制动回路失效（EB 模式变体）
+desc: 演示故障序列：制动执行器卡滞、紧急制动执行失败。
+steps:
+  - at: 1.5
+    inject:
+      node: bogie
+      fault: brake_actuator_stuck
+      level: major
+      impact: 制动阀响应迟缓，制动力输出受限，列车降级运行
+      expect: derate
+  - at: 6.0
+    inject:
+      node: bcu
+      fault: eb_failure
+      level: critical
+      impact: 需要紧急制动时 EB 执行回路无压力/无回执（执行反馈三重证据缺失），EB 命令失效
+      expect: emergency_brake
+  - at: 9.0
+    recover: eb_failure
+  - at: 12.5
+    recover: brake_actuator_stuck

@@ -1,0 +1,22 @@
+# 场景扩容 Wave A（无孤儿覆盖）：pantograph_pressure_low, line_voltage_overvoltage
+name: 弓气源压力低与网压过压编排
+desc: 演示故障序列：受电弓气源压力低、网压过压。
+steps:
+- at: 3.0
+  inject:
+    node: pantograph
+    fault: pantograph_pressure_low
+    level: major
+    impact: 升弓气源压力低于维持下限，弓位不稳定风险
+    expect: derate
+- at: 4.5
+  inject:
+    node: pantograph
+    fault: line_voltage_overvoltage
+    level: minor
+    impact: 网压超出上限（绝缘配合风险），受流告警
+    expect: warning
+- at: 10.0
+  recover: pantograph_pressure_low
+- at: 11.5
+  recover: line_voltage_overvoltage

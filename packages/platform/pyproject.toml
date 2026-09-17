@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tcms-ai-platform"
+dynamic = ["version"]
+description = "TCMS × AI 测试平台：列车控制软件测试的本地 Web 应用（资产模型 + 知识底座 + Agent Harness）"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "zych2002918", email = "1612836914@qq.com" }]
+keywords = ["TCMS", "railway", "testing", "AI", "agent", "FastAPI"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "python-can>=4.0",
+    "cantools>=39.0",
+    "pyyaml>=6.0",
+    "numpy>=1.26",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "httpx>=0.27",
+]
+lint = ["ruff>=0.5"]
+# 真实引擎（场景执行/Agent 需要；不装则资产浏览/知识图谱仍可用）
+upstream = [
+    "tcms-can-test @ git+https://github.com/zych2002918/tcms-can-test.git",
+]
+
+[project.scripts]
+tcms-platform = "tcms_ai_platform.server.app:main"
+tcms-platform-doctor = "tcms_ai_platform.cli:doctor"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+packages = [
+    "tcms_ai_platform",
+    "tcms_ai_platform._assets",
+    "tcms_ai_platform._assets.scenarios",
+    "tcms_ai_platform._assets.tests",
+    "tcms_ai_platform.core",
+    "tcms_ai_platform.knowledge",
+    "tcms_ai_platform.agent",
+    "tcms_ai_platform.domain",
+    "tcms_ai_platform.server",
+]
+
+[tool.setuptools.package-data]
+# 内置资产快照随 wheel 分发：新人 clone 即可加载，无需手工配置上游。
+# 键 = 包名，值 = 该包目录内的文件模式。
+"tcms_ai_platform._assets" = ["*.dbc", "*.yaml"]
+"tcms_ai_platform._assets.scenarios" = ["*.yaml"]
+"tcms_ai_platform._assets.tests" = ["*.csv"]
+"tcms_ai_platform.domain" = ["data/*.json", "data/*.yaml"]
+
+[tool.setuptools.dynamic]
+version = { attr = "tcms_ai_platform._version.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+strict_markers = true
+markers = [
+    "smoke: 冒烟——真实资产加载与核心查询快速验证",
+]
+
+[tool.coverage.run]
+source = ["tcms_ai_platform"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 80
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]

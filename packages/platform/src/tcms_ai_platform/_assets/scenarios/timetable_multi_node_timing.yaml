@@ -1,0 +1,50 @@
+# 场景 18：贴近实际时刻表的事件时序 —— 非整数 at、多节点 vcu/bcu/bms 交织、多 level
+# 目的：既有场景时间戳多为整数秒且节点集中；本场景采用**列车运行时刻表驱动**的非整数时序，
+#   模拟一次真实出库-运行-进站作业中三个子系统（vcu 主控 / bcu 制动与车门 / bms 电池管理）
+#   在不同运行阶段先后报出的故障，故障等级从 info 到 critical 全覆盖：
+#   ① 8.4s（出库检查）bms 报 soc_low（info, none）——仅提示，不影响发车；
+#   ② 30.7s（区间运行）vcu 报 speed_sensor_drift（minor, warning）——速度通道轻微漂移告警；
+#   ③ 31.8s 漂移期间 bcu 报 door_fault（major, derate）——车门状态不可信叠加，处置升级为降级；
+#   ④ 34.2s（进站前）door_fault 引发牵引制动冲突（traction_brake_conflict, critical,
+#      emergency_brake）——司机在门故障告警下试图制动，手柄冲突触发 SIL4 紧急制动；
+#   ⑤ 恢复按时刻表阶段逆序：38.5s 冲突缓解 → 41.2s 门状态恢复 → 47.6s 漂移消失 → 48.3s 充电提示解除。
+#   各故障等级不同（info/minor/major/critical），验证台账跨等级混合管理与期望处置逐条断言。
+name: 出库至进站全作业时序故障
+desc: 演示故障序列：SOC 偏低、速度传感器轻微漂移、车门故障（按未关处理）、牵引制动冲突。
+steps:
+  - at: 8.4
+    inject:
+      node: bms
+      fault: soc_low
+      level: info
+      impact: 出库检查发现 SOC 偏低，能源管理提示（不触发处置动作）
+      expect: none
+  - at: 30.7
+    inject:
+      node: vcu
+      fault: speed_sensor_drift
+      level: minor
+      impact: 区间运行中速度信号轻微漂移，2oo3 表决不一致告警
+      expect: warning
+  - at: 31.8
+    inject:
+      node: bcu
+      fault: door_fault
+      level: major
+      impact: 车门状态不可信（按未关处理），禁止发车级降级
+      expect: derate
+  - at: 34.2
+    inject:
+      node: bcu
+      fault: traction_brake_conflict
+      level: critical
+      impact: 门故障告警下列车减速，牵引与制动指令并存，SIL4 联锁触发紧急制动
+      expect: emergency_brake
+  - at: 38.5
+    recover: traction_brake_conflict
+  - at: 41.2
+    recover: door_fault
+  - at: 47.6
+    recover: speed_sensor_drift
+  - at: 48.3
+    recover: soc_low

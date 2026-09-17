@@ -1,0 +1,62 @@
+{
+  "demo": "p4c-judge-crosscheck",
+  "source": "mock_llm",
+  "model": "deepseek-v3.2",
+  "parsed": 7,
+  "rule_quality": 91.4,
+  "judge": {
+    "mean_abs_diff": 3.6,
+    "agreement_rate": 1.0,
+    "cases": [
+      {
+        "name": "test_speed_boundary_reject_1",
+        "rule": 90.0,
+        "llm": 90.0,
+        "diff": 0.0,
+        "reason": "结构完整，场景明确（边界/越界），执行逻辑合理（值200.1超上限200），但covers字段为空。"
+      },
+      {
+        "name": "test_speed_boundary_ok_2",
+        "rule": 100.0,
+        "llm": 85.0,
+        "diff": 15.0,
+        "reason": "结构完整，场景明确（边界/上限），执行逻辑合理（值200.0在范围内），但covers字段为空。"
+      },
+      {
+        "name": "test_door_fault_signal_3",
+        "rule": 90.0,
+        "llm": 90.0,
+        "diff": 0.0,
+        "reason": "结构完整，场景明确（故障），执行逻辑合理（state:2对应Fault），但covers字段为空。"
+      },
+      {
+        "name": "test_fault_speed_sensor_drift_4",
+        "rule": 90.0,
+        "llm": 95.0,
+        "diff": 5.0,
+        "reason": "结构完整，场景明确（故障），covers可追溯（fault字段非空），执行逻辑合理（fault在已知集）。"
+      },
+      {
+        "name": "test_speed_boundary_reject_5",
+        "rule": 90.0,
+        "llm": 90.0,
+        "diff": 0.0,
+        "reason": "结构完整，场景明确（边界/越界），执行逻辑合理（值200.1超上限200），但covers字段为空。"
+      },
+      {
+        "name": "test_door_fault_signal_7",
+        "rule": 90.0,
+        "llm": 90.0,
+        "diff": 0.0,
+        "reason": "结构完整，场景明确（故障），执行逻辑合理（state:2对应Fault），但covers字段为空。"
+      },
+      {
+        "name": "test_fault_eb_failure_8",
+        "rule": 90.0,
+        "llm": 95.0,
+        "diff": 5.0,
+        "reason": "结构完整，场景明确（故障），covers可追溯（fault字段非空），执行逻辑合理（fault在已知集）。"
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-031 traction_converter_overheat (major, derate) — ConvTemp 超限
+name: 牵引变流器过温降功率
+desc: 演示故障序列：牵引变流器过温。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: traction_converter_overheat
+    level: major
+    impact: 变流器温度超限，降功率冷却防止过热跳闸
+    expect: derate
+- at: 11.0
+  recover: traction_converter_overheat

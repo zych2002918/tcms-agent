@@ -1,0 +1,22 @@
+# Agent 评测集（P1-3 golden：诊断与自由目标“行为级回归”）
+#
+# kind: diagnose → 输入无码症状文本；期望 = 候选故障键 any-of 命中（recall），
+#              或 expect_no_match=true（诚实不硬答，且不允许编造）。
+# kind: free    → 输入自由目标；期望 = 解析出 fault + 期望处置 action，
+#              或 expect_no_match=true（NoFaultMatch 引导）。
+# 诚实口径：期望键/处置全部来自真实故障字典；本表与检索 golden 一样是“防回退门禁”。
+schema_version: 1
+tasks:
+  - {kind: diagnose, q: 仪表盘闪烁但无故障码, expect_faults: [aux_24v_undervoltage, aux_capacitor_aging]}
+  - {kind: diagnose, q: SOC 跳变, expect_faults: [battery_soc_jump, bms_current_sensor_drift]}
+  - {kind: diagnose, q: 开门到位灯闪, expect_faults: [door_sensor_noise]}
+  - {kind: diagnose, q: 网络时断时续, expect_faults: [crc_error_frame, bus_noise_burst, bit_flip_frame]}
+  - {kind: diagnose, q: 客室灯组频闪, expect_faults: [cabin_light_flicker]}
+  - {kind: diagnose, q: 速度瞬时归零, expect_faults: [speed_signal_loss, speed_pulse_intermittent_loss]}
+  - {kind: diagnose, q: 报警音误响, expect_faults: [fire_detector_contamination, fire_detector_loop_open, brake_park_auto_apply_unexpected]}
+  - {kind: diagnose, q: 车厢地板漏水了, expect_no_match: true}
+  - {kind: free, q: 车门故障了不能发车, expect_fault: door_fault, expect_action: derate}
+  - {kind: free, q: 验证超速降级, expect_fault: overspeed, expect_action: derate}
+  - {kind: free, q: VCU 心跳丢失怎么处置, expect_fault: heartbeat_loss_vcu, expect_action: derate}
+  - {kind: free, q: 紧急制动执行失败, expect_fault: eb_failure, expect_action: emergency_brake}
+  - {kind: free, q: 今天天气怎么样, expect_no_match: true}

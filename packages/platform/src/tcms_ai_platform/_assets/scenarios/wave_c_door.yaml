@@ -1,0 +1,49 @@
+# 场景扩容 Wave C（无孤儿覆盖）：door_emergency_release_fault, door_seal_damage, door_open_timeout_passenger, door_reverse_drive_fault, door_control_button_stuck
+name: 紧急解锁·胶条·开门超时·防夹失控·按钮卡滞编排
+desc: 演示故障序列：车门紧急解锁故障、车门胶条破损、开门到位超时、门机防夹反向失控、门控按钮卡滞。
+steps:
+- at: 3.0
+  inject:
+    node: bogie
+    fault: door_emergency_release_fault
+    level: major
+    impact: 紧急解锁装置自检/操作异常，应急通道受影响
+    expect: warning
+- at: 4.5
+  inject:
+    node: bogie
+    fault: door_seal_damage
+    level: minor
+    impact: 门胶条破损/密封差（风雨噪声）预维
+    expect: warning
+- at: 6.0
+  inject:
+    node: bogie
+    fault: door_open_timeout_passenger
+    level: major
+    impact: 开门指令后到位超时（客流/机构原因）
+    expect: warning
+- at: 7.5
+  inject:
+    node: bogie
+    fault: door_reverse_drive_fault
+    level: major
+    impact: 门机防夹反向动作异常（夹人风险）
+    expect: derate
+- at: 9.0
+  inject:
+    node: bogie
+    fault: door_control_button_stuck
+    level: minor
+    impact: 门内外操作按钮卡滞导致误触发
+    expect: warning
+- at: 10.0
+  recover: door_emergency_release_fault
+- at: 11.5
+  recover: door_seal_damage
+- at: 13.0
+  recover: door_open_timeout_passenger
+- at: 14.5
+  recover: door_reverse_drive_fault
+- at: 16.0
+  recover: door_control_button_stuck

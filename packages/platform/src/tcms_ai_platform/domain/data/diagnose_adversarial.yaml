@@ -1,0 +1,144 @@
+# P1-3 失败样本对抗集（diagnose 第二道门禁：诚实与不发明的机器锁）
+#
+# 用途：与 agent_golden.yaml（全正向）互补——锁住"什么输入系统必须诚实说
+# 不知道 / 不发明 / 不错域"。任何诊断改动（检索/闸门/因果/置信度）都以本集
+# 为回归，防止"正向样例调好了、负向漂移"。
+#
+# 字段：
+#   q        对抗输入
+#   category  同域易混(A) / 跨域近义(B) / 干扰词与胡话(C/D)
+#   expect_no_match  true → 必须诚实 no_match + 零候选 + 带"补充/把握"引导
+#   或 symptom: key → 必须命中该症状资产，且候选域 ⊆ 症状声明域（不得错域）
+#   note      该条目为何被锁 / 修复记录（"先证会错再修"纪律：打 [P1-3-fix]
+#             的条目在修复前实测会误匹配/错域，属回归修复证据，非橡皮图章）
+
+queries:
+  # ---- A 同域多候选易混句：命中正确症状、候选域不越界、不发明 ----
+  - q: 仪表盘闪了几下又好了，但没故障码
+    category: A
+    symptom: dashboard_flicker
+    note: 同域多候选（aux/network）易混；要求命中 dashboard_flicker 且候选域 ⊆ {aux,network}
+  - q: 显示屏老是闪
+    category: A
+    symptom: dashboard_flicker
+    note: 口语近义（显示屏≈仪表盘）不落空、不错域
+  - q: 客室灯组频闪
+    category: A
+    symptom: cabin_light_strobe
+    note: 域词“客室”不把 light 症状隔出召回面
+  - q: 车厢里的灯一闪一闪的
+    category: A
+    symptom: lamp_flicker
+    note: 车辆框架词（车厢）不应压过现象词（灯闪）召回
+  - q: 灯一直在闪
+    category: A
+    symptom: lamp_flicker
+    note: 极短别名仍可召回
+  - q: 速度表一直跳
+    category: A
+    symptom: speed_zero_drop
+    note: 同域易混（跳→速度/时钟），必须路由到速度症状而非时间症状
+  - q: 制动的时候仪表盘闪灯
+    category: A
+    symptom: brake_light_abnormal
+    note: 工况词“制动”干扰；要求命中制动灯异常
+  - q: 司机台屏幕黑屏
+    category: B
+    symptom: hmi_blank
+    note: 黑屏近义召回
+
+  # ---- B 跨域近义句：含他域词也不得错域 / 不发明 ----
+  - q: 车门没关好，仪表盘就开始闪灯报警
+    category: B
+    symptom: dashboard_flicker
+    note: 含 door 域词（车门）仍须命中仪表症状；候选域 ⊆ {aux,network}，不许漏到 door
+  - q: 受电弓一升降，司机台灯就闪
+    category: B
+    symptom: lamp_flicker
+    note: 含 pantograph 域词（受电弓）仍须命中灯症状（aux/light），不臆造弓网故障
+  - q: 仪表盘时间一直跳
+    category: B
+    symptom: clock_jump
+    note: “仪表盘”干扰词不得压过“时间跳”（network 时钟症状）
+  - q: 车尾灯不亮
+    category: B
+    symptom: brake_light_abnormal
+    note: 现象词变体（不亮 vs 闪/常亮）仍须命中制动灯症状，不发明
+  - q: 制动灯常亮
+    category: B
+    symptom: brake_light_abnormal
+    note: 同上（常亮变体）
+  # 注：同动词跨症状的语义级消歧（如“车速显示一直跳” vs 时间跳变）属
+  # P0-2 真语义通道的增益范围，不以字符闸门强锁（避免橡皮图章或误伤）。
+
+  # ---- C 干扰词无码症状：含"故障/报警/检测"词也不得从 no_match 变发明 ----
+  - q: 系统报警说有个故障，我也不知道哪坏了
+    category: C
+    expect_no_match: true
+    note: 全是通用/干扰词，无具体现象 → 诚实 no_match
+  - q: 检测到告警，请帮我分析分析
+    category: C
+    expect_no_match: true
+    note: 同上
+  - q: 麻烦看看这个报警信息
+    category: C
+    expect_no_match: true
+    note: 同上
+  - q: 列车地板漏水了
+    category: C
+    expect_no_match: true
+    note: 修复条目(P1-3-fix)：修复前因向量文档模板含"疑似候选故障：列车级时间同步丢失"，使"列车"两字蹭过共享字闸门误中 clock_jump(network)，错域且不诚实；修复=共享字闸门只对症状本体计数并剔除车辆框架字
+  - q: 车厢地板漏水了
+    category: C
+    expect_no_match: true
+    note: 域外语义（地板漏水不在 12 症状资产）→ 补充引导，不硬答
+  - q: 车底有积水
+    category: C
+    expect_no_match: true
+    note: 同上（不在症状资产）
+  - q: 车轮有异响
+    category: C
+    expect_no_match: true
+    note: 异响不在症状资产 → no_match + 补充
+  - q: 门没关严
+    category: C
+    expect_no_match: true
+    note: 物理门状态不在症状资产（目录只建模指示类）→ 诚实 no_match，不硬套 door
+  - q: 空调面板闪烁但能正常制冷
+    category: C
+    expect_no_match: true
+    note: 症状资产覆盖外 → 需补充（部位/工况），不发明
+  - q: 烟感器报警响了
+    category: C
+    expect_no_match: true
+    note: 探测器实际报警≠目录中“无对应条件误报警音”；诚实 no_match 引导补充条件
+
+  # ---- D 空白与胡话：必须 no_match，绝不出候选 ----
+  - q: ""
+    category: D
+    expect_no_match: true
+    note: 空白输入
+  - q: "   "
+    category: D
+    expect_no_match: true
+    note: 纯空白
+  - q: 哈哈哈哈哈哈
+    category: D
+    expect_no_match: true
+    note: 胡话
+  - q: asdf qwer 12345
+    category: D
+    expect_no_match: true
+    note: 非 TCMS 内容
+  - q: 今天天气不错
+    category: D
+    expect_no_match: true
+    note: 域外闲聊
+  - q: 这列车整体都正常吧
+    category: D
+    expect_no_match: true
+    note: 修复条目(P1-3-fix)：修复前仅"列车"两字即误中 clock_jump，把"正常废话"当故障
+  - q: 列车系统状态都好吗
+    category: D
+    expect_no_match: true
+    note: 修复条目(P1-3-fix)：修复前同"列车地板漏水"根因（车辆框架字计入闸门），误中 network

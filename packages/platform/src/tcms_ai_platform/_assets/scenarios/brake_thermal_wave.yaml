@@ -1,0 +1,31 @@
+# 场景扩容 Wave A（无孤儿覆盖）：brake_disc_temp_high, brake_pressure_fluctuation, brake_hold_not_released
+name: 制动热负荷族编排（盘温·压力波动·停放制动）
+desc: 演示故障序列：制动盘温度过高、制动压力波动、停放制动未缓解。
+steps:
+- at: 3.0
+  inject:
+    node: bcu
+    fault: brake_disc_temp_high
+    level: major
+    impact: 连续制动后盘温超限（热衰退风险），限速冷却
+    expect: derate
+- at: 4.5
+  inject:
+    node: bcu
+    fault: brake_pressure_fluctuation
+    level: minor
+    impact: 制动缸压力低频振荡（管路气阻/阀抖动）
+    expect: warning
+- at: 6.0
+  inject:
+    node: bcu
+    fault: brake_hold_not_released
+    level: major
+    impact: 发车前停放制动仍施加（未缓解），牵引受阻
+    expect: derate
+- at: 10.0
+  recover: brake_disc_temp_high
+- at: 11.5
+  recover: brake_pressure_fluctuation
+- at: 13.0
+  recover: brake_hold_not_released

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TCMS × AI 测试平台</title>
+    <!-- 主题防闪：首帧同步读取 localStorage（无值则跟随系统 prefers-color-scheme） -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("tcms-theme");
+          if (t !== "light" && t !== "dark") {
+            t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+          }
+          document.documentElement.classList.add("theme-" + t);
+          document.documentElement.dataset.theme = t;
+        } catch (e) {
+          document.documentElement.classList.add("theme-dark");
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-CIRAHO5N.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-HXr63PO0.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

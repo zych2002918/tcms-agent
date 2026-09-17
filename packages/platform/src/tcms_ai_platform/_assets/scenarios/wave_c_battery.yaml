@@ -1,0 +1,49 @@
+# 场景扩容 Wave C（无孤儿覆盖）：battery_soc_jump, bms_current_sensor_drift, battery_heater_fail, bms_contact_precheck_fail, battery_module_temp_uneven
+name: SOC 跳变·电流采样漂移·加热器失效编排
+desc: 演示故障序列：SOC 估算跳变、BMS 电流采样漂移、电池加热器失效、BMS 合闸前检查失败、电池模组温差超限。
+steps:
+- at: 3.0
+  inject:
+    node: bms
+    fault: battery_soc_jump
+    level: minor
+    impact: SOC 瞬时跳变（电流采样/估算异常）
+    expect: warning
+- at: 4.5
+  inject:
+    node: bms
+    fault: bms_current_sensor_drift
+    level: minor
+    impact: 电流采样漂移，电量估算偏差
+    expect: warning
+- at: 6.0
+  inject:
+    node: bms
+    fault: battery_heater_fail
+    level: minor
+    impact: 低温加热器失效，低温性能下降
+    expect: warning
+- at: 7.5
+  inject:
+    node: bms
+    fault: bms_contact_precheck_fail
+    level: major
+    impact: 主接触器合闸前回检失败（粘连/绝缘）
+    expect: derate
+- at: 9.0
+  inject:
+    node: bms
+    fault: battery_module_temp_uneven
+    level: minor
+    impact: 电池模组间温差超限（散热不均）
+    expect: warning
+- at: 10.0
+  recover: battery_soc_jump
+- at: 11.5
+  recover: bms_current_sensor_drift
+- at: 13.0
+  recover: battery_heater_fail
+- at: 14.5
+  recover: bms_contact_precheck_fail
+- at: 16.0
+  recover: battery_module_temp_uneven

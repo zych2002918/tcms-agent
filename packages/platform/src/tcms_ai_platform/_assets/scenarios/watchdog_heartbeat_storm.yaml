@@ -1,0 +1,14 @@
+# 场景 6：节点重启风暴 —— 心跳反复丢失，看门狗健康表持续翻转
+# F-TCMS-010 node_restart_storm (major, derate)
+name: 节点重启风暴
+desc: 演示故障序列：节点重启风暴。
+steps:
+  - at: 2.0
+    inject:
+      node: vcu
+      fault: node_restart_storm
+      level: major
+      impact: VCU 反复复位，心跳周期性中断，健康表 fault/active 翻转
+      expect: derate
+  - at: 9.0
+    recover: node_restart_storm

@@ -1,0 +1,31 @@
+# 场景扩容 Wave B（无孤儿覆盖）：door_lock_fail, door_open_permit_loss, door_obstacle_reopen_cycle
+name: 门锁·开门许可·防夹重开编排
+desc: 演示故障序列：车门锁机构故障、开门许可丢失、车门防夹反复触发。
+steps:
+- at: 3.0
+  inject:
+    node: bogie
+    fault: door_lock_fail
+    level: major
+    impact: 门锁未到位/机构故障，按未关处理禁止发车
+    expect: derate
+- at: 4.5
+  inject:
+    node: bogie
+    fault: door_open_permit_loss
+    level: major
+    impact: 到站开门许可未发出/丢失，服务性开门失败
+    expect: warning
+- at: 6.0
+  inject:
+    node: bogie
+    fault: door_obstacle_reopen_cycle
+    level: minor
+    impact: 关门多次触发防夹重开（障碍物/灵敏度），运营效率下降
+    expect: warning
+- at: 10.0
+  recover: door_lock_fail
+- at: 11.5
+  recover: door_open_permit_loss
+- at: 13.0
+  recover: door_obstacle_reopen_cycle

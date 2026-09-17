@@ -1,0 +1,425 @@
+{
+  "ebm": {
+    "source_module": "tcms.ebm",
+    "module_purpose": "紧急制动管理：驾驶模式 × 制动原因 × 处置矩阵 + 缓解/复位闭环，对标真实 TCMS 的『紧急制动原因表』",
+    "modes": [
+      {
+        "enum": "FAM",
+        "zh": "全自动（ATO 驾驶）",
+        "chain_index": 0
+      },
+      {
+        "enum": "CM",
+        "zh": "受控人工（ATP 防护下人工驾驶）",
+        "chain_index": 1
+      },
+      {
+        "enum": "RM",
+        "zh": "限制人工（低限速人工驾驶）",
+        "chain_index": 2
+      }
+    ],
+    "valid_modes": ["FAM", "CM", "RM"],
+    "degradation_chain": {
+      "chain": ["FAM", "CM", "RM"],
+      "zh": "降级链 FAM→CM→RM",
+      "rule": "set_mode 仅允许沿降级链单步迁移（|index差|=1），禁止跳级（如 RM→FAM 直接恢复全自动）；故障驱动的模式降级（ATO 故障 FAM→CM、ATP 故障→RM）由系统强制，属安全降级链，不受人工单步迁移限制"
+    },
+    "state_machine": {
+      "states": [
+        {
+          "enum": "IDLE",
+          "zh": "空闲（无紧急制动）"
+        },
+        {
+          "enum": "BRAKE",
+          "zh": "紧急制动已触发/施加中"
+        },
+        {
+          "enum": "RELEASED",
+          "zh": "已缓解（零速且原因消失后从 BRAKE 迁移来），等待复位"
+        },
+        {
+          "enum": "FAULT",
+          "zh": "故障（自愈超限），需远程/人工复位"
+        },
+        {
+          "enum": "WAIT_HANDLE_ZERO",
+          "zh": "已停车，等待司机手柄回零（司机缓解序列第一步）"
+        },
+        {
+          "enum": "WAIT_RELEASE_BTN",
+          "zh": "手柄已回零，等待缓解按钮保持（司机缓解序列第二步，可重试）"
+        }
+      ],
+      "valid_states": ["IDLE", "BRAKE", "RELEASED", "FAULT", "WAIT_HANDLE_ZERO", "WAIT_RELEASE_BTN"],
+      "transitions": [
+        "IDLE ──trigger(适用原因)──▶ BRAKE",
+        "BRAKE ──零速且原因消失──▶ RELEASED",
+        "RELEASED ──reset──▶ IDLE",
+        "BRAKE ──self_heal(次数内)──▶ IDLE",
+        "self_heal 超限 ──▶ FAULT ──远程 reset──▶ IDLE",
+        "trigger(不适用原因)：不迁移状态，仅记录提示(record_only)",
+        "BRAKE ──prepare_release(手柄回零)──▶ WAIT_HANDLE_ZERO",
+        "WAIT_HANDLE_ZERO ──hold_release_button(保持不足)──▶ WAIT_RELEASE_BTN（可重试）",
+        "WAIT_HANDLE_ZERO / WAIT_RELEASE_BTN ──hold_release_button(≥RELEASE_HOLD_S)──▶ IDLE"
+      ]
+    },
+    "key_constants": {
+      "zero_speed_threshold_kmh": 0.5,
+      "zero_speed_threshold_note": "零速判定阈值默认值（km/h），构造函数参数，EBM 与 bypass 一致",
+      "MAX_SELF_HEAL": 1,
+      "MAX_SELF_HEAL_zh": "自愈复位次数上限，超限之后需远程/人工复位",
+      "RELEASE_HOLD_S": 3.0,
+      "RELEASE_HOLD_S_zh": "司机缓解按钮需保持的最短时长（秒）"
+    },
+    "reasons_matrix": [
+      {
+        "reason": "overspeed",
+        "applies_modes": ["FAM", "CM", "RM"],
+        "action": "emergency_brake",
+        "mode_change": null,
+        "sil": 4,
+        "severity": "SIL4（任一通道触发即制动，故障安全）",
+        "description": "超速（超过允许限速）"
+      },
+      {
+        "reason": "door_open",
+        "applies_modes": ["FAM", "CM"],
+        "action": "emergency_brake",
+        "mode_change": null,
+        "sil": 4,
+        "severity": "SIL4",
+        "description": "运行中车门打开"
+      },
+      {
+        "reason": "ato_fault",
+        "applies_modes": ["FAM"],
+        "action": "emergency_brake+mode_cm",
+        "mode_change": "CM",
+        "sil": 2,
+        "severity": "SIL2（双通道一致才制动，防误报）",
+        "description": "ATO 故障 → 降级 CM"
+      },
+      {
+        "reason": "atp_fault",
+        "applies_modes": ["FAM", "CM"],
+        "action": "emergency_brake+mode_rm",
+        "mode_change": "RM",
+        "sil": 4,
+        "severity": "SIL4",
+        "description": "ATP 故障 → 降级 RM"
+      },
+      {
+        "reason": "obstacle",
+        "applies_modes": ["FAM", "CM"],
+        "action": "emergency_brake",
+        "mode_change": null,
+        "sil": 4,
+        "severity": "SIL4",
+        "description": "检测到障碍物"
+      },
+      {
+        "reason": "fire_alarm",
+        "applies_modes": ["FAM", "CM", "RM"],
+        "action": "emergency_brake",
+        "mode_change": null,
+        "sil": 2,
+        "severity": "SIL2",
+        "description": "火灾报警"
+      },
+      {
+        "reason": "maintenance_sw",
+        "applies_modes": ["FAM", "CM", "RM"],
+        "action": "emergency_brake",
+        "mode_change": null,
+        "sil": 4,
+        "severity": "SIL4",
+        "description": "维护开关动作"
+      },
+      {
+        "reason": "hardwire_loss",
+        "applies_modes": ["FAM", "CM", "RM"],
+        "action": "emergency_brake",
+        "mode_change": null,
+        "sil": 4,
+        "severity": "SIL4",
+        "description": "CAN 网络故障 → 硬线备份"
+      }
+    ],
+    "decision_rules": {
+      "matrix_lookup": "trigger(reason) 按『模式×原因』查表：原因 mode 不在当前驾驶模式 modes 元组内 → 只记录提示（action=record_only, applied=False），不误制动；适用 → 置 BRAKE，必要时按 action 中 mode_<目标> 强制降级模式",
+      "reason_not_in_table": "trigger 遇未知 reason 抛 ValueError",
+      "invalid_mode_on_init_set": "未知驾驶模式抛 ValueError（合法值 FAM/CM/RM）"
+    },
+    "mitigation_conditions": {
+      "release_condition": "缓解评估（release_condition）：零速（speed_valid 且 speed_kmh <= zero_speed_threshold_kmh=0.5）且全部已触发原因消失（_active_reasons 全为 False）；状态为 BRAKE 时满足则迁移 RELEASED。speed_valid=False（速度传感器失效）时禁止缓解——速度按 0 喂入不构成缓解依据（对标真实 EBR：缓解必须依赖有效速度信号）",
+      "self_heal_prereq": "自愈/复位安全前提（_release_prereq）：速度有效且零速 + 全部原因真实消失；给定 speed_kmh 时执行『运行中禁止自动解除制动』校验，不满足返回 False/抛 ValueError；不传 speed_kmh 视为系统确认停车场景（强自愈）",
+      "self_heal_behavior": "自愈：_self_heal_used >= MAX_SELF_HEAL(1) 时置 FAULT 返回 False；否则计数+1、全部原因视为恢复、回 IDLE",
+      "reset_behavior": "reset：运行中（给定速度且前提不满足）抛 ValueError『远程复位安全前提不满足：需零速且全部制动原因消失』；满足则清除全部原因、恢复自愈能力（_self_heal_used=0）、回 IDLE",
+      "driver_release_sequence": "司机缓解两步序列：① prepare_release：须处于 BRAKE、零速（给定速度时）、全部原因消失、手柄位置必须为 0，成功进 WAIT_HANDLE_ZERO；② hold_release_button(seconds)：保持 ≥ RELEASE_HOLD_S=3.0s 成功（EBR 回路重新得电）回 IDLE，保持不足进 WAIT_RELEASE_BTN 可重试，状态不对返回 False"
+    },
+    "safety_voting": {
+      "rule": "按 SIL 等级区分双通道表决策略：SIL4（sil>=4，如 overspeed/atp_fault）任一通道触发即制动 channel_a or channel_b（故障安全，宁可错杀不可漏放）；SIL2（如 ato_fault/fire_alarm）双通道一致才制动 channel_a and channel_b（防误报，避免偶发噪声导致无谓紧急制动）",
+      "mismatch_diagnosis": "SIL2 两通道不一致时累计 vote_mismatches 计数（2oo2 表决不一致 → 通道失效诊断指标，供维护定位传感器故障）",
+      "safety_verification": "safety_verification(reason) 返回 REASONS[reason]['sil']>=4 即该原因是否需要双通道一致验证"
+    }
+  },
+  "atp": {
+    "source_module": "tcms.atp",
+    "module_purpose": "超速监督与动态 EBI 曲线（ATP 速度监督）——对标真实列控 ATP（如 ETCS SRS）的 Warning/SBI/EBI 三级监督",
+    "supervision_levels": [
+      {
+        "enum": "none",
+        "zh": "未超速",
+        "relation": "speed_kmh <= warning 阈值"
+      },
+      {
+        "enum": "warning",
+        "zh": "告警（提示司机接近限速）",
+        "relation": "speed_kmh > warning 阈值"
+      },
+      {
+        "enum": "sbi",
+        "zh": "常用制动干预（Service Brake Intervention）",
+        "relation": "speed_kmh > sbi 阈值"
+      },
+      {
+        "enum": "ebi",
+        "zh": "紧急制动干预（Emergency Brake Intervention）",
+        "relation": "speed_kmh > ebi 阈值"
+      }
+    ],
+    "threshold_constants": {
+      "default_limit_kmh": 160.0,
+      "default_limit_zh": "默认线路限速（km/h）",
+      "warning_offset_kmh": 5.0,
+      "warning_offset_zh": "告警阈值 = 限速 - 5",
+      "sbi_offset_kmh": 2.0,
+      "sbi_offset_zh": "SBI 阈值 = 限速 - 2",
+      "ebi_offset_kmh": 0.0,
+      "ebi_offset_zh": "EBI 阈值 = 限速（超速即紧急制动）"
+    },
+    "threshold_math": {
+      "warning_threshold": "limit - warning_offset",
+      "sbi_threshold": "limit - sbi_offset",
+      "ebi_threshold": "limit - ebi_offset",
+      "example": "限速 160：>155 → warning；>158 → sbi；>160 → ebi（evaluate 从高到低判，首个命中即返回）",
+      "speed_invalid": "speed_valid=False 时 evaluate 返回 none（不误判）"
+    },
+    "design_principle": "监督等级递进 Warning < SBI < EBI，间距可配置；EBI 是安全底线，任何模式下都不可被覆盖（对齐 EBM 的 CRITICAL 处置）",
+    "dynamic_ebi_curve": {
+      "model": "目标点限速模型：列车距目标点距离 d 处的允许速度 = target_speed + approach_slope * d，允许速度随距离线性逼近目标速度（越靠近目标允许速度越低）",
+      "slope_formula": "approach_slope = (current_speed_kmh - target_speed_kmh) / brake_distance_m",
+      "constraints": [
+        "brake_distance_m 必须 > 0（否则 ValueError）",
+        "current_speed_kmh 必须 ≥ target_speed_kmh（否则 ValueError）",
+        "allowed_at 要求 distance_m ≥ 0（否则 ValueError），返回值上限 min(allowed, current)（上限为当前允许速度）"
+      ],
+      "key_methods": {
+        "allowed_at": "allowed_at(distance_m)：该点允许速度 = target + slope*d，上限 current",
+        "is_overspeed": "is_overspeed(speed, distance)：speed > allowed_at(distance) 即超 EBI",
+        "braking_point": "braking_point(speed)：EBI 触发点距离 d=(speed-target)/slope；speed<=target 时返回 0.0"
+      },
+      "example": "DynamicEbiCurve(target=30, current=120, brake_distance=800)：斜率=(120-30)/800=0.1125 km/h/m，距离 400m 处允许速度 = 30+0.1125*400 = 75 km/h"
+    }
+  },
+  "interlocks": [
+    {
+      "id": "ILK-DOOR-MOTION",
+      "name": "门-车联锁（door_motion_conflict）",
+      "rule": "列车移动时，任一车门处于打开或故障状态即违规",
+      "condition": "moving = speed_valid 且 speed_kmh > MOTION_THRESHOLD_KMH(0.5)；门状态枚举（DOOR_STATE）：1=Open、2=Fault",
+      "consequence": "返回 (True, 'door_open_while_moving') 或 (True, 'door_fault_while_moving')；安全原则：故障门按未关闭处理，故障与打开同判违规"
+    },
+    {
+      "id": "ILK-OVERSPEED",
+      "name": "超速判定（overspeed_trigger）",
+      "rule": "有效速度超过限速即触发超速（不含等于）",
+      "condition": "speed_valid 且 speed_kmh > limit；limit 默认 proto.OVERSPEED_LIMIT_KMH = 160.0（km/h）",
+      "consequence": "返回 True（超速）。该限速常量同 atp.DEFAULT_LIMIT_KMH，与 protocol 超速报警阈值一致"
+    },
+    {
+      "id": "ILK-EB-DECISION",
+      "name": "紧急制动决策（emergency_brake_decision）",
+      "rule": "超速 或 门联锁冲突 时触发紧急制动",
+      "condition": "overspeed_flag or door_conflict 任一为真",
+      "consequence": "返回 True → 触发紧急制动请求"
+    },
+    {
+      "id": "ILK-PANTOGRAPH-ARC",
+      "name": "受电弓拉弧风险（pantograph_arc_risk）",
+      "rule": "弓升（pantograph_up 为真）但接触网电压异常（过低/过高）存在拉弧风险",
+      "condition": "弓升 且 line_voltage < 19000 V → 'line_voltage_low_with_pantograph_up'；弓升 且 line_voltage > 31000 V → 'line_voltage_high_with_pantograph_up'（接触网标称约 25kV/DC，阈值即真实弓网电压上下限）",
+      "consequence": "返回 (True, 具体原因)；弓未升起返回 (False, '')"
+    },
+    {
+      "id": "ILK-SOC-LOW",
+      "name": "能源联锁（soc_low_charge_guard）",
+      "rule": "SOC 过低且未充电时提示（非安全违规，降级运行信号）",
+      "condition": "soc_percent < 10 且 charging=False",
+      "consequence": "返回 (True, 'soc_critical_not_charging')"
+    },
+    {
+      "id": "ILK-TRACTION-BRAKE",
+      "name": "牵引-制动互锁（traction_brake_conflict）",
+      "rule": "手柄在牵引位且同时存在制动请求 → 冲突（危及安全）；牵引与制动同时施加会损坏机械/导致失控，必须互锁",
+      "condition": "traction_request = handle_position > 0；traction_request 且 brake_request → 'traction_brake_conflict'；traction_request 且 not traction_allowed → 'traction_not_allowed'",
+      "consequence": "返回 (True, 具体原因)；手柄位置 >0 视为牵引请求"
+    },
+    {
+      "id": "ILK-DIRECTION-SPEED",
+      "name": "方向-速度联动（direction_speed_conflict）",
+      "rule": "方向为 Neutral(0)/Invalid(3) 时不允许有非零速度（未选方向却移动=危险）；方向信号与速度符号必须一致",
+      "condition": "direction in (0,3) 且 speed_kmh > MOTION_THRESHOLD_KMH(0.5) → 'direction_neutral_with_motion'；direction 不在 (0,1,2,3) → 'invalid_direction'；DIRECTION 枚举：0=Neutral、1=Forward、2=Reverse、3=Invalid",
+      "consequence": "返回 (True, 具体原因)"
+    },
+    {
+      "id": "ILK-PLATFORM-DOOR",
+      "name": "车门-站台联动（platform_door_release）",
+      "rule": "站台侧门释放必须满足『零速 + 站台对准』；列车未停稳或未对准站台时禁止释放站台侧门（防坠落/挤伤）",
+      "condition": "speed_kmh > zero_speed_threshold(默认 MOTION_THRESHOLD_KMH=0.5) 且 platform_aligned=True → 'platform_door_release_moving'",
+      "consequence": "返回 (True, 'platform_door_release_moving')"
+    }
+  ],
+  "voting": {
+    "source_module": "tcms.voting",
+    "module_purpose": "2oo3 速度表决（Two-out-of-Three）——对标真实列控的速度传感器冗余（雷达/测速电机/多普勒）",
+    "mechanism": "三个通道中至少两个一致（容差内）才采信该速度，容忍单通道故障；低于 2 个通道一致 → 速度无效（触发降级/紧急制动决策）",
+    "channels": {
+      "CH_A": 0,
+      "CH_B": 1,
+      "CH_C": 2,
+      "valid_channels": [0, 1, 2]
+    },
+    "tolerance": {
+      "VOTE_TOLERANCE_KMH": 2.0,
+      "zh": "两通道读数差 ≤ 该值视为『一致』（km/h）"
+    },
+    "result_states": [
+      {
+        "enum": "valid",
+        "zh": "≥2 通道一致，输出多数速度"
+      },
+      {
+        "enum": "divergent",
+        "zh": "无 2 通道一致，速度无效"
+      },
+      {
+        "enum": "failed",
+        "zh": "通道故障数 ≥2，表决器失效"
+      }
+    ],
+    "architecture_logic": {
+      "2oo3": "健康通道 ≥3：标准三通道表决，容差内找两两一致组，命中即输出两读数均值并返回 valid",
+      "2oo2": "健康通道 ==2（单通道故障自动降级 2oo2 继续服务，容错演进）：两通道必须容差内一致才采信（降级后失去多数仲裁，一致性要求更严格，防单通道残余误差污染），不一致 → divergent",
+      "failed": "健康通道 <2：表决器失效，返回 (False, 0.0, failed)"
+    },
+    "fault_handling": {
+      "mark_faulty": "标记故障通道；首次故障（健康通道降到 2）计一次降级事件 degrade_events+1（真实列控此时降级 2oo2 并提示维护，而不是直接失效）；重复标记幂等",
+      "clear_fault": "清除故障标记；恢复 3 通道时计一次恢复事件 degrade_events+1",
+      "vote_input_rule": "vote(speeds) 要求恰好 3 个读数否则 ValueError；故障通道读数忽略"
+    },
+    "design_principle": "表决冗余度与安全等级挂钩——2oo3 容忍单通道漂移/失效且不因单一通道噪声误判（防误报），符合 SIL2『多数一致才动作』思想，与 EBM 的 SIL2 双通道一致决策呼应"
+  },
+  "exec_feedback": {
+    "source_module": "tcms.exec_feedback",
+    "module_purpose": "EB 执行反馈闭环：紧急制动『决策』到『执行』的可信验证。EBM 发出紧急制动请求只是决策，制动是否真正施加、牵引是否真正切除必须由执行层反馈闭环确认，否则『决策正确』无法推导出『列车已安全停车』",
+    "triple_evidence": [
+      {
+        "evidence": "pressure",
+        "signal": "制动缸压力 BrakeSystem.BrakeCylinderPressure（DBC 标定 0.1 kPa/LSB）",
+        "confirmation": "请求后在时限内压力达到施加阈值 PRESSURE_APPLIED_KPA=300.0 kPa 才算制动施加；缓解需压力回落到释放阈值 PRESSURE_RELEASED_KPA=50.0 kPa 以下才算真正缓解完成"
+      },
+      {
+        "evidence": "eb_active",
+        "signal": "紧急制动激活标志 BrakeSystem.EmergencyBrakeActive（BCU 的确认回执）",
+        "confirmation": "PENDING 中回执置位即标记确认；回执缺失视为无确认（由 evaluate 超时兜底判 FAULT）"
+      },
+      {
+        "evidence": "traction_off",
+        "signal": "牵引切除联锁（牵引状态）",
+        "confirmation": "执行确认要求牵引保持切除；APPLIED 期间牵引恢复 = 联锁违背（边制动边牵引）→ 立即 FAULT"
+      }
+    ],
+    "key_constants": {
+      "FEEDBACK_TIMEOUT_S": 2.0,
+      "FEEDBACK_TIMEOUT_zh": "EB 请求后等待执行反馈的最长时限（秒）",
+      "PRESSURE_APPLIED_KPA": 300.0,
+      "PRESSURE_APPLIED_zh": "判定制动已施加的制动缸压力阈值（kPa）",
+      "PRESSURE_RELEASED_KPA": 50.0,
+      "PRESSURE_RELEASED_zh": "判定制动已缓解的压力上限（kPa）",
+      "ctor_validation": "timeout_s 必须为正；released_kpa 必须 < applied_kpa（否则 ValueError）"
+    },
+    "state_machine": {
+      "states": [
+        { "enum": "IDLE", "zh": "空闲，无 EB 请求" },
+        { "enum": "PENDING", "zh": "EB 已请求，等待执行反馈" },
+        { "enum": "APPLIED", "zh": "压力到位 + 回执 + 牵引切除，执行确认" },
+        { "enum": "FEEDBACK_FAULT", "zh": "超时/联锁违背/回执缺失：执行层失效" }
+      ],
+      "transitions": [
+        "IDLE ──request_eb──▶ PENDING",
+        "PENDING ──压力达标+回执+牵引切除──▶ APPLIED",
+        "PENDING ──evaluate 超时(>2.0s)──▶ FEEDBACK_FAULT",
+        "PENDING ──压力达标但牵引未切除/回执缺失──▶ FEEDBACK_FAULT",
+        "APPLIED ──on_traction(active=True)──▶ FEEDBACK_FAULT（联锁违背）",
+        "APPLIED ──压力回落至释放阈值──▶ IDLE（缓解完成）",
+        "FEEDBACK_FAULT ──reset──▶ IDLE"
+      ],
+      "time_source": "时间源由调用方传入单调时钟（time.monotonic 或注入测试时钟），模块不读墙钟——CI 可复现、时间可注入"
+    },
+    "failure_modes": [
+      {
+        "cause": "feedback_timeout",
+        "zh": "PENDING 超时限(2.0s)仍未集齐三重证据；evaluate 报出缺失项（pressure / eb_active / traction_off）"
+      },
+      {
+        "cause": "interlock_violation",
+        "zh": "APPLIED 期间牵引恢复（边制动边牵引）→ 立即 FAULT，不等超时窗口——执行层失效的直接证据优先，比反馈超时更严重"
+      }
+    ],
+    "design_decisions": [
+      "决策/执行分离：EBM 负责『该不该制动』，本模块负责『制动有没有生效』，两层故障模式不同（决策失效 vs 执行失效），必须分别检测",
+      "三重证据交叉校验：压力 + 回执 + 联锁，任一缺失/违背即 FAULT——单传感器可信度有限，多源一致才构成执行确认",
+      "缓解同样需要反馈：压力须回落到释放阈值以下才算真正缓解完成",
+      "时间单调性校验：拒绝时间倒流/乱序/重放的反馈样本（记录 rejected_timestamp）",
+      "request_eb 新请求覆盖旧挂起请求（同一次制动只跟踪最新决策）"
+    ]
+  },
+  "bypass": {
+    "source_module": "tcms.bypass",
+    "module_purpose": "隔离/旁路开关状态机（Isolation & Bypass）——对标真实列控（ETCS/中国 CTCS）的维护旁路管理：设备故障后由维护人员操作隔离开关将故障设备从安全链旁路，列车才能继续运行（如故障 ATP 隔离后转 RM 运行）",
+    "switch_states": [
+      { "enum": "closed", "zh": "闭合（设备接入安全链，正常工作）" },
+      { "enum": "open", "zh": "打开（设备被旁路，脱离安全链）" }
+    ],
+    "bypass_event_types": [
+      { "enum": "bypass_open", "zh": "旁路事件：打开开关" },
+      { "enum": "bypass_close", "zh": "旁路事件：闭合开关" }
+    ],
+    "key_constants": {
+      "ZERO_SPEED_THRESHOLD_KMH": 0.5,
+      "ZERO_SPEED_THRESHOLD_zh": "零速阈值（与 EBM 一致）",
+      "DEGRADED_MODE": "RM",
+      "DEGRADED_MODE_zh": "旁路导致的强制降级目标模式（限制人工低限速）"
+    },
+    "isolation_switch": {
+      "class": "IsolationSwitch",
+      "behavior": "单点开关状态机：CLOSED(正常) → OPEN(旁路) → CLOSED(恢复)",
+      "open_switch_safety_prereqs": [
+        "速度必须为零：speed_kmh <= ZERO_SPEED_THRESHOLD_KMH(0.5)，运行中禁止旁路（旁路即解除安全链）",
+        "速度信号必须有效：speed_valid=True，速度传感器失效时禁止旁路",
+        "已旁路(SW_OPEN)时 open 幂等拒绝（避免重复审计）"
+      ],
+      "audit": "每次操作写审计日志（event/ts/operator/reason/speed_kmh）——证据链：谁/何时/为什么旁路；audit_log 返回深拷贝不可篡改；close_switch 幂等（已闭合返回 False）；reset 回到闭合不写审计（测试/初始状态用）"
+    },
+    "isolation_group": {
+      "class": "IsolationGroup",
+      "behavior": "多个开关的列车级聚合：任一开关打开 → 组处于 degraded（安全链降级）",
+      "degradation_rule": "check_degradation(mode)：bypassed_any 为真 → 强制返回 RM（安全兜底，用模式限制兜底旁路风险）；全部闭合 → 返回原模式",
+      "upgrade_prohibition": "can_upgrade(mode)：旁路期间禁止升模式——bypassed_any 且 mode != 'RM' 返回 False（RM → FAM/CM 被禁止；对标真实列控：旁路设备后只能 RM 运行，禁止恢复高级模式直至设备修复并闭合开关）",
+      "status_report": "status_report() → {bypassed_any, bypassed(开关名列表), switch_states, required_mode(旁路时='RM'，否则 null)} 供 HMI/维护终端展示"
+    }
+  }
+}

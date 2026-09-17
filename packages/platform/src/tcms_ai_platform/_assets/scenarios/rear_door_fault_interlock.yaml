@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-028 rear_door_fault (major, derate) — 后车门（Door5-8）状态不可信
+name: 后车门故障按未关处理
+desc: 演示故障序列：后车门故障（按未关处理）。
+steps:
+- at: 3.0
+  inject:
+    node: bogie
+    fault: rear_door_fault
+    level: major
+    impact: 后车门状态 Fault/Unknown，按未关处理，禁止发车降级
+    expect: derate
+- at: 11.0
+  recover: rear_door_fault

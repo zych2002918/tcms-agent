@@ -1,0 +1,51 @@
+# 检索评测集（P1-1 golden queries）：机器断言“检索质量不回退”
+#
+# 每条：q = 用户自然问法；expect = 应被 top-k 命中的真实 doc_id（任一命中即过）；
+# min_at 可选 = 至少应出现在第 min_at 名及以前（不设则只要求进入 top-k）。
+# 语料随包分发（faults/scenarios/symptoms/领域知识），检索改动必须跑过本表再合入。
+# 诚实口径：期望项全部是真实资产 id（故障键/症状键/系统），不手抄“期望文本”。
+
+schema_version: 1
+queries:
+  - q: 车门故障不能发车
+    expect: [fault:door_fault, symptom:door_open_light_flicker, function:F-DOOR, req:SR-21]
+    min_at: 3
+  - q: 紧急制动执行失败
+    expect: [fault:eb_failure]
+    min_at: 3
+  - q: VCU 心跳丢失 降级
+    expect: [fault:heartbeat_loss_vcu]
+    min_at: 3
+  - q: 空调压缩机过流保护
+    expect: [fault:hvac_compressor_overcurrent]
+    min_at: 3
+  - q: 电池绝缘监测报警 停车
+    expect: [fault:battery_insulation_fault]
+    min_at: 3
+  - q: 总线短路
+    expect: [fault:bus_short]
+    min_at: 3
+  - q: 客室照明闪烁
+    expect: [fault:cabin_light_flicker]
+    min_at: 3
+  - q: 超速 160 限速
+    expect: [fault:overspeed]
+    min_at: 3
+  - q: 仪表盘闪烁但无故障码
+    expect: [symptom:dashboard_flicker]
+    min_at: 3
+  - q: SOC 跳变 估算异常
+    expect: [fault:battery_soc_jump, symptom:soc_jump]
+    min_at: 3
+  - q: 网络时断时续 丢帧
+    expect: [fault:crc_error_frame, fault:bus_noise_burst, symptom:network_intermittent]
+    min_at: 5
+  - q: 辅助电压越限 降级
+    expect: [fault:aux_voltage_out_of_range]
+    min_at: 3
+  - q: 车门气源压力不足
+    expect: [fault:door_air_pressure_low]
+    min_at: 3
+  - q: 受电弓拉弧 停车
+    expect: [fault:pantograph_arc]
+    min_at: 3

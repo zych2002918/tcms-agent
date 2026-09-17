@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-035 brake_reserve_low (major, derate) — ReservePressureLow
+name: 备用制动压力低
+desc: 演示故障序列：备用制动压力低。
+steps:
+- at: 3.0
+  inject:
+    node: bcu
+    fault: brake_reserve_low
+    level: major
+    impact: 备用制动储压不足，常用制动储备下降，限速运行
+    expect: derate
+- at: 11.0
+  recover: brake_reserve_low

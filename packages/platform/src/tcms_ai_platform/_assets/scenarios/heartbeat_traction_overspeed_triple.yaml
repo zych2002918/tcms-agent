@@ -1,0 +1,38 @@
+# 场景 15：三故障级联 —— 主控失联 → 牵引丢失 → 超速（真实因果安全链）
+# 目的：现有场景最多两故障级联；本场景按**真实因果顺序**注入三个故障：
+#   ① heartbeat_loss_vcu（F-TCMS-008, major, derate）VCU 主控心跳超时离线，看门狗判失联；
+#   ② traction_loss（F-TCMS-006, major, derate）主控失联后牵引控制丢失、动力切除；
+#   ③ overspeed（F-TCMS-007, major, derate）列车失去牵引后在下坡道惰行加速，越过限速——
+#      牵引丢失引发的次生超速，模拟"惰行加速"危险工况。
+# 处置全程维持 derate（三级均 major），恢复按因果逆序：心跳先回 → 牵引重建 → 速度回落缓解。
+# 覆盖故障节点交织：vcu / bcu / vcu，三条故障键分属 VCU、牵引、牵引子系统。
+name: 主控失联牵引丢失与超速三故障级联
+desc: 演示故障序列：VCU 心跳丢失、牵引丢失、超速。
+steps:
+  - at: 1.0
+    inject:
+      node: vcu
+      fault: heartbeat_loss_vcu
+      level: major
+      impact: VCU 心跳中断超时，看门狗判定主控离线，请求降级运行
+      expect: derate
+  - at: 3.0
+    inject:
+      node: bcu
+      fault: traction_loss
+      level: major
+      impact: 主控失联导致牵引控制丢失，动力切除，列车惰行
+      expect: derate
+  - at: 5.0
+    inject:
+      node: vcu
+      fault: overspeed
+      level: major
+      impact: 下坡道惰行加速越过限速 160km/h，ATP 速度监督告警
+      expect: derate
+  - at: 10.0
+    recover: heartbeat_loss_vcu
+  - at: 11.0
+    recover: traction_loss
+  - at: 12.0
+    recover: overspeed

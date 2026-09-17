@@ -1,0 +1,31 @@
+# 场景扩容 Wave A（无孤儿覆盖）：cab_mode_conflict, driver_console_comm_loss, master_controller_stuck
+name: 双端模式冲突·司控台失联·主控卡滞编排
+desc: 演示故障序列：双端驾驶模式冲突、司控台通讯丢失、主控制器卡滞。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: cab_mode_conflict
+    level: critical
+    impact: 两端司机台同时有效且驾驶模式冲突，无法判定有效端
+    expect: emergency_brake
+- at: 4.5
+  inject:
+    node: vcu
+    fault: driver_console_comm_loss
+    level: major
+    impact: 司控台与主控通信中断（周期超时），人工指令失效
+    expect: derate
+- at: 6.0
+  inject:
+    node: vcu
+    fault: master_controller_stuck
+    level: minor
+    impact: 主控制器级位冻结不随操作变化，指令采集异常
+    expect: warning
+- at: 10.0
+  recover: cab_mode_conflict
+- at: 11.5
+  recover: driver_console_comm_loss
+- at: 13.0
+  recover: master_controller_stuck

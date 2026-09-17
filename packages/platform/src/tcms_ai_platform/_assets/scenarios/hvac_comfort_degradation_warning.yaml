@@ -1,0 +1,31 @@
+# 场景扩容：F-TCMS-045 hvac_filter_clog + F-TCMS-046 hvac_heater_fault + F-TCMS-047 hvac_fresh_air_damper（minor/0-1 级告警链）
+name: 空调舒适度降级告警族
+desc: 演示故障序列：空调滤网堵塞、空调电加热故障、新风风门卡滞。
+steps:
+- at: 3.0
+  inject:
+    node: hvac
+    fault: hvac_filter_clog
+    level: minor
+    impact: 滤网脏堵，通风量下降
+    expect: warning
+- at: 4.5
+  inject:
+    node: hvac
+    fault: hvac_heater_fault
+    level: minor
+    impact: 电加热故障，冬季制热失效
+    expect: warning
+- at: 6.0
+  inject:
+    node: hvac
+    fault: hvac_fresh_air_damper
+    level: minor
+    impact: 新风风门卡滞，新风量异常
+    expect: warning
+- at: 11.0
+  recover: hvac_filter_clog
+- at: 12.5
+  recover: hvac_heater_fault
+- at: 14.0
+  recover: hvac_fresh_air_damper

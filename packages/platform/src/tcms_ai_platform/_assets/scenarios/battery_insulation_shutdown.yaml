@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-038 battery_insulation_fault (critical, shutdown) — 绝缘阻抗下降
+name: 电池绝缘监测报警
+desc: 演示故障序列：电池绝缘监测报警。
+steps:
+- at: 3.0
+  inject:
+    node: bms
+    fault: battery_insulation_fault
+    level: critical
+    impact: 高压绝缘阻抗下降，安全分断高压并停车
+    expect: shutdown
+- at: 11.0
+  recover: battery_insulation_fault

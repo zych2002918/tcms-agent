@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-036 pantograph_fail_raise (major, derate) — 升弓无确认
+name: 受电弓无法升起
+desc: 演示故障序列：受电弓无法升起。
+steps:
+- at: 3.0
+  inject:
+    node: pantograph
+    fault: pantograph_fail_raise
+    level: major
+    impact: 升弓指令后无确认，无法取流，降级运行
+    expect: derate
+- at: 11.0
+  recover: pantograph_fail_raise

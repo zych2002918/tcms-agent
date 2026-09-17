@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-056 fire_multizone_alarm (critical, shutdown) — 多区触发
+name: 多区烟火报警停车
+desc: 演示故障序列：多区烟火报警。
+steps:
+- at: 3.0
+  inject:
+    node: fire
+    fault: fire_multizone_alarm
+    level: critical
+    impact: 两个以上防火分区同时报警，立即停车疏散
+    expect: shutdown
+- at: 11.0
+  recover: fire_multizone_alarm

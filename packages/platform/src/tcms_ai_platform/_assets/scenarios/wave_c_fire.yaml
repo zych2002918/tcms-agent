@@ -1,0 +1,40 @@
+# 场景扩容 Wave C（无孤儿覆盖）：fire_extinguish_release_inhibit, fire_panel_display_fault, fire_power_supply_fail, fire_detector_loop_open
+name: 灭火抑制·面板显示·电源·探测器回路编排
+desc: 演示故障序列：灭火释放被抑制、火警面板显示故障、火警系统电源故障、探测器回路开路。
+steps:
+- at: 3.0
+  inject:
+    node: fire
+    fault: fire_extinguish_release_inhibit
+    level: major
+    impact: 灭火释放回路被抑制/隔离（保护缺失）
+    expect: warning
+- at: 4.5
+  inject:
+    node: fire
+    fault: fire_panel_display_fault
+    level: minor
+    impact: 火警面板显示异常（分区/状态不明）
+    expect: warning
+- at: 6.0
+  inject:
+    node: fire
+    fault: fire_power_supply_fail
+    level: major
+    impact: 火警系统主/备电源异常
+    expect: warning
+- at: 7.5
+  inject:
+    node: fire
+    fault: fire_detector_loop_open
+    level: major
+    impact: 探测器回路开路（区段失联）
+    expect: warning
+- at: 10.0
+  recover: fire_extinguish_release_inhibit
+- at: 11.5
+  recover: fire_panel_display_fault
+- at: 13.0
+  recover: fire_power_supply_fail
+- at: 14.5
+  recover: fire_detector_loop_open

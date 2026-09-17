@@ -1,0 +1,13 @@
+# 场景扩容 Wave A（无孤儿覆盖）：atp_curve_selfcheck_fault
+name: 动态限速曲线自检异常编排
+desc: 演示故障序列：动态限速曲线异常。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: atp_curve_selfcheck_fault
+    level: major
+    impact: 动态 EBI 目标点自检不一致，监督曲线保守降级
+    expect: derate
+- at: 10.0
+  recover: atp_curve_selfcheck_fault

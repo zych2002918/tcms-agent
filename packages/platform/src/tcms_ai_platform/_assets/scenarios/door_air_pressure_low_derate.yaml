@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-029 door_air_pressure_low (major, derate) — 气动门气源不足
+name: 车门气源压力不足
+desc: 演示故障序列：车门气源压力不足。
+steps:
+- at: 3.0
+  inject:
+    node: bogie
+    fault: door_air_pressure_low
+    level: major
+    impact: 气源压力低于操作下限，门操作不可靠，切除该侧门降级
+    expect: derate
+- at: 11.0
+  recover: door_air_pressure_low

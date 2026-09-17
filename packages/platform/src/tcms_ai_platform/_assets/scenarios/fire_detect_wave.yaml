@@ -1,0 +1,22 @@
+# 场景扩容 Wave A（无孤儿覆盖）：fire_detector_contamination, fire_extinguisher_pressure_low
+name: 探测器污染与灭火压力低编排
+desc: 演示故障序列：烟火探测器污染、灭火剂压力低。
+steps:
+- at: 3.0
+  inject:
+    node: fire
+    fault: fire_detector_contamination
+    level: minor
+    impact: 探测器积尘/污染致灵敏度异常（误报风险），自诊断告警
+    expect: warning
+- at: 4.5
+  inject:
+    node: fire
+    fault: fire_extinguisher_pressure_low
+    level: major
+    impact: 灭火装置压力低于保障下限，灭火能力下降
+    expect: warning
+- at: 10.0
+  recover: fire_detector_contamination
+- at: 11.5
+  recover: fire_extinguisher_pressure_low

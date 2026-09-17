@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-030 traction_converter_fault (major, derate) — 变流器故障码
+name: 牵引变流器故障降级
+desc: 演示故障序列：牵引变流器故障。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: traction_converter_fault
+    level: major
+    impact: 牵引变流器故障码非 0，牵引封锁/降功率运行
+    expect: derate
+- at: 11.0
+  recover: traction_converter_fault

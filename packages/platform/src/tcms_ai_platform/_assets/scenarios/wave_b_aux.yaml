@@ -1,0 +1,31 @@
+# 场景扩容 Wave B（无孤儿覆盖）：aux_ac_output_fault, aux_contactor_chatter, aux_24v_undervoltage
+name: 辅逆交流异常·接触器抖动·24V 欠压编排
+desc: 演示故障序列：辅助交流输出异常、辅助接触器抖动、24V 控制电源欠压。
+steps:
+- at: 3.0
+  inject:
+    node: aux
+    fault: aux_ac_output_fault
+    level: major
+    impact: 三相/单相交流输出失真或缺失，交流负载降级
+    expect: derate
+- at: 4.5
+  inject:
+    node: aux
+    fault: aux_contactor_chatter
+    level: minor
+    impact: 接触器吸合抖动（触点磨损），寿命预警
+    expect: warning
+- at: 6.0
+  inject:
+    node: aux
+    fault: aux_24v_undervoltage
+    level: major
+    impact: 低压控制电源电压偏低，非关键负载降级
+    expect: derate
+- at: 10.0
+  recover: aux_ac_output_fault
+- at: 11.5
+  recover: aux_contactor_chatter
+- at: 13.0
+  recover: aux_24v_undervoltage

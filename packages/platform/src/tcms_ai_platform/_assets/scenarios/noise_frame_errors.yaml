@@ -1,0 +1,34 @@
+# 场景 9：总线噪声 + 仲裁错误 + 短帧 —— 物理层/链路层故障组合
+# F-TCMS-019 bus_noise_burst (minor, warning) + F-TCMS-021 arbitration_error (minor, warning)
+# + F-TCMS-022 short_frame (minor, warning)
+# 电磁噪声突发导致位错误→仲裁冲突与 DLC 不足的短帧；噪声平息后链路恢复
+name: 总线噪声与帧错误
+desc: 演示故障序列：总线噪声突发、仲裁错误、短帧（DLC 不足）。
+steps:
+  - at: 1.0
+    inject:
+      node: bus
+      fault: bus_noise_burst
+      level: minor
+      impact: 电磁噪声突发，位错误率抬升，接收端 CRC 校验失败
+      expect: warning
+  - at: 2.0
+    inject:
+      node: bus
+      fault: arbitration_error
+      level: minor
+      impact: 多节点同时发送产生仲裁错误，重传竞争加剧
+      expect: warning
+  - at: 3.0
+    inject:
+      node: bus
+      fault: short_frame
+      level: minor
+      impact: DLC 不足的短帧被链路层拒绝
+      expect: warning
+  - at: 9.0
+    recover: bus_noise_burst
+  - at: 10.0
+    recover: arbitration_error
+  - at: 11.0
+    recover: short_frame

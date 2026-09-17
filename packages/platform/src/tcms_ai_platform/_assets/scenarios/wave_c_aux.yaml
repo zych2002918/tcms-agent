@@ -1,0 +1,49 @@
+# 场景扩容 Wave C（无孤儿覆盖）：aux_capacitor_aging, aux_inverter_overcurrent, aux_24v_charger_fail, aux_frequency_unstable, aux_load_shed_triggered
+name: 辅逆电容老化·输出过流·24V 充电模块失效编排
+desc: 演示故障序列：辅逆支撑电容老化、辅逆输出过流保护、24V 充电模块故障、辅逆输出频率不稳、负载分级切除触发。
+steps:
+- at: 3.0
+  inject:
+    node: aux
+    fault: aux_capacitor_aging
+    level: minor
+    impact: 直流支撑电容容量下降（老化）预警
+    expect: warning
+- at: 4.5
+  inject:
+    node: aux
+    fault: aux_inverter_overcurrent
+    level: major
+    impact: 辅逆输出过流保护跳闸
+    expect: shutdown
+- at: 6.0
+  inject:
+    node: aux
+    fault: aux_24v_charger_fail
+    level: major
+    impact: 24V 充电模块失效，低压后备下降
+    expect: warning
+- at: 7.5
+  inject:
+    node: aux
+    fault: aux_frequency_unstable
+    level: major
+    impact: 辅逆输出频率漂移/抖动
+    expect: derate
+- at: 9.0
+  inject:
+    node: aux
+    fault: aux_load_shed_triggered
+    level: minor
+    impact: 负载超容触发分级切除（非关键负载）
+    expect: warning
+- at: 10.0
+  recover: aux_capacitor_aging
+- at: 11.5
+  recover: aux_inverter_overcurrent
+- at: 13.0
+  recover: aux_24v_charger_fail
+- at: 14.5
+  recover: aux_frequency_unstable
+- at: 16.0
+  recover: aux_load_shed_triggered

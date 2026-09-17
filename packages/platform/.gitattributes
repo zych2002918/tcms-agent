@@ -1,0 +1,3 @@
+# 启动脚本行尾:bat 需 CRLF(Windows cmd),sh 需 LF(Unix)
+*.bat text eol=crlf
+*.sh  text eol=lf

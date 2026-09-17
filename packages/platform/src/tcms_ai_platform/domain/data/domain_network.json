@@ -1,0 +1,538 @@
+{
+  "meta": {
+    "title": "TCMS 列车通信网络测试域 — 结构化领域知识",
+    "description": "由 tcms-can-test/tcms/ 源码(network/nmt/errstate/watchdogs/busfault/schedulability/busload/recorder)提取的可结构化领域知识。机制与数值逐字来自源码常量与逻辑,中文注释为源码原文。",
+    "source_dir": "tcms-can-test/tcms（引擎源码仓库相对路径，随使用者环境而异）",
+    "extracted_at": "2026-09-06",
+    "module_count": 8
+  },
+  "modules": [
+    {
+      "module": "network.py",
+      "file": "tcms/network.py",
+      "purpose": "多网段拓扑抽象(A6):多总线 + 异步缓冲网关。对标真实列控网络 MVB/TRDP/以太网并存的多网段结构,不同子系统(牵引/制动/门控/信号)挂在不同网段上,网段间通过网关按报文 ID 过滤转发。",
+      "knowledge": [
+        {
+          "id": "net-segment",
+          "name": "网段(Segment)语义",
+          "desc": "命名总线集合构成多网段拓扑。网段内 send() 使本地段总线立即出现该帧(真实 CAN 语义);无网关的两段互不可见,用于测试'网段隔离'。send() 返回是否成功发送到本地段,转发结果在网关统计中。",
+          "source_module": "network.py",
+          "key_values": {
+            "send_behavior": "本地段立即出现, 跨段异步",
+            "isolation_rule": "无网关的两段互不可见",
+            "runtime_add": "add_segment 支持运行时热插拔, 重名抛 ValueError"
+          }
+        },
+        {
+          "id": "net-gateway-role",
+          "name": "网关(Gateway)语义:独立异步设备",
+          "desc": "网关是独立设备而非 send 时立即转发的函数调用。真实列车网关行为:1)监听源网段,把到达报文收进接收缓冲(FIFO);2)按扫描周期/处理时延处理缓冲;3)到期帧按过滤表(白名单/黑名单)决定转发或丢弃;4)缓冲满时新帧被丢弃(溢出),不阻塞源网段发送方;5)帧跨网关扩散有足迹防环(同一帧不重复经过同一网关,对标网桥 STP 剪枝/TRDP 跳数限制)。send() 只投递到网关缓冲,step()(由虚拟时钟驱动)才让网关转发到期帧——转发时延、缓冲溢出、级联扩散全部可观测、可测试、可审计。",
+          "source_module": "network.py",
+          "key_values": {
+            "async_model": "send()=投递缓冲, step()=网关泵转发",
+            "receive_buffer": "FIFO 接收缓冲",
+            "overflow_policy": "缓冲满丢新帧, 不阻塞源网段发送方",
+            "loop_prevention": "足迹防环 frozenset[trace], 对标 STP 剪枝/TRDP 跳数限制",
+            "cascade": "转发到目标段的帧继续进入目标段出站网关缓冲(级联扩散)"
+          }
+        },
+        {
+          "id": "net-rule-types",
+          "name": "转发规则类型 RULE_ALLOW / RULE_BLOCK",
+          "desc": "网关按规则判定某报文 ID 是否应转发(过滤表查询)。RULE_ALLOW(白名单,rule=allow 时生效,allow_ids 为空=全部转发);RULE_BLOCK(黑名单,rule=block 时生效,为空=全部转发)。should_forward: allow 时返回 arb_id in allow_ids(若 allow_ids 空则恒 True);block 时返回 arb_id not in block_ids。",
+          "source_module": "network.py",
+          "key_values": {
+            "RULE_ALLOW": "\"allow\" 白名单: 仅在列表中",
+            "RULE_BLOCK": "\"block\" 黑名单: 不在列表中",
+            "allow_empty": "allow_ids 为空 = 全部转发",
+            "block_empty": "block_ids 为空 = 全部转发",
+            "id_filter_model": "报文 ID 白名单/黑名单, 对标真实网关报文过滤表"
+          }
+        },
+        {
+          "id": "net-drop-reasons",
+          "name": "丢弃原因(审计) DROP_RULE / DROP_OVERFLOW / DROP_LOOP",
+          "desc": "帧被网关处理有三种可审计的丢弃原因:被过滤表拒绝(rule)、缓冲溢出新帧被丢弃(overflow)、足迹防环拒绝(loop,帧已在本网关处理过,入队返回 False 且不计溢出)。网关统计暴露 forwarded/dropped/overflow_dropped/buffered 计数,forward_log 记录每帧入队/处理时间戳与丢弃原因。",
+          "source_module": "network.py",
+          "key_values": {
+            "DROP_RULE": "\"rule\" 被过滤表拒绝",
+            "DROP_OVERFLOW": "\"overflow\" 缓冲溢出, 新帧被丢弃",
+            "DROP_LOOP": "\"loop\" 足迹防环: 同一帧重复经过同一网关",
+            "loop_reject_counts_as": "足迹防环入队失败不计 overflow_dropped",
+            "audit_log": "forward_log 含 gateway/src/dst/arb_id/enqueued_ts/forwarded_ts/forwarded/dropped_reason"
+          }
+        },
+        {
+          "id": "net-gw-latency-capacity",
+          "name": "网关异步缓冲/时延设计",
+          "desc": "Gateway 字段:latency 转发处理时延(秒),对标网关扫描周期;capacity 接收缓冲容量(帧数),满则溢出丢弃新帧。入队记录 enqueued_ts(帧真实到达时间语义)与 due_ts = now + latency。step() 泵出 due_ts <= now 的帧,经过滤表判定后转发到目标段。约束:latency < 0 抛 ValueError;capacity < 1 抛 ValueError。默认 capacity = 64。",
+          "source_module": "network.py",
+          "key_values": {
+            "latency_semantics": "转发处理时延, 对标网关扫描周期; due_ts = enqueued_ts + latency",
+            "default_capacity": 64,
+            "capacity_min": 1,
+            "latency_min": 0,
+            "pump_rule": "到期帧判定 due_ts <= now"
+          }
+        },
+        {
+          "id": "net-clock-driven",
+          "name": "时钟驱动与全局视角",
+          "desc": "BusNetwork 由 timebase 虚拟时钟驱动(VirtualClock mode='virtual'),clock.advance + net.step() 推进转发。recv_any 按段名排序轮询实现全网段统一视角(对标真实测试台网络级监控),空段轮询小步(0.01s)不只盯第一段。",
+          "source_module": "network.py",
+          "key_values": {
+            "clock": "VirtualClock(mode='virtual') / timebase.global_clock()",
+            "recv_any_poll_step_s": 0.01,
+            "usage": "net.send → clock.advance(latency) → net.step() → 目标段可见"
+          }
+        }
+      ]
+    },
+    {
+      "module": "nmt.py",
+      "file": "tcms/nmt.py",
+      "purpose": "CANopen NMT 心跳层(CiA 301)—— 对标 CANopen 网络管理的节点监督机制。每个节点周期性发送 1 字节心跳报文,监督方(NMT Master)配置心跳消费超时,超时未收到 → 判定心跳丢失(heartbeat event)。",
+      "knowledge": [
+        {
+          "id": "nmt-cob-ids",
+          "name": "COB-ID 基址与节点号范围",
+          "desc": "心跳 COB-ID = 0x700 + node_id;NMT 命令 COB-ID = 0x000。node_id 合法范围 1-127(广播用 0)。",
+          "source_module": "nmt.py",
+          "key_values": {
+            "HEARTBEAT_COB_BASE": "0x700",
+            "NMT_COB_ID": "0x000",
+            "MIN_NODE_ID": 1,
+            "MAX_NODE_ID": 127
+          }
+        },
+        {
+          "id": "nmt-node-states",
+          "name": "CANopen 节点状态与数值(心跳字节)",
+          "desc": "心跳内容 = 1 字节节点状态。Boot-up 0x00(初始化完成,仅一次);Stopped 0x04(停止,不参与通信);Operational 0x05(运行,正常通信);Pre-operational 0x7F(预运行,可配置不参与 PDO)。生产者初始状态 = Pre-operational,首帧前先发 boot-up。状态迁移对应 CANopen NMT 状态机:Initialisation → Pre-operational → Operational ↔ Stopped。",
+          "source_module": "nmt.py",
+          "key_values": {
+            "NMT_BOOTUP": "0x00 初始化完成(boot-up 消息, 仅一次)",
+            "NMT_STOPPED": "0x04 停止(不参与通信)",
+            "NMT_OPERATIONAL": "0x05 运行(正常通信)",
+            "NMT_PRE_OPERATIONAL": "0x7F 预运行(可配置, 不参与 PDO)",
+            "initial_state": "NMT_PRE_OPERATIONAL",
+            "reset_target": "复位后回到 Pre-operational, boot-up 待重发"
+          }
+        },
+        {
+          "id": "nmt-master-commands",
+          "name": "NMT 主站命令(CiA 301)",
+          "desc": "NMT 主站经 COB-ID 0x000 发 2 字节命令帧(命令 + 目标 node_id),node_id=0 表示广播全部从站。命令作用:START→Operational,STOP→Stopped,ENTER_PRE_OPERATIONAL→Pre-operational,RESET_NODE/RESET_COMMUNICATION→复位(回 Pre-operational,boot-up 待重发)。命令审计日志含 command/node_id/cob_id/payload(证据链,深拷贝)。",
+          "source_module": "nmt.py",
+          "key_values": {
+            "NMT_CMD_START": "0x01 启动 → Operational",
+            "NMT_CMD_STOP": "0x02 停止 → Stopped",
+            "NMT_CMD_ENTER_PRE_OPERATIONAL": "0x80 进入 Pre-operational",
+            "NMT_CMD_RESET_NODE": "0x81 复位节点",
+            "NMT_CMD_RESET_COMMUNICATION": "0x82 复位通信",
+            "frame_format": "2 字节: [command, node_id], COB-ID 0x000",
+            "broadcast_id": "node_id=0 广播到全部从站"
+          }
+        },
+        {
+          "id": "nmt-heartbeat-producer",
+          "name": "心跳生产者机制",
+          "desc": "HeartbeatProducer:节点状态 → 心跳字节(供虚拟总线发送)。cob_id 属性 = 0x700 + node_id。heartbeat_payload() 首帧前先发 boot-up(0x00)一次,其后每帧发当前状态字节。set_state 仅接受三种合法 NMT 状态字节,非法抛 ValueError。",
+          "source_module": "nmt.py",
+          "key_values": {
+            "DEFAULT_HEARTBEAT_MS": 100,
+            "payload_len": "1 字节状态",
+            "first_frame": "boot-up 0x00 (仅一次)"
+          }
+        },
+        {
+          "id": "nmt-heartbeat-consumer",
+          "name": "心跳消费者监督与超时判定",
+          "desc": "HeartbeatConsumer:监督节点心跳,超时判定心跳丢失。超时默认 timeout_ms = period_ms × 3(未显式给定时);收到心跳(含 boot-up)刷新 last_ts 并置 online;check_timeout 当距上次心跳 > timeout 时判 heartbeat_lost,首次从 online 转入 lost 时事件计数 +1。boot-up 视为节点重新初始化,重置计时。初始状态 = heartbeat_lost。",
+          "source_module": "nmt.py",
+          "key_values": {
+            "timeout_rule": "timeout_ms = period_ms * 3 (默认)",
+            "state_online": "\"online\"",
+            "state_lost": "\"heartbeat_lost\"",
+            "condition": "timestamp - last_ts > timeout_ms/1000.0 → lost",
+            "event_count": "仅 online→lost 首次迁移计数",
+            "default_heartbeat_ms": 100
+          }
+        }
+      ]
+    },
+    {
+      "module": "errstate.py",
+      "file": "tcms/errstate.py",
+      "purpose": "CAN 错误状态机(TEC/REC, Error-Active/Error-Passive/Bus-Off)—— 对标 ISO 11898-1。每个节点维护两个 8 位错误计数器 TEC(发送)/REC(接收),按计数落入三种状态;同时按错误类型统计损坏帧计数(对应真实工具'总线错误帧统计',同 CANoe 指标)。",
+      "knowledge": [
+        {
+          "id": "err-counter-constants",
+          "name": "TEC/REC 阈值常量",
+          "desc": "错误状态判定阈值:Error-Active = TEC<128 且 REC<128;Error-Passive = TEC>=128 或 REC>=128;Bus-Off = TEC>=256(仅由发送错误引发)。计数器 8 位封顶 255。",
+          "source_module": "errstate.py",
+          "key_values": {
+            "ERROR_ACTIVE_MAX": 127,
+            "ERROR_PASSIVE_MIN": 128,
+            "BUS_OFF_THRESHOLD": 256,
+            "COUNTER_MAX": 255
+          }
+        },
+        {
+          "id": "err-count-rules",
+          "name": "计数增减规则(ISO 11898-1)",
+          "desc": "检出一次错误 TEC += 8(发送错误)或 REC += 8(接收错误)。成功发送:TEC 在 1..127 时 -1;TEC>=128 时直接置 120(被动快速回归)。成功接收:REC 在 1..127 时 -1;REC>=128 时直接置 119。计数器 8 位封顶 255;TEC 越过 256 触发 Bus-Off(存储封顶 255,判据已满足)。Bus-Off 期间节点已退出总线,不感知也不累计任何错误(no-op)。接收错误不触发 Bus-Off。",
+          "source_module": "errstate.py",
+          "key_values": {
+            "ERROR_INCREMENT": 8,
+            "TX_SUCCESS_PASSIVE_TARGET": 120,
+            "RX_SUCCESS_PASSIVE_TARGET": 119,
+            "bus_off_only_from": "发送错误(TEC)",
+            "rx_error_bus_off": "接收错误不触发 Bus-Off"
+          }
+        },
+        {
+          "id": "err-states",
+          "name": "三态语义与迁移规则",
+          "desc": "Error-Active:正常参与总线,检出错误发主动错误标志;Error-Passive:只能发被动错误标志(本实现仅建模状态与计数,被动标志帧/发送前退避时序属物理层不建模);Bus-Off:完全退出总线,不参与任何通信。_reevaluate:Bus-Off 由 TEC>=256 独占触发,期间不重评;计数回落后按 TEC/REC 与 128 比较切 active/passive。",
+          "source_module": "errstate.py",
+          "key_values": {
+            "STATE_ERROR_ACTIVE": "\"error-active\"",
+            "STATE_ERROR_PASSIVE": "\"error-passive\"",
+            "STATE_BUS_OFF": "\"bus-off\"",
+            "migration": "active↔passive 按计数; bus-off 由 TEC>=256 独占触发",
+            "bus_off_semantics": "完全退出总线, 不参与任何通信"
+          }
+        },
+        {
+          "id": "err-recovery",
+          "name": "Bus-Off 恢复条件",
+          "desc": "恢复:累计 128 次总线空闲(11 位隐性位周期)后 TEC/REC 归零复位为 Error-Active,并进入发送前退避(需等待 8 位隐性位,对应 ISO 11898-1 suspend transmission)。bus_idle_bit 非 Bus-Off 状态调用为 no-op(幂等)。软件 reset() 清除全部计数立即恢复 Error-Active(诊断/测试用)。",
+          "source_module": "errstate.py",
+          "key_values": {
+            "BUS_IDLE_RECOVERY": 128,
+            "SUSPEND_TRANSMIT_BITS": 8,
+            "idle_unit": "11 位隐性位周期(总线空闲)",
+            "after_recovery": "TEC/REC/bus_idle 归零 → Error-Active → 8 位退避"
+          }
+        },
+        {
+          "id": "err-frame-types",
+          "name": "错误类型与损坏帧统计",
+          "desc": "按错误类型统计损坏帧:bit_error(位)/stuff_error(填充)/crc_error(CRC)/form_error(格式)/ack_error(ACK 无应答)。tx_error 默认 kind='ack_error',rx_error 默认 kind='crc_error'。error_frames 总计数,error_counts 按类型分布。",
+          "source_module": "errstate.py",
+          "key_values": {
+            "ERROR_TYPES": ["bit_error", "stuff_error", "crc_error", "form_error", "ack_error"],
+            "tx_default": "ack_error",
+            "rx_default": "crc_error"
+          }
+        }
+      ]
+    },
+    {
+      "module": "watchdogs.py",
+      "file": "tcms/watchdogs.py",
+      "purpose": "TCMS 节点健康监视:心跳看门狗 + 节点健康表。对应真实 TCMS 标准监督机制:接收端连续 N 个周期未收到心跳即判节点离线(含迟滞,避免瞬时抖动误判);节点恢复后需连续若干次有效心跳才回到在线。",
+      "knowledge": [
+        {
+          "id": "wd-states",
+          "name": "节点健康状态集",
+          "desc": "三态健康表:offline(离线/从未见过)/online(在线)/fault(故障)。evaluate 周期评估,last_seen 为 None 恒为 offline。",
+          "source_module": "watchdogs.py",
+          "key_values": {
+            "STATE_OFFLINE": "\"offline\"",
+            "STATE_ONLINE": "\"online\"",
+            "STATE_FAULT": "\"fault\"",
+            "never_seen": "last_seen=None → offline"
+          }
+        },
+        {
+          "id": "wd-miss-threshold",
+          "name": "心跳丢失判定(丢失 N 周期阈值)",
+          "desc": "在线状态下,心跳间隔 gap > cycle_time × miss_threshold 即判 fault。默认 cycle_time=0.1s,miss_threshold=3,即连续 3 个周期(0.3s)未收到心跳 → fault。阈值具迟滞目的:避免瞬时抖动误判离线。",
+          "source_module": "watchdogs.py",
+          "key_values": {
+            "default_cycle_time_s": 0.1,
+            "default_miss_threshold": 3,
+            "default_recover_threshold": 2,
+            "fault_condition": "gap > cycle_time * miss_threshold (在线态)",
+            "fault_time_default_s": 0.3
+          }
+        },
+        {
+          "id": "wd-recovery-hysteresis",
+          "name": "迟滞恢复逻辑",
+          "desc": "节点从 offline/fault 恢复需连续 recover_threshold 次有效心跳(默认 2 次)才回到 online,期间 recover_count 累加,达到阈值后置 online 并清零计数;已在 online 态的心跳把 recover_count 清零。恢复判定与丢失判定不对称——即为迟滞,与真实列控网络节点监督逻辑一致。",
+          "source_module": "watchdogs.py",
+          "key_values": {
+            "recover_condition": "连续 recover_threshold 次有效心跳 → online",
+            "recover_threshold_default": 2,
+            "feed_online_resets": "online 态 feed 清 recover_count"
+          }
+        },
+        {
+          "id": "wd-health-table",
+          "name": "节点健康表(NodeHealthTable)",
+          "desc": "维护多节点看门狗字典,feed(node) 按名创建或喂心跳,evaluate() 返回 {节点名: 状态} 供全总线健康检查,status(node) 查询单节点(未注册节点返回新建看门狗默认状态 offline)。",
+          "source_module": "watchdogs.py",
+          "key_values": {
+            "api": "feed(node) / evaluate() → {node: state} / status(node)"
+          }
+        }
+      ]
+    },
+    {
+      "module": "busfault.py",
+      "file": "tcms/busfault.py",
+      "purpose": "总线级故障注入(Bus-Level Fault Injection)—— 对标真实 CAN 物理层故障。设计原则:总线是共享介质——物理层故障影响所有节点(与单节点故障注入区分)。链路:总线故障 → 节点检测错误(TEC/REC 上升) → 集体 Bus-Off → 故障恢复 → 节点复位。",
+      "knowledge": [
+        {
+          "id": "fault-types",
+          "name": "总线故障类型与物理语义",
+          "desc": "三种故障:short 短路(对地/电源)→ 所有节点失去仲裁能力,集体进入 Bus-Off;open 断路 → 段内节点互相隔离,发送方无法收到 ACK → Bus-Off;interference 电磁干扰 → 错误帧激增 → 节点计数上升(接收错误为主,不触发 Bus-Off,但污染通信)。",
+          "source_module": "busfault.py",
+          "key_values": {
+            "FAULT_SHORT": "\"short\" 短路(对地/电源): 集体失仲裁 → Bus-Off",
+            "FAULT_OPEN": "\"open\" 断路: 无 ACK → Bus-Off",
+            "FAULT_INTERFERENCE": "\"interference\" 电磁干扰: 错误帧激增, REC 上升",
+            "shared_medium": "物理层故障影响所有节点"
+          }
+        },
+        {
+          "id": "fault-injection",
+          "name": "故障注入与检测语义",
+          "desc": "BusFaultInjector 管理多节点错误状态机。inject(short/open):每节点视为连续发送错误(tx_error('ack_error') 32 次,TEC +8×32 ≥ 256 → Bus-Off);inject(interference):接收错误为主(rx_error('crc_error') 8 次,REC 上升不 Bus-Off)。同一时刻仅允许一个活动故障,注入前需先 recover,否则 RuntimeError。",
+          "source_module": "busfault.py",
+          "key_values": {
+            "SHORT_ERROR_INCREMENT": 8,
+            "OPEN_ERROR_INCREMENT": 8,
+            "INTERFERENCE_ERROR_INCREMENT": 8,
+            "short_open_loop": "32 次 tx_error(ack_error) → TEC ≥ 256 Bus-Off",
+            "interference_loop": "8 次 rx_error(crc_error)",
+            "single_active_fault": "先 recover 再注入, 否则 RuntimeError"
+          }
+        },
+        {
+          "id": "fault-recovery",
+          "name": "故障恢复语义",
+          "desc": "recover():移除故障 + 每个 Bus-Off 节点累计 idle_bits(默认 128,对齐 errstate.BUS_IDLE_RECOVERY)空闲复位,短路/断路恢复后 TEC/REC 归零回 Error-Active;干扰恢复无 Bus-Off,仅清故障标记。status_report 输出 {fault, nodes:{name: state}}。",
+          "source_module": "busfault.py",
+          "key_values": {
+            "RECOVERY_IDLE_COUNT": 128,
+            "recovery_alias": "对齐 errstate.BUS_IDLE_RECOVERY",
+            "interference_recovery": "无 Bus-Off, 仅清故障标记"
+          }
+        }
+      ]
+    },
+    {
+      "module": "schedulability.py",
+      "file": "tcms/schedulability.py",
+      "purpose": "CAN 可调度性分析 —— Tindell 最坏响应时间(WCRT)与 ID 分配审计。对标真实网络设计流程:报文集定义后必须证明每个周期报文的最坏响应时间 R 不超过其周期(deadline = period),否则'赶不上下一拍'。真实整车厂用 Vector CANdb++/网络设计工具做同样计算。",
+      "knowledge": [
+        {
+          "id": "sch-tindell-formula",
+          "name": "Tindell WCRT 迭代公式(CAN 固定优先级非抢占调度)",
+          "desc": "R = B + C + Σ_{j∈hp(i)} ⌈(R + τ_bit + J_j)/T_j⌉ · C_j。B = 低优先级帧正在传输造成的阻塞(最坏 = max C_lp);C_i = 报文 i 的传输时间(最坏填充位);τ_bit = 1 bit 时间(仲裁粒度);T_j = 高优先级报文周期;J_j = 高优先级报文队列抖动(0=理想)。迭代 R 至不动点或超过 max_iterations(默认 1000);若 R_new > deadline(=周期)提前终止判不可调度;R > deadline → 报文不可调度。",
+          "source_module": "schedulability.py",
+          "key_values": {
+            "formula": "R = B + C + Σ_{j∈hp(i)} ⌈(R + τ_bit + J_j)/T_j⌉ · C_j",
+            "B_definition": "低优先级帧传输最坏阻塞 = max C_lp",
+            "tau_bit": "1/bitrate",
+            "max_iterations": 1000,
+            "deadline": "deadline = period",
+            "judgement": "schedulable = (R <= deadline); R_new > deadline → 提前判超限"
+          }
+        },
+        {
+          "id": "sch-messages",
+          "name": "报文调度模型 MessageSpec",
+          "desc": "一条 CAN 报文的调度参数:arb_id(仲裁 ID,越小优先级越高)/name/dlc/period_s(周期,deadline=周期)/jitter_s(队列抖动,默认 0.0)。按 ID 升序排序(优先级从高到低),analyse_all 中 higher_priority = 当前报文之前(ID 更小)的报文。默认 bitrate = 250000。",
+          "source_module": "schedulability.py",
+          "key_values": {
+            "default_bitrate": 250000,
+            "priority_rule": "ID 越小优先级越高",
+            "jitter_default_s": 0.0
+          }
+        },
+        {
+          "id": "sch-utilization",
+          "name": "总线利用率 U",
+          "desc": "U = Σ C_i/T_i(无显式利用率上限常数——判定以逐报文 WCRT 不超过 deadline 为准,利用率作为汇总指标输出 utilization_pct)。注释明确:U 与负载率同源,负载率是 U 的实测版。",
+          "source_module": "schedulability.py",
+          "key_values": {
+            "utilization_formula": "U = Σ C_i / T_i",
+            "upper_limit": "无固定上限常量; 判定依据为 R ≤ deadline(周期)",
+            "relation_to_busload": "U 与负载率同源, 负载率是 U 的实测版"
+          }
+        },
+        {
+          "id": "sch-blocking",
+          "name": "阻塞与干扰项",
+          "desc": "单报文分析中 blocking 至少为自身 C(简版);analyse_all_with_blocking(真实口径)把阻塞项替换为全报文集最坏值 worst_c = max 传输时间(blocking_source),并重算 wcrt_s = worst_c + interference_s 与 schedulable。干扰 interference = Σ ⌈(R+τ+J)/T⌉·C 逐高优先级报文累加,interference_by 给出分解。",
+          "source_module": "schedulability.py",
+          "key_values": {
+            "blocking_default": "自身 C(简版)",
+            "blocking_real": "全报文集 max C(blocking_source)",
+            "interference_breakdown": "interference_by: {hp_name: term}"
+          }
+        },
+        {
+          "id": "sch-id-audit",
+          "name": "ID 分配审计(audit_id_assignment)",
+          "desc": "规则:safety_names 中的安全报文 ID 应小于所有非安全报文 ID(安全报文必须优先于普通报文仲裁获胜)。判定:max(safety ID) 与每个普通报文 ID 比较,存在普通报文 ID < 安全报文最差 ID 即违规。报文集不完整(缺安全/普通任一侧)返回 ok=True + reason 说明。本项目演示案例:0x700 BrakeSystem 优先级低于 0x200 VehicleSpeed,恰好演示'周期与优先级不匹配'风险识别。",
+          "source_module": "schedulability.py",
+          "key_values": {
+            "rule": "安全报文必须占低 ID 段(高优先级)",
+            "violation": "普通报文 arb_id < max_safety_id",
+            "example": "0x700 BrakeSystem < 0x200 VehicleSpeed → 优先级倒挂演示"
+          }
+        },
+        {
+          "id": "sch-report",
+          "name": "可调度性报告形态",
+          "desc": "report() 输出:bitrate/utilization_pct/逐报文 rows(arb_id/name/period_ms/wcrt_ms/deadline_ms/schedulable/margin_pct=100×(deadline−wcrt)/deadline)/all_schedulable/unschedulable 列表。margin_pct 为裕量百分比。",
+          "source_module": "schedulability.py",
+          "key_values": {
+            "margin_formula": "margin_pct = 100 × (deadline - wcrt) / deadline",
+            "output_fields": "bitrate, utilization_pct, all_schedulable, unschedulable, rows"
+          }
+        }
+      ]
+    },
+    {
+      "module": "busload.py",
+      "file": "tcms/busload.py",
+      "purpose": "总线负载率统计与压测(Bus Load)—— 网络级系统指标。对标 CANoe/CANalyzer Statistics 窗口与整车厂负载率设计规范:整车厂对 CAN 总线设设计上限(动力/控制 CAN 常见 30~50%,诊断/车身可放宽),超过上限即网络容量风险;负载率有'瞬时值+滑动窗口平均值'两个口径;高负载下仲裁延迟增长、低优先级帧丢报/周期劣化。",
+      "knowledge": [
+        {
+          "id": "bl-bit-frame-model",
+          "name": "位级帧模型(CAN 2.0A 标准帧, 最坏位填充)",
+          "desc": "帧结构:SOF(1) + 仲裁ID(11) + RTR(1) + IDE(1) + r0(1) + DLC(4) + 数据(8N) + CRC(15) + CRCdel(1) + ACK(1) + ACKdel(1) + EOF(7) + IFS(3)。位填充:SOF~CRC 序列每 5 个连续相同位插 1 个反向填充位,最坏填充位数 = floor((L-1)/4)(L=可填充区段位数)。可填充固定段 bits = 1+11+1+1+1+4+15 = 34;尾段(CRCdel+ACK+ACKdel+EOF+IFS)= 13。",
+          "source_module": "busload.py",
+          "key_values": {
+            "STUFFABLE_FIXED_BITS": 34,
+            "TRAILER_BITS": 13,
+            "BITS_PER_BYTE": 8,
+            "stuffing_formula": "floor((L-1)/4) 每 5 连续相同位插 1 反向位",
+            "anchor_0byte": "55 位最坏 (0x0 数据: 34 可填充 + 8 填充 + 13 尾)",
+            "anchor_8byte": "135 位最坏 (8 字节: 98 可填充 + 24 填充 + 13 尾)",
+            "dlc_range": "0..8"
+          }
+        },
+        {
+          "id": "bl-load-definition",
+          "name": "负载率计算模型",
+          "desc": "BusLoadMonitor:逐帧喂入 on_frame(dlc, ts),负载率 = 窗口内所有帧位时间之和 / 窗口时长(有效时长 = min(ts, start_ts+window) 起算),位时间按最坏填充位计算(上界口径,与可调度性分析一致)。滑动窗口默认 1.0s,位率默认 250000。load_pct 返回 0.0-100。",
+          "source_module": "busload.py",
+          "key_values": {
+            "load_formula": "100 × Σ frame_bits(window) / (effective × bitrate)",
+            "default_bitrate": 250000,
+            "default_window_s": 1.0,
+            "worst_case": "位时间按最坏填充位(上界口径)"
+          }
+        },
+        {
+          "id": "bl-design-limits",
+          "name": "行业负载率设计上限/预警线",
+          "desc": "assess() 与设计上限/预警线对比输出健康结论:load > design_limit_pct → 'over_limit';load > warning_pct → 'warning';否则 'healthy'。默认 DESIGN_LIMIT_PCT = 50.0(控制 CAN 典型设计上限),WARNING_PCT = 30.0(预警线)。",
+          "source_module": "busload.py",
+          "key_values": {
+            "DESIGN_LIMIT_PCT": 50.0,
+            "WARNING_PCT": 30.0,
+            "levels": ["healthy", "warning", "over_limit"]
+          }
+        },
+        {
+          "id": "bl-generator",
+          "name": "压测背景流规划 BusLoadGenerator",
+          "desc": "把周期流清单压到目标负载率:expected_load_pct = 100 × Σ frame_bits(dlc)/period / bitrate。plan_streams_for_target:预算 budget = target_pct/100 × bitrate(目标总位速率 bit/s);策略:最短周期档位先铺流(每档位可容纳 ⌊负载预算/单流速率⌋ 条),档位装满后周期 ×2 进入下一档直至预算用尽;返回 [{arb_id, dlc, period_s}](arb_id 依次 +0x10 互不冲突)。默认参数:低优先级基 ID 0x500、dlc=8、min_period=0.005s、max_period=0.1s、max_streams=500。用于压力场景构建(配合可调度性断言低优先级帧劣化)。",
+          "source_module": "busload.py",
+          "key_values": {
+            "defaults": {"low_prio_base_id": "0x500", "dlc": 8, "min_period_s": 0.005, "max_period_s": 0.1, "max_streams": 500},
+            "budget_formula": "budget = target_pct/100 × bitrate (bit/s)",
+            "strategy": "最短周期档位铺满后 period × 2 进下一档",
+            "arb_id_step": "0x10"
+          }
+        }
+      ]
+    },
+    {
+      "module": "recorder.py",
+      "file": "tcms/recorder.py",
+      "purpose": "事件时序记录器(Recorder)—— 总线帧与系统事件的统一时序记录。对标 CAN 工具 Logging/Trace(CANoe、PCAN-View)与轨道交通信号系统'事件记录器'(EN 50128 语境可追溯性):安全事件按时间顺序留存,作为故障分析与安全论证证据链。",
+      "knowledge": [
+        {
+          "id": "rec-event-types",
+          "name": "事件类型与受保护类型",
+          "desc": "统一时间线分类:can_tx(节点发出的一帧)/can_rx(节点收到的一帧)/ebm(紧急制动管理动作)/errstate(CAN 错误状态机状态迁移)。受保护类型 PROTECTED = (ebm, errstate):缓冲满时优先保留,安全事件不被总线洪泛流量挤出。",
+          "source_module": "recorder.py",
+          "key_values": {
+            "EVENT_CAN_TX": "\"can_tx\"",
+            "EVENT_CAN_RX": "\"can_rx\"",
+            "EVENT_EBM": "\"ebm\"",
+            "EVENT_ERRSTATE": "\"errstate\"",
+            "PROTECTED_EVENT_TYPES": ["ebm", "errstate"]
+          }
+        },
+        {
+          "id": "rec-ring-buffer",
+          "name": "环形缓冲淘汰策略(内存不膨胀)",
+          "desc": "环形缓冲 deque(maxlen=capacity),默认容量 10000。缓冲满时优先淘汰最旧的非保护事件;若全部为保护事件则淘汰最旧保护事件(容量封顶,长时间运行内存不膨胀)。written = 累计写入(含被淘汰),dropped = 真实淘汰计数。ts 缺省取单调时钟。",
+          "source_module": "recorder.py",
+          "key_values": {
+            "DEFAULT_CAPACITY": 10000,
+            "eviction": "满时先淘汰最旧非保护事件; 全保护则淘汰最旧保护事件",
+            "monotonic_clock": "ts 缺省 time.monotonic()"
+          }
+        },
+        {
+          "id": "rec-recorded-bus",
+          "name": "RecordedBus:透明记录收发帧",
+          "desc": "python-can Bus 装饰器:代理底层 bus 的 send/recv 之外所有属性与方法;send 发送成功后才记录(result 非 False,发送失败不留假记录,方向 tx, source='app');recv 无帧可收(返回 None/超时)不产生记录(方向 rx, source='bus')。",
+          "source_module": "recorder.py",
+          "key_values": {
+            "send_record_rule": "发送成功(result is not False)才记录",
+            "recv_record_rule": "msg 非 None 才记录",
+            "sources": {"tx": "app", "rx": "bus"}
+          }
+        },
+        {
+          "id": "rec-query-immutable",
+          "name": "查询/导出与证据不可篡改",
+          "desc": "query() 按类型/仲裁ID/方向/类别/时间段/关键词过滤,返回深拷贝(外部修改不污染库内事件,证据链不可篡改)。stats() 聚合统计(总数/容量/written/dropped/按类型方向类别 ID 分布/帧数/总字节数)。export_json(UTF-8 无 BOM)/export_csv(ts 6 位小数,兼容 Excel)。",
+          "source_module": "recorder.py",
+          "key_values": {
+            "query_filters": ["event_type", "arb_id", "direction", "category", "start_ts", "end_ts", "text", "limit"],
+            "json_encoding": "UTF-8 无 BOM",
+            "csv_precision": "ts %.6f"
+          }
+        },
+        {
+          "id": "rec-freeze-window",
+          "name": "事故冻结窗口(黑匣子语义)",
+          "desc": "freeze_snapshot(trigger_ts, before_s=5.0, after_s=5.0):触发时刻前后 N 秒的事件快照(只读,不改变缓冲),返回 {trigger_ts, window, before_s, after_s, events, counts}。对标真实 TCMS 事件记录仪:EB 触发/严重故障时自动冻结前后一段时间记录供事后事故分析。snapshot_at_ebm_trigger 识别最后一次 EBM trigger 动作(category='ebm_action', message='trigger')作为冻结锚点,无触发返回空快照(trigger_ts=None)。",
+          "source_module": "recorder.py",
+          "key_values": {
+            "default_before_s": 5.0,
+            "default_after_s": 5.0,
+            "window_span": "(trigger - before, trigger + after)",
+            "ebm_anchor": "category='ebm_action' 且 message='trigger' 的最后一条 ts",
+            "readonly": "冻结不改变缓冲内容"
+          }
+        },
+        {
+          "id": "rec-hooks",
+          "name": "EBM/errstate 接线适配器",
+          "desc": "hook_ebm 用 functools.wraps 包装 EmergencyBrakeManager 方法(trigger/set_mode/update_reason_status/release_condition/self_heal/reset)逐一写入时间线(category='ebm_action'),EBM 模块零改动、职责单向。hook_errstate 通过 add_state_listener 把 CanErrorStateMachine 状态迁移写入(category='state_change',含 tec/rec)。参数经 _fmt_args 瘦包装(>200 字符截断,避免大对象入时间线)。",
+          "source_module": "recorder.py",
+          "key_values": {
+            "ebm_methods": ["trigger", "set_mode", "update_reason_status", "release_condition", "self_heal", "reset"],
+            "errstate_record": "category='state_change', payload 含 tec/rec",
+            "arg_truncate": 200
+          }
+        }
+      ]
+    }
+  ]
+}

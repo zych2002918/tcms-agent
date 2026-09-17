@@ -1,0 +1,58 @@
+# 场景扩容 Wave C（无孤儿覆盖）：hvac_evap_coil_frost, hvac_airflow_low_cabin, hvac_temp_control_hunt, hvac_compressor_oil_low, hvac_mixing_damper_fault, hvac_oil_return_poor
+name: 结霜·送风不足·温控振荡·缺油·风门·回油编排
+desc: 演示故障序列：蒸发器结霜、客室送风不足、温度控制振荡、压缩机缺油预警、混风风门执行器故障、制冷回油不畅。
+steps:
+- at: 3.0
+  inject:
+    node: hvac
+    fault: hvac_evap_coil_frost
+    level: minor
+    impact: 蒸发器结霜（风量/冷媒异常）
+    expect: warning
+- at: 4.5
+  inject:
+    node: hvac
+    fault: hvac_airflow_low_cabin
+    level: major
+    impact: 客室送风量不足（风机/风道）
+    expect: derate
+- at: 6.0
+  inject:
+    node: hvac
+    fault: hvac_temp_control_hunt
+    level: minor
+    impact: 温度控制来回振荡（调节参数异常）
+    expect: warning
+- at: 7.5
+  inject:
+    node: hvac
+    fault: hvac_compressor_oil_low
+    level: minor
+    impact: 压缩机回油不足（缺油风险）预警
+    expect: warning
+- at: 9.0
+  inject:
+    node: hvac
+    fault: hvac_mixing_damper_fault
+    level: minor
+    impact: 混风风门执行器卡滞/失位
+    expect: warning
+- at: 10.0
+  recover: hvac_evap_coil_frost
+- at: 10.5
+  inject:
+    node: hvac
+    fault: hvac_oil_return_poor
+    level: minor
+    impact: 制冷系统回油不畅（压缩机润滑风险）
+    expect: warning
+- at: 11.5
+  recover: hvac_airflow_low_cabin
+- at: 13.0
+  recover: hvac_temp_control_hunt
+- at: 14.5
+  recover: hvac_compressor_oil_low
+- at: 16.0
+  recover: hvac_mixing_damper_fault
+- at: 17.5
+  recover: hvac_oil_return_poor

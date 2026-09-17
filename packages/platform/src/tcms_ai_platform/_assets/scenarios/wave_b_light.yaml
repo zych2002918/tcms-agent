@@ -1,0 +1,22 @@
+# 场景扩容 Wave B（无孤儿覆盖）：cabin_light_flicker, tail_light_fail
+name: 客室灯频闪·尾灯失效编排
+desc: 演示故障序列：客室照明闪烁、尾灯故障。
+steps:
+- at: 3.0
+  inject:
+    node: light
+    fault: cabin_light_flicker
+    level: minor
+    impact: 客室灯组频闪（驱动器故障），视觉舒适下降
+    expect: warning
+- at: 4.5
+  inject:
+    node: light
+    fault: tail_light_fail
+    level: minor
+    impact: 列车尾灯不亮（编组标识/瞭望安全），需处理
+    expect: warning
+- at: 10.0
+  recover: cabin_light_flicker
+- at: 11.5
+  recover: tail_light_fail

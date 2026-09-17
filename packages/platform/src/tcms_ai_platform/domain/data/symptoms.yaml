@@ -1,0 +1,125 @@
+# 症状资产（A 步：无码/症状类故障描述的知识资产）
+#
+# 位置说明：症状是「图谱诊断 / RAG 规划器」的消费输入，消费方全部在平台侧
+# （knowledge.graph + agent.diagnoser），故与 domain_*.json 一样落在平台
+# domain/data/ 随包分发；上游 tcms-can-test 故障字典（tcms/faults.yaml，
+# 202 条）仍是唯一故障真源 —— 本文件 hints 必须引用其中真实故障键
+# （causal 校验测试强制，否则红）。
+#
+# schema（每条）：
+#   key         语义化英文键（与故障键不冲突；节点 id = symptom:<key>）
+#   name        中文症状名
+#   description 自然语言描述（检索语料用，含用户常说的口语词）
+#   domains     涉及域（13 域标签，来自 domain/data/domain_systems.json；
+#               首元素 = 主域，用于向量分区）
+#   hints       候选故障键（2-4 个；每个必须存在于 202 条故障字典，
+#               或 "system:SYS-*" 系统域怀疑对象）
+#   annotation  整体诚实标注：real=全部候选为真实机制；mixed=含示意候选
+#   evidence    证据/来源说明（工程因果或示意，供审计）
+#
+# 因果边（symptom -indicates-> fault）不在本文件重复 basis —— 单一真源 =
+# 同目录 causal_edges.yaml（含每条边的 basis/note）；校验测试保证本文件
+# hints 集合与该表 indicates 边一一对应（防双源漂移）。
+
+schema_version: 1
+_meta:
+  name: "症状资产（首批 12 条）"
+  purpose: "让 Agent 对『无故障码的症状描述』能做图谱多跳诊断推理：症状→怀疑故障/系统→沿 causes 反查疑似根因"
+  honesty: "症状与候选均为本项目教学演示级资产的工程化示意；每条候选都锚定上游真实故障键或真实系统域，不编造车型数据"
+
+symptoms:
+  - key: dashboard_flicker
+    name: 仪表盘（显示屏）闪烁
+    description: 司机台仪表/显示屏画面闪烁或抖动，但没有对应故障码上报
+    domains: [network, aux]
+    hints: [aux_24v_undervoltage, aux_capacitor_aging, aux_converter_fault, cab_display_blank]
+    annotation: real
+    evidence: "真实机制：显示屏由低压控制电源(24V)供电，24V 欠压/支撑电容老化纹波/辅变输出异常都可致画面闪烁；cab_display_blank 为同一显示域更严重表现（黑屏）"
+
+  - key: hmi_blank
+    name: HMI/司控台无显示
+    description: 司机室 HMI 或司控台显示屏完全无显示，黑屏，无故障码
+    domains: [network, aux]
+    hints: [cab_display_blank, driver_console_comm_loss, aux_24v_undervoltage, aux_24v_charger_fail]
+    annotation: real
+    evidence: "真实机制：cab_display_blank 即该现象对应故障键；司控台通讯丢失→显示数据不可用；24V 供电缺失/充电模块失效→屏失电无显示"
+
+  - key: lamp_flicker
+    name: 灯具闪烁（驾驶室/外部灯）
+    description: 驾驶员或乘务观察到某个灯（前照灯等）闪烁或亮度不稳定
+    domains: [light, aux]
+    hints: [light_headlight_dimmer_fail, light_group_fault, aux_voltage_out_of_range]
+    annotation: real
+    evidence: "真实机制：前照灯调光/远近光切换驱动异常、照明支路接触不良、辅助母线电压越限均可表现为灯具闪烁"
+
+  - key: cabin_light_strobe
+    name: 客室灯组频闪
+    description: 客室照明整组或大部分灯具频闪、闪动，视觉不适，无故障码
+    domains: [light, aux]
+    hints: [cabin_light_flicker, light_group_fault, aux_ac_output_fault]
+    annotation: real
+    evidence: "真实机制：客室照明闪烁对应真实故障键 cabin_light_flicker（调光/电流反馈），支路故障或辅逆交流输出异常可致整组频闪"
+
+  - key: pis_screen_glitch
+    name: 大屏花屏（PIS 显示屏）
+    description: 乘客信息大屏（PIS）画面花屏、雪花、内容异常，无故障码
+    domains: [pis, network]
+    hints: [pis_display_fault, pis_display_content_stale, aux_24v_undervoltage]
+    annotation: mixed
+    evidence: "真实机制：PIS 显示屏故障/内容停滞为同域异常；aux_24v_undervoltage 为示意候选（显示供电不稳可致画面异常，标注 derived）"
+
+  - key: clock_jump
+    name: 时钟跳变
+    description: 车内各系统/记录时间戳出现跳变或与标准时钟不一致
+    domains: [network]
+    hints: [train_time_sync_loss, gateway_clock_drift, node_restart_storm]
+    annotation: real
+    evidence: "真实机制：列车级时间同步丢失、网关时钟漂移为直接候选（上游字典明文）；节点重启风暴会引发时钟重同步跳变"
+
+  - key: network_intermittent
+    name: 网络时断时续
+    description: 网络通信时断时续，报文偶发丢失或延迟，无持续故障码
+    domains: [network]
+    hints: [crc_error_frame, bus_noise_burst, bit_flip_frame, rolling_counter_gap]
+    annotation: real
+    evidence: "真实机制：CRC 校验错、总线噪声突发、单比特翻转、滚动计数器跳变都是『时断时续』的完整性层候选（上游字典检测口径）"
+
+  - key: soc_jump
+    name: SOC 跳变
+    description: 电池 SOC 数值瞬时跳变或波动明显，无法用充放电解释
+    domains: [battery]
+    hints: [battery_soc_jump, bms_current_sensor_drift, bms_can_link_loss]
+    annotation: mixed
+    evidence: "真实机制：battery_soc_jump 即同现象故障键（字典 desc 明示电流采样/估算异常）；bms_can_link_loss 为示意候选（通信中断恢复可致显示跳变，derived）"
+
+  - key: speed_zero_drop
+    name: 速度瞬时归零
+    description: 运行中速度瞬时跳到 0 或丢失一瞬又恢复，无故障码
+    domains: [signal, traction]
+    hints: [speed_signal_loss, speed_pulse_intermittent_loss, sensor_connector_loose, sensor_power_supply_fault]
+    annotation: real
+    evidence: "真实机制：速度信号丢失/脉冲间歇丢失/传感器接插件松动/传感器供电故障都会导致速度瞬时丢失（上游字典检测口径）"
+
+  - key: door_open_light_flicker
+    name: 开门到位灯闪
+    description: 开门到位/门状态指示灯闪烁或状态反复，车门实际状态存疑
+    domains: [door, pis]
+    hints: [door_sensor_noise, door_control_power_loss, door_fault, pis_door_side_indicator_fail]
+    annotation: mixed
+    evidence: "真实机制：门状态信号噪声/门控失电→门状态不可信→到位灯闪；door_fault 与 pis_door_side_indicator_fail 为示意候选（若指乘客侧门指示灯，derived）"
+
+  - key: false_alarm_buzzer
+    name: 报警音误响
+    description: 无对应报警条件时司机室/车内响起报警音，疑似误报
+    domains: [fire, brake]
+    hints: [fire_detector_contamination, fire_detector_loop_open, brake_park_auto_apply_unexpected]
+    annotation: mixed
+    evidence: "fire_detector_contamination 真实机制（字典明文误报风险）；回路开路/制动意外施加导致误响为示意候选（derived）——域不确定时应优先澄清是火警音还是制动报警音"
+
+  - key: brake_light_abnormal
+    name: 制动灯异常
+    description: 车尾制动/尾灯或司机台制动指示异常（不亮、常亮、闪烁），无故障码
+    domains: [light, brake]
+    hints: [tail_light_fail, light_marker_fail, brake_reserve_low]
+    annotation: mixed
+    evidence: "示意标注：tail_light_fail 真实机制（若指车尾尾灯不亮）；若指司机台制动指示则需查制动域（brake_reserve_low 示意）；歧义症状应引导澄清部位"

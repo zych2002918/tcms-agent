@@ -1,0 +1,82 @@
+# 可审计因果表（B 步：症状诊断因果边的单一真源）
+#
+# 每条边带依据（basis），供图谱多跳遍历时「逐跳溯源」：
+#   real_mechanism —— 真实工程因果：边两端存在公认机制（部件功能/物理构成/
+#                     系统构成层面成立，或上游故障字典描述直接支撑）；note 说明机制。
+#   derived        —— 示意/教学性推断：机制证据较弱，仅作候选域提示，绝不能当成
+#                     已确认故障码；note 说明为何只能当提示。
+#
+# 方向语义（与 knowledge/graph.causal_chain 的遍历语义一致）：
+#   symptom:<s>  --indicates--> fault:<f>  症状指向怀疑故障（或 system:SYS-* 怀疑域）
+#   fault:<a>    --causes-->    fault:<b>  a 是 b 的疑似原因（b 被 a 解释/引发）
+#
+# 校验纪律（tests/test_knowledge.py 强制）：
+#   1. rel ∈ indicates/causes；basis ∈ real_mechanism/derived；
+#   2. 两端节点必须真实存在（fault 键 ∈ 202 故障字典 / system ∈ 13 系统域）；
+#   3. indicates 只能 symptom→fault|system；causes 只能 fault→fault；
+#   4. 每个症状的 indicates 目标集合 == symptoms.yaml 的 hints（防双源漂移）；
+#   5. 图谱 enrich 后图中 indicates/causes 边数与方向/依据可被抽查（数量机器自证）。
+
+schema_version: 1
+_meta:
+  purpose: "症状多跳诊断的因果边唯一来源（symptom -indicates-> fault / system；fault -causes-> fault）"
+  counts_note: "计数由本文件派生（12 症状 × indicates + fault→fault causes），测试与文档数字以此为锁定值"
+
+edges:
+  # ---- symptom -indicates-> fault（A 步 hints 的边化，逐条带依据） ----
+  - {src: "symptom:dashboard_flicker", rel: indicates, dst: "fault:aux_24v_undervoltage", basis: real_mechanism, note: "24V 控制电源欠压→显示屏供电跌落→画面闪烁（低压母线为司机台显示供电）"}
+  - {src: "symptom:dashboard_flicker", rel: indicates, dst: "fault:aux_capacitor_aging", basis: real_mechanism, note: "辅逆支撑电容老化→母线纹波/电压稳定裕度下降→显示供电抖动"}
+  - {src: "symptom:dashboard_flicker", rel: indicates, dst: "fault:aux_converter_fault", basis: real_mechanism, note: "辅助变流器故障→低压输出异常→显示屏供电不稳"}
+  - {src: "symptom:dashboard_flicker", rel: indicates, dst: "fault:cab_display_blank", basis: real_mechanism, note: "同属司机台显示屏故障域：供电/链路问题加重可从闪烁发展为黑屏"}
+  - {src: "symptom:hmi_blank", rel: indicates, dst: "fault:cab_display_blank", basis: real_mechanism, note: "司控台显示屏黑屏即该现象对应故障键"}
+  - {src: "symptom:hmi_blank", rel: indicates, dst: "fault:driver_console_comm_loss", basis: real_mechanism, note: "司控台与主控通信中断→显示数据不可用→无显示"}
+  - {src: "symptom:hmi_blank", rel: indicates, dst: "fault:aux_24v_undervoltage", basis: real_mechanism, note: "显示屏 24V 供电缺失/欠压→黑屏"}
+  - {src: "symptom:hmi_blank", rel: indicates, dst: "fault:aux_24v_charger_fail", basis: real_mechanism, note: "24V 充电模块失效→24V 母线/后备异常→屏失电（经 causes 反查更深层）"}
+  - {src: "symptom:lamp_flicker", rel: indicates, dst: "fault:light_headlight_dimmer_fail", basis: real_mechanism, note: "前照灯调光/远近光切换驱动异常→亮度闪烁或切换异常"}
+  - {src: "symptom:lamp_flicker", rel: indicates, dst: "fault:light_group_fault", basis: real_mechanism, note: "照明支路故障/接触不良→灯具间歇闪烁或失效"}
+  - {src: "symptom:lamp_flicker", rel: indicates, dst: "fault:aux_voltage_out_of_range", basis: real_mechanism, note: "辅助母线电压越限→灯具供电波动→闪烁"}
+  - {src: "symptom:cabin_light_strobe", rel: indicates, dst: "fault:cabin_light_flicker", basis: real_mechanism, note: "客室照明闪烁即对应故障键（调光/电流反馈异常）"}
+  - {src: "symptom:cabin_light_strobe", rel: indicates, dst: "fault:light_group_fault", basis: real_mechanism, note: "客室照明支路故障→灯组频闪/局部失效"}
+  - {src: "symptom:cabin_light_strobe", rel: indicates, dst: "fault:aux_ac_output_fault", basis: real_mechanism, note: "辅逆交流输出异常→交流照明负载波动→整组频闪"}
+  - {src: "symptom:pis_screen_glitch", rel: indicates, dst: "fault:pis_display_fault", basis: real_mechanism, note: "PIS 显示屏故障/降级→画面异常"}
+  - {src: "symptom:pis_screen_glitch", rel: indicates, dst: "fault:pis_display_content_stale", basis: real_mechanism, note: "显示内容刷新停滞→画面冻结/异常（数据推送中断）"}
+  - {src: "symptom:pis_screen_glitch", rel: indicates, dst: "fault:aux_24v_undervoltage", basis: derived, note: "示意候选：显示供电不稳可致画面异常，但花屏更常来自信号/数据链路（证据弱，仅作提示）"}
+  - {src: "symptom:clock_jump", rel: indicates, dst: "fault:train_time_sync_loss", basis: real_mechanism, note: "列车级时间同步丢失→事件时戳异常/跳变"}
+  - {src: "symptom:clock_jump", rel: indicates, dst: "fault:gateway_clock_drift", basis: real_mechanism, note: "网关时钟漂移→时间同步失步→时钟跳变"}
+  - {src: "symptom:clock_jump", rel: indicates, dst: "fault:node_restart_storm", basis: real_mechanism, note: "节点重启风暴→反复复位重同步→时间戳跳变"}
+  - {src: "symptom:network_intermittent", rel: indicates, dst: "fault:crc_error_frame", basis: real_mechanism, note: "CRC 校验错→帧被丢弃→时断时续"}
+  - {src: "symptom:network_intermittent", rel: indicates, dst: "fault:bus_noise_burst", basis: real_mechanism, note: "总线噪声突发→接收错误→间歇丢帧"}
+  - {src: "symptom:network_intermittent", rel: indicates, dst: "fault:bit_flip_frame", basis: real_mechanism, note: "单比特翻转（EMI）→完整性兜底丢帧"}
+  - {src: "symptom:network_intermittent", rel: indicates, dst: "fault:rolling_counter_gap", basis: real_mechanism, note: "滚动计数器跳变→丢帧检测触发→表现为时断时续"}
+  - {src: "symptom:soc_jump", rel: indicates, dst: "fault:battery_soc_jump", basis: real_mechanism, note: "SOC 估算跳变即对应故障键（字典 desc：电流采样/估算异常）"}
+  - {src: "symptom:soc_jump", rel: indicates, dst: "fault:bms_current_sensor_drift", basis: real_mechanism, note: "电流采样漂移→电量估算偏差→SOC 跳变"}
+  - {src: "symptom:soc_jump", rel: indicates, dst: "fault:bms_can_link_loss", basis: derived, note: "示意候选：通信中断恢复后 SOC 显示跳变（机制较弱，先查采样再查通信）"}
+  - {src: "symptom:speed_zero_drop", rel: indicates, dst: "fault:speed_signal_loss", basis: real_mechanism, note: "速度信号丢失（SpeedValid=0/超时）→瞬时归零"}
+  - {src: "symptom:speed_zero_drop", rel: indicates, dst: "fault:speed_pulse_intermittent_loss", basis: real_mechanism, note: "速度脉冲间歇丢失→瞬时掉速/归零"}
+  - {src: "symptom:speed_zero_drop", rel: indicates, dst: "fault:sensor_connector_loose", basis: real_mechanism, note: "传感器接插件接触不良→间歇丢信号→瞬时归零"}
+  - {src: "symptom:speed_zero_drop", rel: indicates, dst: "fault:sensor_power_supply_fault", basis: real_mechanism, note: "传感器供电故障→采集通道失效→速度丢失"}
+  - {src: "symptom:door_open_light_flicker", rel: indicates, dst: "fault:door_sensor_noise", basis: real_mechanism, note: "门状态信号瞬时跳变→到位/状态灯闪烁"}
+  - {src: "symptom:door_open_light_flicker", rel: indicates, dst: "fault:door_control_power_loss", basis: real_mechanism, note: "门控失电→门状态按未知处理→指示灯异常"}
+  - {src: "symptom:door_open_light_flicker", rel: indicates, dst: "fault:door_fault", basis: derived, note: "示意候选：门状态不可信按未关处理与灯闪关联较弱，需结合灯语义确认"}
+  - {src: "symptom:door_open_light_flicker", rel: indicates, dst: "fault:pis_door_side_indicator_fail", basis: derived, note: "示意候选：若指乘客侧门侧指示灯故障则属 PIS 域"}
+  - {src: "symptom:false_alarm_buzzer", rel: indicates, dst: "fault:fire_detector_contamination", basis: real_mechanism, note: "探测器污染→灵敏度异常→误报风险（字典 desc 明文）"}
+  - {src: "symptom:false_alarm_buzzer", rel: indicates, dst: "fault:fire_detector_loop_open", basis: derived, note: "示意候选：探测器回路失联/干扰可能致面板报警误响（证据弱）"}
+  - {src: "symptom:false_alarm_buzzer", rel: indicates, dst: "fault:brake_park_auto_apply_unexpected", basis: derived, note: "示意候选：若报警为制动类，停车制动意外自动施加会触发制动报警音"}
+  - {src: "symptom:brake_light_abnormal", rel: indicates, dst: "fault:tail_light_fail", basis: real_mechanism, note: "若指车尾制动/尾灯不亮→尾灯回路故障为直接候选"}
+  - {src: "symptom:brake_light_abnormal", rel: indicates, dst: "fault:light_marker_fail", basis: derived, note: "示意候选：车侧标志灯故障与制动指示异常混报时需现场区分"}
+  - {src: "symptom:brake_light_abnormal", rel: indicates, dst: "fault:brake_reserve_low", basis: derived, note: "示意候选：若指司机台制动储备/指示异常则查制动域（低压储备）"}
+
+  # ---- fault -causes-> fault（工程因果/示意，方向：A 是 B 的疑似原因） ----
+  - {src: "fault:bms_current_sensor_drift", rel: causes, dst: "fault:battery_soc_jump", basis: real_mechanism, note: "电流采样漂移→SOC 估算跳变（battery_soc_jump 字典 desc 明示电流采样异常为诱因）"}
+  - {src: "fault:aux_24v_charger_fail", rel: causes, dst: "fault:aux_24v_undervoltage", basis: real_mechanism, note: "24V 充电模块失效→24V 母线由电池后备维持→电量耗尽后母线欠压"}
+  - {src: "fault:aux_converter_fault", rel: causes, dst: "fault:aux_24v_undervoltage", basis: real_mechanism, note: "辅助变流器故障→24V 充电模块失去输入→控制母线欠压"}
+  - {src: "fault:aux_lv_overcurrent", rel: causes, dst: "fault:aux_24v_undervoltage", basis: derived, note: "示意推断：低压支路过流保护跳闸可致局部母线电压跌落（非字典明文）"}
+  - {src: "fault:aux_capacitor_aging", rel: causes, dst: "fault:aux_frequency_unstable", basis: real_mechanism, note: "支撑电容容量下降→直流母线纹波增大→辅逆输出频率不稳"}
+  - {src: "fault:aux_capacitor_aging", rel: causes, dst: "fault:aux_voltage_out_of_range", basis: derived, note: "示意推断：电容老化→重载下电压跌落/纹波越限（工程推断，非字典明文）"}
+  - {src: "fault:gateway_clock_drift", rel: causes, dst: "fault:train_time_sync_loss", basis: real_mechanism, note: "网关时钟漂移超阈→列车级时间同步失步（两者字典同属时间同步口径）"}
+  - {src: "fault:node_restart_storm", rel: causes, dst: "fault:heartbeat_loss_vcu", basis: derived, note: "示意推断：节点反复重启→心跳周期超时（可解释间歇心跳丢失）"}
+  - {src: "fault:door_control_power_loss", rel: causes, dst: "fault:door_fault", basis: real_mechanism, note: "门控失电→门状态按未知/故障处理（door_control_power_loss desc：状态按未知处理禁止发车）"}
+  - {src: "fault:sensor_connector_loose", rel: causes, dst: "fault:speed_pulse_intermittent_loss", basis: real_mechanism, note: "接插件接触不良→间歇丢脉冲（两字典检测口径同源）"}
+  - {src: "fault:sensor_power_supply_fault", rel: causes, dst: "fault:speed_signal_loss", basis: real_mechanism, note: "传感器供电故障→采集通道失效→速度信号丢失"}
+  - {src: "fault:sensor_ground_noise", rel: causes, dst: "fault:sensor_out_of_range", basis: derived, note: "示意推断：共模地噪声可推高采集值至超范围（非字典明文）"}
+  - {src: "fault:line_voltage_harmonic_high", rel: causes, dst: "fault:aux_input_overvoltage", basis: derived, note: "示意推断：网压谐波畸变叠加可致辅变输入电压监测越限（非字典明文）"}

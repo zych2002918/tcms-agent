@@ -1,0 +1,334 @@
+{
+ "_meta": {
+  "name": "列车系统分类框架（13 系统域 · S1000D 思想对齐 + 本项目资产实际子系统）",
+  "purpose": "让知识图谱与 Agent 站在『列车系统视角』：每个真实故障/场景属于哪个系统家族、服务什么运营功能、由哪些设备承载。检索/路由先定位系统域（分片键），再进域内语义 topk —— Q4 分层有界检索的 L1 骨架。",
+  "honesty": "系统族名称与 S1000D 动车组系统分类思想对齐；本项目资产为教学演示级代表性子集（非真实车型完整系统清单，不编造车型数据）。"
+ },
+ "systems": [
+  {
+   "code": "SYS-TRAIN",
+   "domain": "network",
+   "name": "列车级控制与网络",
+   "families": [
+    "列车网络控制 TCMS",
+    "列车级联锁",
+    "司控/驾驶台",
+    "应用看门狗"
+   ],
+   "subsystems": [
+    "VCU",
+    "列车控制",
+    "网络"
+   ],
+   "owned_devices": [
+    "VCU",
+    "TCMS"
+   ],
+   "typical_functions": [
+    "列车级联锁",
+    "网络完整性监督",
+    "心跳/看门狗",
+    "多节点拓扑管理",
+    "司控指令采集",
+    "网关网段路由"
+   ],
+   "standard_anchor": "IEC 61375（列车通信网络）/ UIC 556（列车级信息接口）",
+   "asset_evidence": "heartbeat_loss_vcu / vcu_watchdog_timeout / driver_console_fault / node_restart_storm / bus_short / bus_open_circuit / bus_noise_burst / crc_error_frame / bit_flip_frame / rolling_counter_gap / short_frame / arbitration_error / frame_period_jitter / gateway_segment_fault / gateway_redundancy_loss"
+  },
+  {
+   "code": "SYS-BRAKE",
+   "domain": "brake",
+   "name": "制动系统",
+   "families": [
+    "紧急制动 EBM/EBR",
+    "常用制动",
+    "防滑 WSP",
+    "制动储备"
+   ],
+   "subsystems": [
+    "制动"
+   ],
+   "owned_devices": [
+    "BCU"
+   ],
+   "typical_functions": [
+    "紧急制动请求与执行",
+    "硬线回路 EBR",
+    "制动缸压力闭环",
+    "防滑控制",
+    "备用制动监督"
+   ],
+   "standard_anchor": "EN 50126 RAMS / IEC 62290（城轨）安全功能",
+   "asset_evidence": "eb_failure / traction_brake_conflict / brake_actuator_stuck / brake_cylinder_leak / brake_wsp_fault / brake_reserve_low"
+  },
+  {
+   "code": "SYS-TRACTION",
+   "domain": "traction",
+   "name": "牵引系统",
+   "families": [
+    "牵引控制",
+    "牵引变流器",
+    "超速防护 ATP"
+   ],
+   "subsystems": [
+    "牵引"
+   ],
+   "owned_devices": [
+    "VCU"
+   ],
+   "typical_functions": [
+    "牵引指令控制",
+    "速度监督（超速分级干预）",
+    "牵引变流器保护",
+    "直流母线电压保护"
+   ],
+   "standard_anchor": "ATP 速度监督（Warning/SBI/EBI 分级）；变流器过温/欠压保护",
+   "asset_evidence": "overspeed / traction_loss / speed_sensor_drift / traction_converter_fault / traction_converter_overheat / dc_link_undervoltage"
+  },
+  {
+   "code": "SYS-DOOR",
+   "domain": "door",
+   "name": "车门系统",
+   "families": [
+    "车门控制",
+    "车门联锁",
+    "门状态监督",
+    "门气源"
+   ],
+   "subsystems": [
+    "车门"
+   ],
+   "owned_devices": [
+    "BOGIE"
+   ],
+   "typical_functions": [
+    "车门开闭控制（前/后门）",
+    "发车联锁（门未关禁发车）",
+    "运行中门开安全（紧急制动）",
+    "门气源监督"
+   ],
+   "standard_anchor": "车门联锁安全需求 SR（门-车联锁）",
+   "asset_evidence": "door_fault / rear_door_fault / door_open_moving / door_sensor_noise / door_air_pressure_low"
+  },
+  {
+   "code": "SYS-PANTO",
+   "domain": "pantograph",
+   "name": "受电弓与高压受流",
+   "families": [
+    "受电弓控制",
+    "网压监测",
+    "拉弧防护"
+   ],
+   "subsystems": [
+    "受电弓"
+   ],
+   "owned_devices": [
+    "BCU"
+   ],
+   "typical_functions": [
+    "受电弓升降控制",
+    "网压监测与跌落告警",
+    "拉弧风险联锁"
+   ],
+   "standard_anchor": "高压联锁（弓×网压）",
+   "asset_evidence": "pantograph_arc / pantograph_fail_raise / line_voltage_sag"
+  },
+  {
+   "code": "SYS-BATT",
+   "domain": "battery",
+   "name": "电池与储能",
+   "families": [
+    "电池储能 BMS",
+    "充电管理",
+    "绝缘监测"
+   ],
+   "subsystems": [
+    "能源"
+   ],
+   "owned_devices": [
+    "BMS"
+   ],
+   "typical_functions": [
+    "SOC/温度管理",
+    "单体均衡",
+    "充放电状态机",
+    "绝缘监测分断"
+   ],
+   "standard_anchor": "电池高压安全（绝缘监测/接触器保护）",
+   "asset_evidence": "soc_low / temp_high / battery_insulation_fault / battery_voltage_imbalance / bms_charge_state_conflict"
+  },
+  {
+   "code": "SYS-AUX",
+   "domain": "aux",
+   "name": "辅助供电",
+   "families": [
+    "辅助变流器",
+    "低压母线",
+    "接触器"
+   ],
+   "subsystems": [
+    "辅助电源"
+   ],
+   "owned_devices": [
+    "AUX"
+   ],
+   "typical_functions": [
+    "辅助变流输出（AC/DC 低压）",
+    "辅助电压/负载监督",
+    "接触器安全分断"
+   ],
+   "standard_anchor": "辅助供电可靠性（电压越限/过载保护）",
+   "asset_evidence": "aux_converter_fault / aux_voltage_out_of_range / aux_converter_overload / aux_contactor_weld"
+  },
+  {
+   "code": "SYS-HVAC",
+   "domain": "hvac",
+   "name": "空调暖通 HVAC",
+   "families": [
+    "空调制冷/制热",
+    "新风系统",
+    "客室舒适度"
+   ],
+   "subsystems": [
+    "空调"
+   ],
+   "owned_devices": [
+    "HVAC"
+   ],
+   "typical_functions": [
+    "客室温度闭环",
+    "压缩机/加热器保护",
+    "新风量与滤网监督",
+    "过温降级"
+   ],
+   "standard_anchor": "客室环境舒适度与设备保护（EN 14750）",
+   "asset_evidence": "hvac_compressor_fault / hvac_compressor_overcurrent / hvac_cabin_overheat / hvac_filter_clog / hvac_heater_fault / hvac_fresh_air_damper"
+  },
+  {
+   "code": "SYS-PIS",
+   "domain": "pis",
+   "name": "乘客信息系统 PIS",
+   "families": [
+    "信息显示",
+    "到站播报",
+    "紧急对讲"
+   ],
+   "subsystems": [
+    "乘客信息"
+   ],
+   "owned_devices": [
+    "PIS"
+   ],
+   "typical_functions": [
+    "到站信息/播报",
+    "显示屏状态监督",
+    "乘客紧急对讲"
+   ],
+   "standard_anchor": "乘客信息服务（显示降级/应急通讯可用性）",
+   "asset_evidence": "pis_display_fault / pis_intercom_fault / pis_announce_desync"
+  },
+  {
+   "code": "SYS-LIGHT",
+   "domain": "light",
+   "name": "照明系统",
+   "families": [
+    "客室照明",
+    "应急照明"
+   ],
+   "subsystems": [
+    "照明"
+   ],
+   "owned_devices": [
+    "LIGHT"
+   ],
+   "typical_functions": [
+    "客室照明控制/支路监督",
+    "应急照明投入"
+   ],
+   "standard_anchor": "疏散照明可用性（应急照明回路）",
+   "asset_evidence": "light_group_fault / emergency_light_fail"
+  },
+  {
+   "code": "SYS-FIRE",
+   "domain": "fire",
+   "name": "烟火安全",
+   "families": [
+    "烟火探测",
+    "自动灭火",
+    "疏散报警"
+   ],
+   "subsystems": [
+    "烟火",
+    "乘客安全"
+   ],
+   "owned_devices": [
+    "FIRE"
+   ],
+   "typical_functions": [
+    "烟雾探测与分区报警",
+    "灭火装置就绪监督",
+    "火灾停车疏散"
+   ],
+   "standard_anchor": "烟火安全 SIL4（探测器/灭火装置监督）",
+   "asset_evidence": "smoke_detected / fire_detector_fault / fire_extinguisher_fault / fire_multizone_alarm"
+  },
+  {
+   "code": "SYS-BOGIE",
+   "domain": "bogie",
+   "name": "走行部监测",
+   "families": [
+    "轴温监测",
+    "振动监测",
+    "传感器健康"
+   ],
+   "subsystems": [
+    "走行部"
+   ],
+   "owned_devices": [
+    "BOGIE"
+   ],
+   "typical_functions": [
+    "轴箱温度超限报警",
+    "走行部振动趋势监测",
+    "监测链路健康"
+   ],
+   "standard_anchor": "走行部状态修（轴温/振动特征预警）",
+   "asset_evidence": "bogie_vibration_high / bogie_axle_overheat / bogie_sensor_fault"
+  },
+  {
+   "code": "SYS-SENSING",
+   "domain": "signal",
+   "name": "传感与信号采集",
+   "families": [
+    "信号采集",
+    "传感器监督",
+    "冗余表决"
+   ],
+   "subsystems": [
+    "信号"
+   ],
+   "owned_devices": [],
+   "typical_functions": [
+    "模拟量采集",
+    "传感器新鲜度/变化率检查",
+    "速度 2oo3 冗余表决",
+    "值域校验"
+   ],
+   "standard_anchor": "2oo3 表决 / 变化率监测 / 值域检查",
+   "asset_evidence": "sensor_stuck / sensor_out_of_range / speed_signal_loss / signal_redundancy_loss"
+  }
+ ],
+ "device_system": {
+  "TCMS": "SYS-TRAIN",
+  "VCU": "SYS-TRAIN",
+  "ATO": "SYS-TRAIN",
+  "BCU": "SYS-BRAKE",
+  "BOGIE": "SYS-DOOR",
+  "BMS": "SYS-BATT",
+  "AUX": "SYS-AUX",
+  "HVAC": "SYS-HVAC",
+  "PIS": "SYS-PIS",
+  "LIGHT": "SYS-LIGHT",
+  "FIRE": "SYS-FIRE"
+ }
+}

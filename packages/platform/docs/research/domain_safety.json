@@ -1,0 +1,510 @@
+{
+  "source_files": [
+    "tcms-can-test/tests/rtm.csv",
+    "tcms-can-test/docs/safety_case.md",
+    "tcms-can-test/docs/features.md",
+    "tcms-can-test/docs/ARCHITECTURE.md",
+    "tcms-can-test/docs/test_cases.md",
+    "tcms-can-test/docs/test_plan.md",
+    "tcms-can-test/docs/tutorial.md"
+  ],
+  "notes": [
+    "本项目为教学/演示级安全逻辑仿真：SIL 等级用于论证方法演示，不代表真实车载系统已通过第三方认证（safety_case.md §0/§6 自述）。",
+    "GB/T 国家标准：全部源文档未引用任何 GB/T 系列标准（多为 EN/IEC/ISO 体系与设计对标，未涉及国标锚点）。",
+    "safety_case.md 无显式 HAZOP/Hazard 表；下方 hazards 依据 features.md EBM 模式×原因矩阵、SR 目录与联锁/ATP/看门狗语义推导，source_basis 已逐条标注出处，属可推断的隐式危害清单而非文档原表。",
+    "证据基线：777 用例（44 文件，2026-09-02 实测，776 passed + 1 hardware skip）、语句覆盖率 98.00%（2600 stmts / 52 miss）、门禁 fail_under=97。",
+    "架构/扩展点细节（用户要求第 4 项）放入顶层附加键 architecture；分层依赖与数据流均自 ARCHITECTURE.md 提取。"
+  ],
+  "safety_requirements": [
+    {
+      "req_id": "SR-01",
+      "intent": "任一 SIL4 紧急制动原因触发时必须制动（故障安全：宁可错杀，不可漏放）",
+      "sil_related": "SIL4",
+      "mechanism": "EBM 驾驶模式×制动原因处置矩阵：超速/ATP故障/门开等 SIL4 原因双通道任一触发即制动（mode×reason 查表，RM 豁免记录不误制动）"
+    },
+    {
+      "req_id": "SR-02",
+      "intent": "SIL2 紧急制动原因必须双通道一致才制动（防误报，避免传感器偶发噪声导致无谓紧急制动）",
+      "sil_related": "SIL2",
+      "mechanism": "ebm.channel_vote() 双通道表决：一致才动作，不一致累计 vote_mismatches（ATO故障/火灾等 SIL2 原因走此路径）"
+    },
+    {
+      "req_id": "SR-03",
+      "intent": "紧急制动后必须满足『零速 + 原因消失 + 有效速度信号』才可缓解（不消原因不停车不缓解）",
+      "sil_related": "SIL4",
+      "mechanism": "缓解闭环状态机 IDLE→BRAKE→RELEASED→IDLE：零速≤0.5km/h 且原因消失 + 司机两步序列（手柄回零 + 缓解按钮保持≥3s）"
+    },
+    {
+      "req_id": "SR-04",
+      "intent": "列车移动时车门打开/门故障即违规（故障门按未关处理，禁止移动）",
+      "sil_related": "SIL4",
+      "mechanism": "interlocks.door_motion_conflict()：移动(>0.5km/h 阈值) + 开门/门故障 → 违规并显式返回原因"
+    },
+    {
+      "req_id": "SR-05",
+      "intent": "超速达到 EBI（紧急制动干预）阈值时必须触发紧急制动干预",
+      "sil_related": "SIL4",
+      "mechanism": "atp.py ATP 三级监督（Warning<SBI<EBI）：超 EBI 阈值即触发 EBI 干预，含等于不触发的边界语义"
+    },
+    {
+      "req_id": "SR-06",
+      "intent": "超速达到 SBI（常用制动干预）阈值时必须触发常用制动，且先于 EBI 动作",
+      "sil_related": "SIL3",
+      "mechanism": "atp.py 三级阈值排序 + DynamicEbiCurve 目标点限速线性逼近（对标 ETCS 速度监督），SBI 优先于 EBI 分级降速"
+    },
+    {
+      "req_id": "SR-07",
+      "intent": "节点心跳丢失超过 N 周期必须判为离线/故障",
+      "sil_related": "SIL3",
+      "mechanism": "watchdogs.py 连续 N 周期丢失判 Fault + 迟滞恢复（需连续 M 次心跳）；nmt.py CANopen 心跳生产者(boot-up+状态字节)/消费者(3 周期超时判丢失)"
+    },
+    {
+      "req_id": "SR-08",
+      "intent": "CAN 总线错误计数超限必须进入 Bus-Off 并退避",
+      "sil_related": "SIL2",
+      "mechanism": "errstate.py 对标 ISO 11898-1：TEC/REC 计数迁移、Error-Active/Passive/Bus-Off、128 次总线空闲恢复 + 恢复后 8 位发送退避"
+    },
+    {
+      "req_id": "SR-09",
+      "intent": "周期报文必须满足可调度性（WCRT ≤ 截止期），保证安全报文不因高负载劣化",
+      "sil_related": "SIL2",
+      "mechanism": "schedulability.py Tindell WCRT 迭代分析 R=B+C+Σ⌈(R+τ+Jj)/Tj⌉Cj；busload.py 位级帧模型（最坏位填充）算总线负载率；ID 分配审计（安全报文须占最低 ID 段）"
+    },
+    {
+      "req_id": "SR-10",
+      "intent": "紧急制动事件必须被记录并支持事故冻结窗口（黑匣子语义）",
+      "sil_related": "SIL2",
+      "mechanism": "recorder.py 环形缓冲统一时间线（帧+EBM+错误事件）+ 保护事件驻留 + freeze_snapshot() EB 触发前后快照 + JSON/CSV 导出"
+    },
+    {
+      "req_id": "SR-11",
+      "intent": "故障必须经历『注入→传播→告警→恢复→归档』全生命周期留痕",
+      "sil_related": "SIL2",
+      "mechanism": "faultlife.py FaultLedger 五阶段台账，与 recorder 事件联动、审计报告(total/open/closed/by_level)；scenarios.py YAML 场景经 faultdb 校验故障键后执行"
+    },
+    {
+      "req_id": "SR-12",
+      "intent": "真实 CAN 日志回放必须驱动业务逻辑产生一致的响应（真实数据驱动回归）",
+      "sil_related": "SIL3",
+      "mechanism": "replay.py ReplayChain：.asc → 虚拟时钟 → 联锁/ATP/看门狗/EBM 全链路驱动 → 告警断言，黑匣子闭环复盘"
+    },
+    {
+      "req_id": "SR-13",
+      "intent": "运行中禁止自动解除紧急制动（自愈复位限 1 次，超限转 FAULT 需人工/远程复位）",
+      "sil_related": "SIL4",
+      "mechanism": "EBM 自愈策略状态机：第 2 次自愈被拒转入 FAULT，之后必须远程/人工复位回 IDLE"
+    },
+    {
+      "req_id": "SR-14",
+      "intent": "牵引与制动不得同时施加（互锁）",
+      "sil_related": "SIL4",
+      "mechanism": "interlocks.traction_brake_conflict()：牵引请求 + 制动请求 → 冲突判定"
+    },
+    {
+      "req_id": "SR-15",
+      "intent": "时间一致性：全部模块共享统一时间源（虚拟时间基），保证仿真确定性可复现",
+      "sil_related": "SIL2",
+      "mechanism": "timebase.py VirtualClock：virtual 模式 advance()/set() 确定性推进、全局单例替换，回放链/场景/看门狗全部注入虚拟时钟"
+    },
+    {
+      "req_id": "SR-16",
+      "intent": "故障必须注册进统一故障字典（ID/级别/处置/SIL/检测/注入手段）且与分级模型对齐",
+      "sil_related": "SIL2",
+      "mechanism": "faultdb.py + faults.yaml 22 条 F-TCMS 条目：11 必填字段校验、唯一性、与 faultlevel.FAULTS 级别一致性校验（防双源漂移）"
+    },
+    {
+      "req_id": "SR-17",
+      "intent": "每条安全需求必须有可追溯的测试证据（需求→测试文件双向覆盖）",
+      "sil_related": "SIL3",
+      "mechanism": "tests/rtm.csv（req_id→module→test_file→verifies→status）+ test_rtm.py 元测试自证：SR 全覆盖/无重复/引用文件存在/状态合法"
+    },
+    {
+      "req_id": "SR-18",
+      "intent": "核心安全路径必须可独立快速回归（冒烟层）且失败自动留存现场",
+      "sil_related": "SIL3",
+      "mechanism": "pyproject markers 分层(smoke/safety/hardware/slow/severity) + conftest.py crash_site hook：失败自动导出 summary+JSON/CSV 时间线到 reports/failures/"
+    }
+  ],
+  "standards": [
+    {
+      "code": "EN 50128",
+      "name": "铁路应用——通信、信号和处理系统的软件（Railway applications - Software for railway control and protection systems）",
+      "category": "行业软件功能安全标准",
+      "cited_in": "safety_case.md 引言/§0/§6、test_plan.md 引言、tutorial.md §1.2/§11",
+      "role": "项目安全论证与 V&V 计划的总骨架：把『安全需求→设计实现→测试证据→覆盖率』串成可追溯证据链；test_plan 的入口/出口准则、RTM、缺陷闭环对标其 V&V 思路",
+      "key_points": "要求每条安全需求有测试证据（需求→实现→测试→结果闭环）；SIL3/4 要求更强的结构覆盖（MC/DC 等），本项目以语句覆盖 98% + hypothesis 属性测试 + 模糊测试补充",
+      "caveat": "真实认证需完整生命周期（独立安全评审/工具鉴定/需求变更管理），本项目映射的是可复现的技术内核（演示级）"
+    },
+    {
+      "code": "IEC 61508",
+      "name": "电气/电子/可编程电子安全相关系统的功能安全（Functional safety of E/E/PE safety-related systems）",
+      "category": "通用功能安全标准（SIL 概念源头）",
+      "cited_in": "safety_case.md §0（『软件功能安全（EN 50128 / IEC 61508 思想）』）",
+      "role": "SIL（安全完整性等级）分级思想来源：SIL1~4，SIL4 最严；SR 目录每条标注 SIL 关联即来自该体系",
+      "key_points": "SIL 与允许失效率挂钩：SIL4 故障安全『宁可错杀』（任一通道触发即制动），SIL2 防误报（双通道一致才制动）",
+      "caveat": "本项目 SIL 为论证方法演示，非经第三方认证的 SIL 等级"
+    },
+    {
+      "code": "EN 50126",
+      "name": "铁路应用——可靠性、可用性、可维修性与安全性（RAMS）的论证与规范",
+      "category": "行业 RAMS 全生命周期管理标准",
+      "cited_in": "tutorial.md §1.2（『功能安全标准（EN 50126/50128/50129，SIL 等级）』）",
+      "role": "安全攸关系统背景框架：故障场景必须可复现、覆盖率可度量等验证原则的来源之一",
+      "key_points": "本项目在 RAMS 语境下聚焦『安全(S)』的软件验证环节",
+      "caveat": "文档仅在背景叙述中引用，未展开其生命周期流程"
+    },
+    {
+      "code": "EN 50129",
+      "name": "铁路应用——安全相关电子系统（Safety related electronic systems for signalling）",
+      "category": "行业系统级安全案例标准（Safety Case 概念来源）",
+      "cited_in": "tutorial.md §1.2",
+      "role": "项目文档命名为 safety_case（安全案例）即对标其『系统安全论证/验收』概念；safety_case.md 即一种简化的安全案例形态",
+      "key_points": "安全案例把证据组织成可审计的论证结构（需求/设计/证据/结论）",
+      "caveat": "仅概念对标；无第三方安全评估机构评审环节"
+    },
+    {
+      "code": "ISO 11898-1",
+      "name": "CAN 数据链路层与物理信令（含错误管理）",
+      "category": "通信标准（CAN 协议族）",
+      "cited_in": "rtm.csv SR-08、features.md errstate 深度设计、tutorial.md §8.5",
+      "role": "errstate.py 错误状态机唯一锚点：发送错误计数 TEC/接收错误计数 REC 规则（检错 +8、成功 −1、被动态跳变 120/119）、Error-Active/Passive/Bus-Off 三态迁移",
+      "key_points": "TEC≥256 进 Bus-Off；Bus-Off 后累计 128 次总线空闲归零恢复 + 恢复后 8 位发送退避（suspend transmission）；『接收错误不触发 Bus-Off（仅发送错误引发）』为可区分背标准/读标准的细节；错误按位/填充/CRC/格式/ACK 分类统计",
+      "caveat": "TEC/REC 计数用 8 位封顶（255）存储"
+    },
+    {
+      "code": "CiA 301 (CANopen)",
+      "name": "CANopen 应用层协议（NMT/心跳机制）",
+      "category": "通信应用层协议（CAN 上层）",
+      "cited_in": "features.md nmt 模块、test_cases.md test_nmt.py、rtm.csv SR-07",
+      "role": "nmt.py 心跳层锚点：心跳生产者（boot-up 消息 + 状态字节，COB-ID 0x700+node_id）与消费者（3 周期超时判心跳丢失、boot-up 重置计时）、NMT 主站命令（Start/Stop/Pre-op/Reset + 命令审计日志）",
+      "key_points": "心跳带节点状态语义（区别于纯存在性看门狗）；本项目消费者超时=3 个心跳周期",
+      "caveat": "实现为教学子集，非完整 CANopen 栈"
+    },
+    {
+      "code": "ETCS 速度监督模型（欧洲列车控制系统规范族）",
+      "name": "欧洲列车控制系统（European Train Control System）速度/距离监督",
+      "category": "行业设计对标（非直接引用标准）",
+      "cited_in": "features.md atp 模块、tutorial.md §8.6（『对标 ETCS 速度监督』）",
+      "role": "atp.py 动态 EBI 曲线设计对标：距离目标点越近允许速度线性收窄（目标点限速线性逼近），并支持制动触发点反解",
+      "key_points": "分级干预（Warning/SBI/EBI）+ 动态包络是 ETCS 式超速防护的核心思想",
+      "caveat": "仅设计思想对标，非实现真实 ETCS 规范"
+    },
+    {
+      "code": "Tindell WCRT 分析（实时系统可调度性理论）",
+      "name": "Tindell 迭代最坏响应时间分析（学术方法，非标准）",
+      "category": "实时性分析理论",
+      "cited_in": "features.md schedulability、rtm.csv SR-09",
+      "role": "schedulability.py 数学内核：R = B + C + Σ⌈(R+τ+Jj)/Tj⌉Cj，逐报文断言 R ≤ 周期（deadline）",
+      "key_points": "识别高负载下低优先级报文的周期劣化；本项目 DBC 中 BrakeSystem(0x700) 优先级低于 VehicleSpeed(0x200) 是可被审计工具识别的真实风险演示点",
+      "caveat": "学术模型，真实工程还需验证协议实现细节"
+    },
+    {
+      "code": "GB/T 系列",
+      "name": "中国国家标准（信号/功能安全相关）",
+      "category": "国标（缺口说明）",
+      "cited_in": "无（全部源文档未出现）",
+      "role": "无",
+      "key_points": "文档锚点均为 EN/IEC/ISO 与 ETCS 对标，未引用任何 GB/T 标准（如 GB/T 21562 轨道交通 RAMS、GB/T 12758 信号系统等均未出现）",
+      "caveat": "若平台需对齐国内轨交项目，应另行补充国标锚点"
+    }
+  ],
+  "hazards": [
+    {
+      "id": "H-01",
+      "title": "列车超速（>160km/h 触发边界，EBI 动态阈值）",
+      "description": "实际速度超过监督包络，接近目标点时限速线性收窄，可能冲出制动能力范围",
+      "detection": "ATP 三级监督：Warning/SBI/EBI 阈值 + DynamicEbiCurve 制动触发点",
+      "mitigation": "SBI 常用制动先于 EBI；EBI 触发紧急制动（interlocks 超速判定 + EBM 矩阵）",
+      "related_sr": ["SR-05", "SR-06"],
+      "sil_level": "SIL4 (EBI)/SIL3 (SBI)",
+      "source_basis": "safety_case.md SR-05/06；features.md EBM 原因矩阵 overspeed"
+    },
+    {
+      "id": "H-02",
+      "title": "运行中车门打开或门状态故障",
+      "description": "列车移动时车门开启或门状态不可信（故障门按未关处理），乘客坠落/挤夹风险",
+      "detection": "door_motion_conflict() 移动(>0.5km/h)+开门/门故障 → 违规",
+      "mitigation": "门-车联锁禁止移动；RM 模式矩阵豁免但联锁层兜底（职责分离）；AllDoorsClosed 故障安全（不得置位）",
+      "related_sr": ["SR-04"],
+      "sil_level": "SIL4",
+      "source_basis": "features.md EBM 矩阵 door_open；interlocks 深度设计"
+    },
+    {
+      "id": "H-03",
+      "title": "牵引与制动同时施加",
+      "description": "边牵引边制动——执行层最危险失效之一，导致轮对滑行、设备损耗与失控",
+      "detection": "traction_brake_conflict() 牵引请求+制动请求冲突；exec_feedback APPLIED 期间牵引恢复立即判故障（不等超时）",
+      "mitigation": "牵引-制动互锁 + EB 执行反馈牵引切除联锁（三重证据之一）",
+      "related_sr": ["SR-14"],
+      "sil_level": "SIL4",
+      "source_basis": "safety_case.md SR-14；features.md exec_feedback"
+    },
+    {
+      "id": "H-04",
+      "title": "ATO 自动驾驶功能故障",
+      "description": "自动驾驶功能异常，无法按图行车，需安全降级",
+      "detection": "EBM 原因 ato_fault（FAM 适用）",
+      "mitigation": "紧急制动 + 降级 CM（不允许跳级；ATO 故障 FAM→CM）",
+      "related_sr": ["SR-01", "SR-02"],
+      "sil_level": "SIL2（防误报，双通道一致才制动）",
+      "source_basis": "features.md EBM 原因矩阵 ato_fault（SIL2 行）"
+    },
+    {
+      "id": "H-05",
+      "title": "ATP 超速防护故障",
+      "description": "速度防护子系统自身失效，失去超速兜底",
+      "detection": "EBM 原因 atp_fault（FAM/CM 适用）",
+      "mitigation": "紧急制动 + 降级 RM（CM→RM，不允许跳级）",
+      "related_sr": ["SR-01"],
+      "sil_level": "SIL4（任一通道触发即制动）",
+      "source_basis": "features.md EBM 原因矩阵 atp_fault（SIL4 行）"
+    },
+    {
+      "id": "H-06",
+      "title": "轨道障碍物（侵限）",
+      "description": "线路上出现障碍物，可能碰撞",
+      "detection": "EBM 原因 obstacle（FAM/CM 适用；RM 由司机人工确认豁免）",
+      "mitigation": "紧急制动",
+      "related_sr": ["SR-01"],
+      "sil_level": "SIL4",
+      "source_basis": "features.md EBM 原因矩阵 obstacle"
+    },
+    {
+      "id": "H-07",
+      "title": "火灾报警",
+      "description": "列车火灾/烟火事件",
+      "detection": "EBM 原因 fire_alarm（全模式适用）",
+      "mitigation": "紧急制动；SIL2 双通道一致才制动以防传感器误报引起无谓急停",
+      "related_sr": ["SR-01", "SR-02"],
+      "sil_level": "SIL2",
+      "source_basis": "features.md EBM 原因矩阵 fire_alarm（SIL2 行）"
+    },
+    {
+      "id": "H-08",
+      "title": "维护开关误置 / 维护状态下车动",
+      "description": "维护/旁路状态下安全防护被旁路却发生移动，威胁维护人员",
+      "detection": "EBM 原因 maintenance_sw（全模式制动）；bypass 旁路安全前提（零速+速度信号有效）",
+      "mitigation": "紧急制动 + 隔离/旁路状态机强制 RM 降级兜底、禁止升模式 + 操作审计日志",
+      "related_sr": ["SR-01", "SR-13"],
+      "sil_level": "SIL4",
+      "source_basis": "features.md EBM 原因矩阵 maintenance_sw + bypass 模块"
+    },
+    {
+      "id": "H-09",
+      "title": "通信网络故障（节点失活/心跳丢失/Bus-Off/断线）",
+      "description": "CAN 网络本身故障：节点断电失活、心跳丢失判离线、总线错误致 Bus-Off、线缆断线——控制/安全信息不可达",
+      "detection": "心跳监督（连续 N 周期丢失判 Fault）+ CANopen NMT 心跳 + errstate TEC/REC 迁移 + EBR 断线诊断(diag_pulse)",
+      "mitigation": "看门狗告警降级；EBR 硬线回路独立于 CAN 的 SIL4 执行路径（得电缓解/失电制动）；共享介质短路/断路致全体 Bus-Off 的集体失效建模",
+      "related_sr": ["SR-07", "SR-08", "SR-12"],
+      "sil_level": "SIL3 (心跳监督)/SIL2 (Bus-Off)/SIL4 (EBR 硬线)",
+      "source_basis": "features.md network 丢失(硬线备份) hardwire_loss 原因(SIL4)、errstate、watchdogs、ebr"
+    },
+    {
+      "id": "H-10",
+      "title": "制动执行层失效（请求未落地）",
+      "description": "EBM 发出紧急制动请求（决策正确）但制动未真正施加：缸压不足/无 EB 回执/牵引未切除/反馈超时——『决策正确 ≠ 列车已安全停车』",
+      "detection": "exec_feedback 三重证据交叉校验：制动缸压≥300kPa + EB 激活回执 + 牵引切除联锁，2s 超时判执行层故障",
+      "mitigation": "证据缺失判执行层故障；APPLIED 期间牵引恢复立即故障；缓解需压力回落到释放阈值以下；样本时间单调性校验（拒绝乱序/重放）",
+      "related_sr": ["SR-03", "SR-10"],
+      "sil_level": "SIL4（执行链兜底）",
+      "source_basis": "features.md EB 执行反馈闭环深度设计"
+    },
+    {
+      "id": "H-11",
+      "title": "EBR 硬线回路物理断线",
+      "description": "紧急制动回路线缆断线或触点失效：既可能意外失电制动，也可能单回路丧失制动能力",
+      "detection": "ebr.diag_pulse 诊断推理：请求源全闭合但回路仍失电 → 断线，与触点开路正常请求区分",
+      "mitigation": "fail-safe 方向（失电=制动）；双回路 2oo2 冗余：任一失电即制动，单条断线仅 degraded 检修预警、另一回路仍保证制动能力",
+      "related_sr": ["SR-02"],
+      "sil_level": "SIL4",
+      "source_basis": "features.md EBR 硬线回路深度设计"
+    },
+    {
+      "id": "H-12",
+      "title": "紧急制动被不当缓解（运行中自动解除/原因未消）",
+      "description": "制动力提前释放导致列车在危险未消除时继续运行",
+      "detection": "缓解条件校验：零速≤0.5km/h + 原因消失 + 有效速度信号",
+      "mitigation": "缓解闭环 + 司机两步缓解序列（手柄回零→按钮保持≥3s）+ 自愈复位限 1 次超限转 FAULT（远程/人工复位）",
+      "related_sr": ["SR-03", "SR-13"],
+      "sil_level": "SIL4",
+      "source_basis": "safety_case.md SR-03/SR-13；features.md EBM 缓解/复位闭环"
+    },
+    {
+      "id": "H-13",
+      "title": "速度传感器冗余表决失效（2oo3 通道故障）",
+      "description": "速度传感器多通道输出发散或通道故障，速度数据不可信",
+      "detection": "voting.py：三通道多数一致表决、发散判定、容差边界",
+      "mitigation": "单通道故障自动降级 2oo2（容错演进，降级事件计数）；<2 通道表决器失效判不可用（对标真实列控速度传感器冗余）",
+      "related_sr": ["SR-01", "SR-05"],
+      "sil_level": "SIL4（速度输入完整性）",
+      "source_basis": "features.md voting 模块；safety_case.md §3 test_voting.py 21 用例"
+    }
+  ],
+  "feature_areas": [
+    {
+      "area": "协议与通信基础设施",
+      "summary": "『列车的语言字典』：DBC 数据库定义 8 个报文（心跳 0x100/车速 0x200/牵引制动手柄 0x300/车门控制 0x400/报警事件 0x500/受电弓 0x600/制动系统 0x700/能源 0x780，周期 50/100/500ms 与事件型），protocol 封装物理值→位级编解码",
+      "modules": ["tcms/tcms.dbc", "tcms/protocol.py", "tcms/parser.py"],
+      "key_test_files": ["test_protocol.py", "test_fault_injection.py（协议越界部分）"],
+      "test_intents": [
+        "DBC 结构完整性：报文 ID 唯一、标准帧约束、DLC、周期属性(50/100/500ms)、信号物理值域(车速0-200km/h/SOC 0-100%/温度-40~120℃)、枚举值表、节点表——协议层是『需求文档』，测试即需求验收",
+        "越界拒绝：车速/手柄/SOC/温度边界值编码与越界拒绝、未知报文 ID 拒绝解码、原始帧往返无损",
+        "故障注入与安全联动：CRC-8/位翻转/corrupt_frame 位级篡改能力（FaultInjector 弹药库）、超速→报警事件联动(>160km/h)"
+      ]
+    },
+    {
+      "area": "总线抽象与多节点仿真",
+      "summary": "同一套用例两种执行环境：make_bus() 读环境变量切换 virtual/PCAN/Vector/socketcan（HIL 只改环境变量不改代码）；单节点 TCMSNodeSimulator 按 DBC 周期自动发报文；多节点 VCU/BCU/BMS 独立工作、节点失活报文消失；.asc 日志解析与多网段网关拓扑",
+      "modules": ["tcms/bus.py", "tcms/simulator.py", "tcms/multinode.py", "tcms/canlog.py", "tcms/network.py"],
+      "key_test_files": ["test_bus.py", "test_simulator.py", "test_multinode.py", "test_canlog.py", "test_network.py"],
+      "test_intents": [
+        "仿真器行为：7 个周期报文齐发、心跳计数单调递增、车速编解码往返一致、AllDoorsClosed/开门许可联动、丢报注入单报文丢失不影响其他报文",
+        "多节点隔离：节点-报文归属映射、BMS 失活仅影响能源报文、恢复后报文重新出现、未知节点拒绝——失活是看门狗/丢报检测的故障源",
+        "多网段拓扑：网关白名单/黑名单按 ID 过滤、异步缓冲转发（send 只入缓冲、时钟推进+step() 泵出、时延可测）、缓冲溢出丢弃不阻塞发送方、足迹防环（帧不重复过同一网关）、级联扩散（逐网关两拍到达）、recv_any 跨段统一接收",
+        "硬件接口抽象：环境变量配置读取、virtual 总线创建、非法位速率拒绝、hardware marker 隔离（CI 自动跳过）"
+      ]
+    },
+    {
+      "area": "安全功能仿真（安全逻辑层核心）",
+      "summary": "项目灵魂——『检测→决策→执行→反馈』闭环代码化：紧急制动管理 EBM（模式×原因处置矩阵+缓解/复位闭环+司机两步缓解序列+SIL2/SIL4 双通道表决+自愈限次）、EBR 硬线回路（独立于 CAN 的 SIL4 执行路径）、EB 执行反馈（三重证据）、联锁（门-车/超速-制动/牵引-制动/方向-速度/车门-站台）、ATP 三级超速监督、心跳监督/看门狗、2oo3 速度表决、隔离/旁路、CAN 错误状态机",
+      "modules": ["tcms/ebm.py", "tcms/ebr.py", "tcms/exec_feedback.py", "tcms/interlocks.py", "tcms/atp.py", "tcms/watchdogs.py", "tcms/nmt.py", "tcms/voting.py", "tcms/bypass.py", "tcms/errstate.py"],
+      "key_test_files": ["test_ebm.py", "test_ebr.py", "test_exec_feedback.py", "test_interlocks.py", "test_atp.py", "test_watchdogs.py", "test_nmt.py", "test_voting.py", "test_bypass.py", "test_errstate.py"],
+      "test_intents": [
+        "EBM 决策矩阵穷举（8 原因×FAM/CM/RM 3 模式）：同一原因在不同驾驶模式处置不同；RM 下门/障碍物类原因豁免矩阵制动（司机人工确认，运营豁免），但联锁层仍按『故障门不得移动』兜底——两层防护职责分离",
+        "缓解/复位闭环 + 司机两步操作序列（手柄回零+按钮保持≥3s，未回零拒绝/不足可重试）：『不消原因不停车不缓解』",
+        "SIL 分层表决语义：SIL4 双通道任一触发即制动（故障安全/宁可错杀）vs SIL2 双通道一致才制动（防误报）——用表决策略编码『制动的失效代价 vs 误制动代价』的权衡",
+        "执行反馈三重证据（缸压≥300kPa+EB 回执+牵引切除，2s 超时判执行层故障；APPLIED 中牵引恢复立即故障不等超时）——『决策正确≠列车已安全停车』",
+        "ATP 三级阈值边界（等于不触发/超限即 EBI）、动态 EBI 曲线（目标点限速线性逼近、允许速度单调封顶、制动触发点反解）",
+        "CAN 错误状态机（ISO 11898-1）：TEC/REC +8/−1/被动跳变 120/119、Bus-Off 触发与离线隔离（事件注入 no-op）、128 空闲恢复、错误类型统计、状态迁移回调"
+      ]
+    },
+    {
+      "area": "故障建模与生命周期管理",
+      "summary": "『先统一故障口径再设计用例』：faultlevel 四级故障分级（info/minor/major/critical → 提示/告警/降级/紧急制动处置映射）+ 统一 FMEA 故障字典（faults.yaml 22 条 F-TCMS，11 必填字段、级别/处置/SIL/检测/注入/恢复，与 faultlevel 双源对齐防漂移）+ 故障五阶段生命周期台账 + YAML 场景外部化 + 位级/总线级故障注入",
+      "modules": ["tcms/faultlevel.py", "tcms/faultdb.py", "tcms/faults.yaml", "tcms/faultlife.py", "tcms/scenarios.py", "tcms/faults.py", "tcms/busfault.py"],
+      "key_test_files": ["test_faultdb.py", "test_faultlevel.py", "test_faultlife.py", "test_scenarios.py", "test_scenario_registry.py", "test_busfault.py", "test_faults.py"],
+      "test_intents": [
+        "FMEA 字典逐条字段校验：11 必填字段、fid/key 唯一性、级别/处置/SIL/层级合法性、与 faultlevel.FAULTS 同名条目级别一致性（防双源漂移）、查询 API（按 key/fid/级别/子系统/SIL/层级）",
+        "故障分级语义：模式敏感处置（critical 任何模式紧急制动、major 在 RM 下仅告警）、处置优先级合并、注入编排器（叠加/升级/清除/影响评估）",
+        "故障生命周期五阶段迁移（注入→传播→告警→恢复→归档）、同名幂等复用、recorder 事件联动、审计报告——故障从发生到消失全程可审计（黑匣子）",
+        "场景注册表闭环：13 个 YAML 场景逐个端到端执行 + 场景引用故障键必须存在于字典 + 规模守卫——场景↔字典耦合被测试锁定，字典改名立刻红灯",
+        "总线级故障注入：短路/断路→全体节点集体 Bus-Off（共享介质故障影响所有节点）→恢复后全回 Error-Active；干扰→REC 上升不触发 Bus-Off；故障期间禁止重复注入"
+      ]
+    },
+    {
+      "area": "网络质量与实时性诊断",
+      "summary": "『总线还有多少容量余量』：位级帧模型负载率（含最坏位填充，锚点 0 字节=55 位/8 字节=135 位）、Tindell WCRT 可调度性分析、周期抖动/漂移统计（200ppm 告警）、报文序列/时序违规检测（丢/重/乱/迟帧）",
+      "modules": ["tcms/busload.py", "tcms/schedulability.py", "tcms/jitter.py", "tcms/seqcheck.py"],
+      "key_test_files": ["test_busload.py", "test_schedulability.py", "test_jitter.py", "test_seqcheck.py"],
+      "test_intents": [
+        "位级帧模型锚点验证（0 字节=55 位、8 字节=135 位最坏值——业界公认值）、滑动窗口负载率收敛、设计上限/预警线评估、背景流量规划（30/60/90% 目标）",
+        "WCRT 可调度性：无干扰=R=C、高优先级干扰迭代、饱和不可调度、抖动放大干扰、真实 DBC 报文集全可调度、ID 分配审计（安全报文须占最低 ID 段，识别 BrakeSystem 0x700 风险点）",
+        "时序质量：帧间隔 min/max/mean/σ、迟到容忍、ppm 漂移（慢/快时钟±1000ppm）与 200ppm 告警、时间戳回退拒绝",
+        "序列检测：乱序（跳号/回退）、重复帧（同序号短间隔）、迟到帧、丢帧（超时）、多 ID 隔离、计数器回绕合法"
+      ]
+    },
+    {
+      "area": "可复现与取证（虚拟时间/回放/黑匣子）",
+      "summary": "『故障能复现、场景能声明、全程可审计』：虚拟时间基统一时间源保证确定性（测试可复现←确定性时间）；完整回放链 .asc→虚拟时钟→联锁/ATP/看门狗/EBM 全链路驱动；事件时序记录器环形缓冲统一时间线（帧+EBM+错误事件）与事故冻结窗口；场景 DSL when/expect 声明式",
+      "modules": ["tcms/timebase.py", "tcms/replay.py", "tcms/recorder.py", "tcms/faultlife.py（FaultLedger）", "tcms/canlog.py（回放）", "examples/replay_demo.py"],
+      "key_test_files": ["test_timebase.py", "test_replay.py", "test_recorder.py", "test_examples.py"],
+      "test_intents": [
+        "虚拟时钟确定性推进：monotonic/virtual 双模式、advance/set 确定性、负值拒绝、全局单例替换（仿真全链路统一时间源，HIL 平台时间一致性基础设施）",
+        "回放链全链路裁决：正常行驶无告警、超速(>160)→EBI 触发 EBM+ATP 告警、门开移动触发联锁告警、心跳丢失→看门狗 fault、recorder 联动、报告结构完整（帧数/告警分类/EBM 状态/看门狗状态/ATP 级别）",
+        "记录器黑匣子：环形缓冲容量上限不膨胀、过滤查询、统计聚合、JSON/CSV 导出(UTF-8 无 BOM)、RecordedBus 收发帧透明入库、hook_ebm/hook_errstate 单向接线",
+        "examples 进回归：demo_trip.asc 可解析且 replay_demo 5 步剧情断言全过——文档示例改坏即红灯"
+      ]
+    },
+    {
+      "area": "安全论证与测试工程证据链",
+      "summary": "『SIL 不是标上去的，是映射出来的』：需求追溯矩阵 RTM（SR-01~18→模块→测试文件双向追溯 + 元测试自证）、覆盖率门禁（fail_under=97 单源）、测试分层（smoke/safety/hardware/slow/severity markers + 冒烟快速门禁）、属性测试（hypothesis 不变量）、失败现场自动导出、趋势报表、README 徽章自证（机器产物驱动禁手抄）",
+      "modules": ["tests/rtm.csv", "tests/test_rtm.py", "tests/conftest.py", "pyproject.toml(markers+门禁)", "tcms/reporting.py", "scripts/gen_badges.py", "scripts/report_history.py"],
+      "key_test_files": ["test_rtm.py", "test_failure_export.py", "test_reporting.py", "test_badges.py", "test_properties.py", "test_fuzz.py"],
+      "test_intents": [
+        "RTM 元测试：自证 CSV 可解析、SR 全覆盖、无重复条目、状态合法、引用文件存在——追溯完整性本身被测试锁定",
+        "失败现场自动导出：用例失败时若注册 crash_site（recorder/台账）自动导出 summary+JSON/CSV 时间线到 reports/failures/——失败自动留证据，无需复跑",
+        "属性测试（hypothesis 不变量替代逐例）：错误计数器账目恒等、Bus-Off 隔离恢复归零、状态-计数一致性、联锁违规⟺原因非空、阈值单调、执行反馈状态机合法性与故障态粘滞、环形缓冲容量上限",
+        "测试分层验证（test_plan）：Smoke 冒烟层<2min 核心安全路径、Regression 全量 777、Deep slow/property/fuzz 夜间——入口/出口准则闭环"
+      ]
+    }
+  ],
+  "concept_cards": [
+    {
+      "term": "紧急制动管理 EBM（Emergency Brake Management）",
+      "plain_explanation": "列车『大脑』检测到危险后启动的最后手段。本项目把它实现为一张『驾驶模式×制动原因』处置矩阵 + 状态机（IDLE→BRAKE→RELEASED→FAULT）：每个原因(超速/门开/ATO故障…)在每种驾驶模式(FAM/CM/RM)下要么制动、要么只记录；制动解除不是拍按钮就行，要先满足零速+原因消失，再做『手柄回零+按按钮 3 秒』两步操作。EBR 硬线回路是它独立于 CAN 的物理备份，exec_feedback 确认它真的停住了车。",
+      "why_it_matters": "『该不该制动、制动后怎么解除』是安全攸关系统里最不能拍脑袋的决策：矩阵把每条原因的处理与 SIL 等级显式化；缓解闭环杜绝『运行中自动松开刹车』；自愈限 1 次防反复误复位。这是面试与事故复盘的核心对象，也是 H-01~H-13 大多数危害的最终处置出口。",
+      "related_modules": ["tcms/ebm.py", "tcms/ebr.py", "tcms/exec_feedback.py", "tcms/interlocks.py", "tcms/recorder.py"]
+    },
+    {
+      "term": "超速防护 ATP（Automatic Train Protection）",
+      "plain_explanation": "防止列车超速的自动防护：项目用 Warning<SBI<EBI 三级阈值逐级干预——先警告，超 SBI 先上常用制动，再超 EBI 才触发紧急制动；并实现动态 EBI 曲线：离限速目标点越近，允许速度线性收窄（对标 ETCS 速度监督）。",
+      "why_it_matters": "超速是脱轨/冲撞的直接诱因之一；分级干预让『不超速也尽量不吓乘客』（SBI 常用制动优先于 EBI），而 EBI 兜底保证绝不越过制动能力边界。它是 EBM 决策矩阵里的最高频触发源（overspeed 全模式制动）。",
+      "related_modules": ["tcms/atp.py", "tcms/ebm.py", "tcms/interlocks.py", "tcms/replay.py"]
+    },
+    {
+      "term": "SIL（Safety Integrity Level，安全完整性等级）",
+      "plain_explanation": "功能安全标准(IEC 61508)给安全功能定的『可靠度等级』：SIL1~4，数字越大要求失效概率越低、开发证据越严。项目里每条安全需求(SR)都标注关联 SIL，并把 SIL 语义翻译成具体设计策略：SIL4 原因『任一通道触发即制动』（宁可错杀），SIL2 原因『双通道一致才制动』（防误报）。",
+      "why_it_matters": "SIL 回答『安全投入该配多少』：SIL4 用故障安全冗余兜底，SIL2 容忍传感器噪声。项目的核心叙事是『SIL 不是标上去的，是从需求→实现→测试→覆盖率映射出来的』——这就是 EN 50128 证据链的技术内核，也是 safety_case.md 一整份文档在论证的事。",
+      "related_modules": ["docs/safety_case.md", "tcms/ebm.py(channel_vote)", "tcms/faultdb.py(SIL 字段)", "pyproject.toml(覆盖率门禁)"]
+    },
+    {
+      "term": "2oo2 / 2oo3 冗余表决",
+      "plain_explanation": "『2 取 3 / 2 取 2』的冗余表决架构：2oo3 指三路独立通道(如速度传感器)多数一致才采信，一路坏了自动降级成 2oo2，只剩不到两路时表决器宣布失效；2oo2 用在双回路 EBR 上指『任一回路失电即制动』(双份制动能力互为备份)，用在 EBM 通道表决上指『两路一致才动作』。同一个 2oo2 词在不同语境方向相反——一个求冗余可靠，一个求防误动作。",
+      "why_it_matters": "单点故障是安全系统的头号敌人：表决冗余让『传感器自己坏了』能被容忍(降级)或被发现(失效判定)，而不是直接给出错误的速度/制动决定。真实列控的速度传感器冗余就是 2oo3 架构。",
+      "related_modules": ["tcms/voting.py", "tcms/ebr.py(双回路)", "tcms/ebm.py(channel_vote)", "tests/test_voting.py"]
+    },
+    {
+      "term": "Bus-Off（CAN 节点离线隔离）",
+      "plain_explanation": "ISO 11898-1 错误管理术语：每个 CAN 节点维护发送错误计数 TEC 与接收错误计数 REC，出错 +8、成功 −1；TEC 累计到 256 节点就『自我隔离』进入 Bus-Off——不再收发、不再感知总线(事件注入都是 no-op)；之后要累计 128 次总线空闲才归零恢复，恢复后还有 8 位发送退避。注意只有发送错误能触发 Bus-Off，接收错误不会。",
+      "why_it_matters": "它回答『总线上谁在搞事、坏节点怎么不拖垮全车』：短路/断路等共享介质故障会让全体节点集体 Bus-Off；节点离线又会被心跳监督发现并告警降级。错误状态机 + 心跳监督 + EBR 硬线备份三层，共同回答『通信不可信时安全功能还怎么执行』。",
+      "related_modules": ["tcms/errstate.py", "tcms/busfault.py", "tcms/faults.py", "tcms/recorder.py(hook_errstate)"]
+    },
+    {
+      "term": "心跳监督与看门狗（Watchdog / Heartbeat）",
+      "plain_explanation": "用周期性报文证明节点『还活着』：心跳是节点周期性发出的存在性报文，CANopen(NMT) 心跳还额外带状态字节。看门狗则消费心跳：连续 N 个周期没收到就判该节点 Fault(离线)，恢复需连续 M 次心跳才翻转(迟滞防抖，如丢 3 判 Fault/回 2 复位)，避免抖动误报。",
+      "why_it_matters": "列车节点(VCU 主控/BCU 制动/BMS 能源)断电或通信中断时，安全功能必须尽早知道『谁不在了』：BMS 失活只影响能源报文、BCU 失活则影响制动——监督机制让故障在传播成事故前先触发降级与告警，是 SR-07 的直接实现，也是回放链里『心跳丢失→看门狗 fault 告警』剧情的基础。",
+      "related_modules": ["tcms/watchdogs.py", "tcms/nmt.py", "tcms/multinode.py", "tcms/timebase.py", "tcms/replay.py"]
+    },
+    {
+      "term": "FMEA 故障字典（故障目录 + 双源对齐）",
+      "plain_explanation": "把『我们会注入哪些故障』做成一张统一目录：faults.yaml 里 22 条 F-TCMS 记录，每条含 ID/键名/子系统/层级/级别/处置/SIL/检测/注入手段/恢复/描述共 11 个必填字段；faultdb.py 负责加载校验(唯一性、字段合法性)并提供查询 API，还强制与 faultlevel 分级模型做级别一致性对齐。",
+      "why_it_matters": "测试/故障注入前先统一故障口径——场景引用故障键必须存在于字典(字典改名立刻红灯，注册表守卫)，杜绝团队里 A 说『超速故障』B 说『overspeed』的混乱；FMEA 结构让每条故障自带 SIL 与处置，从源头把故障管理与安全等级挂钩。",
+      "related_modules": ["tcms/faultdb.py", "tcms/faults.yaml", "tcms/faultlevel.py", "tcms/scenarios.py", "tcms/faultlife.py", "tests/test_faultdb.py"]
+    },
+    {
+      "term": "RTM 需求追溯矩阵（Requirements Traceability Matrix）",
+      "plain_explanation": "一张证明『每条安全需求都有测试罩着』的机读表格：rtm.csv 每行一条 (req_id→实现模块→测试文件→验证行为→状态)。它本身不是文档摆设——test_rtm.py 是元测试：自动解析 CSV、检查 SR-01~18 全覆盖、无重复行、引用的文件和 SR 都真实存在。",
+      "why_it_matters": "EN 50128 证据链的核心动作就是追溯：需求变了测试要跟着变、测试少了需求就没证据。把追溯做成『被测试锁定的 CSV』让 SR-17(追溯要求本身也是一条 SR)可执行校验，需求与测试永不脱节——这是整个 safety_case 论证的脊柱。",
+      "related_modules": ["tests/rtm.csv", "tests/test_rtm.py", "docs/safety_case.md", "docs/test_plan.md"]
+    }
+  ],
+  "architecture": {
+    "layered_stack": [
+      { "layer": "入口层", "modules": ["run.py(仓库态薄壳)", "tcms-test(安装态入口)", "tcms/cli.py(单一真源)", "tcms/diagnose.py(自检)"], "responsibility": "统一入口与自检；CLI 逻辑只写在 cli.py，run.py 与 tcms-test 均委托它（勿两处写逻辑）" },
+      { "layer": "应用层", "modules": ["scenarios/*.yaml → tcms/scenarios.py", "faults.yaml → tcms/faultdb.py", "demo.py", "examples/replay_demo.py"], "responsibility": "声明式场景编排、FMEA 字典加载、演示脚本" },
+      { "layer": "业务层", "modules": ["安全逻辑：ebm ebr exec_feedback interlocks atp voting bypass nmt watchdogs errstate", "诊断分析：busload schedulability jitter seqcheck recorder replay canlog faultlife lifecycle"], "responsibility": "安全功能仿真与诊断分析核心逻辑" },
+      { "layer": "协议层", "modules": ["tcms/tcms.dbc(打包数据)", "protocol.py(编解码常量)"], "responsibility": "DBC 报文定义与编解码封装（随 wheel 分发）" },
+      { "layer": "传输层", "modules": ["tcms/bus.py(总线工厂)", "python-can(BusABC)"], "responsibility": "总线抽象：virtual/PCAN/Vector/socketcan 切换；唯一允许直接触碰 python-can 的模块" }
+    ],
+    "dependency_rule": "上层可依赖下层；同层模块尽量不互相 import（确需时经 protocol.py 常量或 bus.py 工厂，不直接 new 总线）。业务层一律注入 bus 对象，不感知接口类型——HIL 与 virtual 同套代码。",
+    "data_flow": "DBC 协议 + 仿真器(线程) → 虚拟/真实 CAN 总线 → 测试用例断言；报文编解码(protocol/parser) 与 recorder 统一时间线(事件+帧+故障台账) 并行收数；故障链 faultdb(字典) → scenarios(YAML 场景) → faultlife(台账)；RTM 追溯矩阵 ⇐ 用例 ⇐ 需求 SR-01~18；coverage.json → CI 覆盖率门禁 → 徽章自证/Pages 趋势。核心资产是『机器自证』：README 徽章、文档站数字全部由 CI 产物(JUnit/coverage.json)驱动，禁止手抄。",
+    "extension_points": [
+      { "name": "新增一个报文(协议扩展)", "steps": ["编辑 tcms/tcms.dbc 加 message+signals(含周期)", "protocol.py 加 ID 常量/MESSAGE_NAMES/枚举阈值", "simulator.py start() 的 _threads 加 _spawn(tag,id,period)+_tick 分支", "补测试(仿 test_protocol.py)"], "guard": "勿为演示加第 9 种报文——先证明它服务某个 SR/故障键" },
+      { "name": "新增一个故障键(FMEA 字典)", "steps": ["faults.yaml 加 F-TCMS-0xx(fid/key 唯一, level/action ∈ faultlevel 合法集)", "test_faultdb.py 自动断言总数/唯一性(读文件不硬编码数)", "需被场景消费时确认 faultlevel/注入器支持该 key"], "guard": "与 faultlevel.FAULTS 重名条目校验一致" },
+      { "name": "新增一个场景", "steps": ["scenarios/<name>.yaml 声明式编排(注入/恢复/断言)", "头部注释写 F-TCMS 编号与字典逐条对齐", "test_scenario_registry.py 自动参数化执行目录内全部 YAML——无需改测试文件"], "guard": "注册表规模守卫 ≥5" },
+      { "name": "接入真实 CAN 硬件(HIL)", "steps": ["插卡(PCAN/Vector/socketcan/slcan)", "设环境变量 TCMS_BUS_INTERFACE/TCMS_BUS_CHANNEL/TCMS_BUS_BITRATE", "python run.py --doctor 自检 hardware 项 PASS(HIL 探测)", "pytest -m hardware 跑硬件用例"], "guard": "业务代码与测试零改动——切换只发生在 bus.py 工厂" },
+      { "name": "使用方接入(平台化外部输入)", "steps": ["自带 DBC：tcms.protocol.load_database(path=)", "自带日志：tcms.replay.ReplayChain.from_asc()", "脚本化 import tcms 顶层公共 API(load_database/load_fault_dictionary/make_bus/scenarios.run_yaml)"], "guard": "examples/ 有范式可参照" }
+    ],
+    "contracts": [
+      "版本单源：tcms/_version.py（pyproject dynamic 读取；发布只改此处+CHANGELOG）",
+      "打包数据：pyproject package-data（DBC/faults.yaml 随 wheel；CI wheel 冒烟实证）",
+      "CLI 单源：tcms/cli.py（run.py 与 tcms-test 均委托它）",
+      "覆盖率门禁：pyproject [tool.coverage.report] fail_under=97（CI 不再另传阈值）",
+      "测试分层 markers：smoke/safety/hardware/slow/severity（新用例按语义打标）",
+      "RTM：tests/rtm.csv + 元测试（新 SR 需同步矩阵）",
+      "失败现场：conftest crash_site fixture（关键用例注册证据对象）",
+      "数字铁律：任何『读起来像数字』的展示(用例数/覆盖率/帧数)必须来自机器产物或代码常量，禁止手工复制粘贴"
+    ],
+    "quality_gates": "smoke 层 ~1s PR 必过；--coverage 全量+门禁(本地≈CI)；check_dist.py 分发契约自检；--doctor 环境自检；发布链=版本改→CHANGELOG→CI 全绿→git tag→release.yml 自动发 Release"
+  }
+}

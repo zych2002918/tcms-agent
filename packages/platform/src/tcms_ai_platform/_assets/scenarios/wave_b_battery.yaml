@@ -1,0 +1,31 @@
+# 场景扩容 Wave B（无孤儿覆盖）：battery_deep_discharge_guard, battery_fan_fault, bms_can_link_loss
+name: 深度放电保护·电池风机失效·BMS 通信中断编排
+desc: 演示故障序列：电池深度放电保护、电池冷却风机故障、主控-BMS 通信中断。
+steps:
+- at: 3.0
+  inject:
+    node: bms
+    fault: battery_deep_discharge_guard
+    level: major
+    impact: SOC 进入深度放电区，限制功率输出保护
+    expect: derate
+- at: 4.5
+  inject:
+    node: bms
+    fault: battery_fan_fault
+    level: minor
+    impact: 电池舱冷却风机失效，温控能力下降
+    expect: warning
+- at: 6.0
+  inject:
+    node: bms
+    fault: bms_can_link_loss
+    level: major
+    impact: TCMS 收不到 BMS 报文（超时），能量管理降级
+    expect: derate
+- at: 10.0
+  recover: battery_deep_discharge_guard
+- at: 11.5
+  recover: battery_fan_fault
+- at: 13.0
+  recover: bms_can_link_loss

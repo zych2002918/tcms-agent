@@ -1,0 +1,58 @@
+{
+  "upstream_manual": {
+    "test_functions": 635,
+    "topic_distribution": {
+      "brake": 23,
+      "bus": 55,
+      "door": 9,
+      "encode_bound": 46,
+      "energy": 4,
+      "fault": 84,
+      "heartbeat": 14,
+      "other": 346,
+      "recover": 25,
+      "speed": 29
+    }
+  },
+  "generator_dsl": {
+    "fault_keys": [
+      "soc_low",
+      "temp_high",
+      "door_sensor_noise",
+      "speed_sensor_drift",
+      "door_fault",
+      "overspeed",
+      "traction_loss",
+      "eb_failure",
+      "pantograph_arc",
+      "traction_brake_conflict"
+    ],
+    "fault_action_dist": {
+      "derate": 3,
+      "emergency_brake": 3,
+      "none": 2,
+      "warning": 2
+    },
+    "families": [
+      "encode_bound",
+      "simulate_inject",
+      "fault_scenario"
+    ],
+    "combinatorial_dimensions": {
+      "fault_x_action": {
+        "soc_low": "none",
+        "temp_high": "none",
+        "door_sensor_noise": "warning",
+        "speed_sensor_drift": "warning",
+        "door_fault": "derate",
+        "overspeed": "derate",
+        "traction_loss": "derate",
+        "eb_failure": "emergency_brake",
+        "pantograph_arc": "emergency_brake",
+        "traction_brake_conflict": "emergency_brake"
+      },
+      "note": "当前覆盖 fault×action 矩阵（auto 模式一列）；fault×mode×时序 组合空间未实现（docs/decisions.md D3），是下一步而非已完成的增量"
+    }
+  },
+  "observation": "手写例以 fault/bus/brake/模块行为为主；生成 DSL 提供 fault×action 的系统化组合（含 mode 敏感处置维度），二者是互补而非替代：手写=金标深度，生成=组合广度。量化集合差需上游 rtm.csv（future work）。"
+}

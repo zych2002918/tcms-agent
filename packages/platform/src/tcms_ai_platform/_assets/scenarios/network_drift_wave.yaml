@@ -1,0 +1,13 @@
+# 场景扩容 Wave A（无孤儿覆盖）：gateway_clock_drift
+name: 网关时钟漂移编排
+desc: 演示故障序列：网关时钟漂移。
+steps:
+- at: 3.0
+  inject:
+    node: tcms
+    fault: gateway_clock_drift
+    level: minor
+    impact: 骨干网关节点时钟偏移超阈值，时间同步失步
+    expect: warning
+- at: 10.0
+  recover: gateway_clock_drift

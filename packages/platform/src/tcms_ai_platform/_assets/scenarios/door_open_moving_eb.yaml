@@ -1,0 +1,13 @@
+# 场景扩容：F-TCMS-027 door_open_moving (critical, emergency_brake) — 移动×门开联锁违规
+name: 运行中车门打开紧急制动
+desc: 演示故障序列：运行中车门打开。
+steps:
+- at: 3.0
+  inject:
+    node: bogie
+    fault: door_open_moving
+    level: critical
+    impact: 列车移动中车门状态为 Open，门-车联锁触发紧急制动
+    expect: emergency_brake
+- at: 11.0
+  recover: door_open_moving

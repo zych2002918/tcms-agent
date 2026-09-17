@@ -1,0 +1,14 @@
+{
+  "source": "llm:qwen-plus",
+  "requested": 3,
+  "generation_seconds": 10.84,
+  "real_exec_seconds": 1.19,
+  "parsed": 2,
+  "failures": 1,
+  "parse_rate": 0.667,
+  "compile_rate": 1.0,
+  "exec_pass_rate": 1.0,
+  "hallucination_caught": [],
+  "mutation": [],
+  "note": "真 LLM 数字仅代表该模型该次输出（temperature 0.3）；与 mock/规则基线对照见 p3 报告"
+}

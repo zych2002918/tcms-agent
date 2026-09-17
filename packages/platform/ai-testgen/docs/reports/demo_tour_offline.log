@@ -1,0 +1,158 @@
+tcms-ai-testgen 全流程演示
+python: D:\DSHworkplace\objects\tcms-ai-testgen\.venv\Scripts\python.exe
+LLM 幕: 关
+
+==============================================================
+▶ 幕1 资产加载：真实 tcms.dbc + 13 场景 + 635 金标
+==============================================================
+
+==============================================================
+▶ 资产解析摘要
+==============================================================
+DBC 1/1 | 场景 13/13 | 报文 8 | 信号 36 | parse_rate 100%
+
+==============================================================
+▶ 金标检索样例：'车门故障' -> 上游真实用例
+==============================================================
+test_fault_injection.py :: test_door_fault_blocks_closed_flag | 车门故障安全：任一车门故障时 AllDoorsClosed 不应置 1。
+  test_simulator.py :: test_door_fault_enum | 车门故障状态应解码为 Fault 枚举。
+  test_watchdogs.py :: test_watchdog_integration_with_simulator | 仿真器丢报后，看门狗在 3 个周期内判 Fault。
+
+==============================================================
+▶ 幕2-4 全链路：mock 生成 24 条 → 真实 pytest → 3 变异杀毒
+==============================================================
+{
+  "source": "mock_llm",
+  "requested": 24,
+  "parsed": 20,
+  "failures": 4,
+  "parse_rate": 0.833,
+  "compile_rate": 1.0,
+  "exec_pass_rate": 1.0,
+  "real_exec_seconds": 5.28,
+  "mutation": [
+    {
+      "mutation": "door_fault_ignored",
+      "total": 20,
+      "relevant": 6,
+      "killed": 6,
+      "survived": 0,
+      "kill_rate": 1.0,
+      "overall_kill_rate": 0.3
+    },
+    {
+      "mutation": "encode_never_rejects",
+      "total": 20,
+      "relevant": 10,
+      "killed": 10,
+      "survived": 0,
+      "kill_rate": 1.0,
+      "overall_kill_rate": 0.5
+    },
+    {
+      "mutation": "overspeed_action_flipped",
+      "total": 20,
+      "relevant": 1,
+      "killed": 1,
+      "survived": 0,
+      "kill_rate": 1.0,
+      "overall_kill_rate": 0.05
+    }
+  ],
+  "upstream": "../tcms-can-test"
+}
+
+==============================================================
+▶ 幕2b 生成源对比：规则基线 mutant_coverage 1/3 vs mock 3/3
+==============================================================
+{
+  "sources": {
+    "rule_baseline": {
+      "parsed": 10,
+      "failures": 0,
+      "parse_rate": 1.0,
+      "compile_rate": 1.0,
+      "exec_pass_rate": 1.0,
+      "mutation": [
+        {
+          "mutation": "door_fault_ignored",
+          "total": 10,
+          "relevant": 0,
+          "killed": 0,
+          "survived": 0,
+          "kill_rate": 0.0,
+          "overall_kill_rate": 0.0
+        },
+        {
+          "mutation": "encode_never_rejects",
+          "total": 10,
+          "relevant": 10,
+          "killed": 10,
+          "survived": 0,
+          "kill_rate": 1.0,
+          "overall_kill_rate": 1.0
+        },
+        {
+          "mutation": "overspeed_action_flipped",
+          "total": 10,
+          "relevant": 0,
+          "killed": 0,
+          "survived": 0,
+          "kill_rate": 0.0,
+          "overall_kill_rate": 0.0
+        }
+      ],
+      "weighted_kill_rate": 1.0,
+      "mutant_coverage": 1
+    },
+    "mock_llm": {
+      "parsed": 17,
+      "failures": 3,
+      "parse_rate": 0.85,
+      "compile_rate": 1.0,
+      "exec_pass_rate": 1.0,
+      "mutation": [
+        {
+          "mutation": "door_fault_ignored",
+          "total": 17,
+          "relevant": 5,
+          "killed": 5,
+          "survived": 0,
+          "kill_rate": 1.0,
+          "overall_kill_rate": 0.294
+        },
+        {
+          "mutation": "encode_never_rejects",
+          "total": 17,
+          "relevant": 8,
+          "killed": 8,
+          "survived": 0,
+          "kill_rate": 1.0,
+          "overall_kill_rate": 0.471
+        },
+        {
+          "mutation": "overspeed_action_flipped",
+          "total": 17,
+          "relevant": 1,
+          "killed": 1,
+          "survived": 0,
+          "kill_rate": 1.0,
+          "overall_kill_rate": 0.059
+        }
+      ],
+      "weighted_kill_rate": 1.0,
+      "mutant_coverage": 3
+    }
+  },
+  "num_cases": 20
+}
+
+==============================================================
+▶ 幕5 反思闭环：跳过（需 DASH_API_KEY）
+   设置 key 后单独跑：python examples/run_reflect_demo.py --num 8
+==============================================================
+
+★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+演示结束。讲解话术见 docs/interview_guide.md；
+LLM 单幕可分别跑：run_llm_arm / run_reflect_demo / run_judge_compare
+★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★

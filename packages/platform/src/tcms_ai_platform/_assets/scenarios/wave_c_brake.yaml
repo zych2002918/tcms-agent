@@ -1,0 +1,58 @@
+# 场景扩容 Wave C（无孤儿覆盖）：brake_cylinder_seal_aging, brake_eb_test_fail, brake_wheel_diameter_mismatch, brake_air_dryer_fail, brake_park_auto_apply_unexpected, brake_disc_wear_groove
+name: 制动密封·EB 自检·轮径·干燥器·意外施加编排
+desc: 演示故障序列：制动缸密封老化、发车前 EB 功能测试失败、轮径标定不一致、风源干燥器失效、停车制动意外自动施加、制动盘沟槽磨损。
+steps:
+- at: 3.0
+  inject:
+    node: bcu
+    fault: brake_cylinder_seal_aging
+    level: minor
+    impact: 制动缸密封微渗，压力保持时间下降
+    expect: warning
+- at: 4.5
+  inject:
+    node: bcu
+    fault: brake_eb_test_fail
+    level: major
+    impact: 发车前紧急制动功能测试未通过，禁止发车
+    expect: warning
+- at: 6.0
+  inject:
+    node: bcu
+    fault: brake_wheel_diameter_mismatch
+    level: major
+    impact: 轴间轮径标定不一致，防滑/测速基准偏差
+    expect: warning
+- at: 7.5
+  inject:
+    node: bcu
+    fault: brake_air_dryer_fail
+    level: minor
+    impact: 空气干燥器失效，管路含水风险预警
+    expect: warning
+- at: 9.0
+  inject:
+    node: bcu
+    fault: brake_park_auto_apply_unexpected
+    level: major
+    impact: 运行中停车制动意外自动施加（控制异常）
+    expect: derate
+- at: 10.0
+  recover: brake_cylinder_seal_aging
+- at: 10.5
+  inject:
+    node: bcu
+    fault: brake_disc_wear_groove
+    level: minor
+    impact: 制动盘面沟槽/偏磨（预维提示）
+    expect: warning
+- at: 11.5
+  recover: brake_eb_test_fail
+- at: 13.0
+  recover: brake_wheel_diameter_mismatch
+- at: 14.5
+  recover: brake_air_dryer_fail
+- at: 16.0
+  recover: brake_park_auto_apply_unexpected
+- at: 17.5
+  recover: brake_disc_wear_groove

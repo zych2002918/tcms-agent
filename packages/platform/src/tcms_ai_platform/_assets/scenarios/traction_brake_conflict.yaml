@@ -1,0 +1,15 @@
+# 场景 12：牵引制动冲突 —— 最高安全等级联锁（SIL4）
+# F-TCMS-012 traction_brake_conflict (critical, emergency_brake)
+# 牵引与制动同时请求属危险工况：任何冲突直接紧急制动并维持到复位
+name: 牵引制动冲突
+desc: 演示故障序列：牵引制动冲突。
+steps:
+  - at: 1.0
+    inject:
+      node: bcu
+      fault: traction_brake_conflict
+      level: critical
+      impact: 牵引与制动指令同时存在，SIL4 联锁判定危险冲突
+      expect: emergency_brake
+  - at: 6.0
+    recover: traction_brake_conflict

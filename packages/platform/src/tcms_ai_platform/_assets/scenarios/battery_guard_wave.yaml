@@ -1,0 +1,31 @@
+# 场景扩容 Wave A（无孤儿覆盖）：battery_temp_sensor_fault, bms_precharge_fail, battery_cell_overvoltage
+name: 电池温感失效·预充电失败·单体过压编排
+desc: 演示故障序列：电池温度传感器失效、预充电失败、电池单体过压。
+steps:
+- at: 3.0
+  inject:
+    node: bms
+    fault: battery_temp_sensor_fault
+    level: minor
+    impact: 电池温度采集通道异常（开路/超量程），监测降级
+    expect: warning
+- at: 4.5
+  inject:
+    node: bms
+    fault: bms_precharge_fail
+    level: major
+    impact: 高压上电预充电超时失败，主接触器无法闭合
+    expect: derate
+- at: 6.0
+  inject:
+    node: bms
+    fault: battery_cell_overvoltage
+    level: major
+    impact: 单体电压超上限（过充风险），限制充电功率
+    expect: derate
+- at: 10.0
+  recover: battery_temp_sensor_fault
+- at: 11.5
+  recover: bms_precharge_fail
+- at: 13.0
+  recover: battery_cell_overvoltage

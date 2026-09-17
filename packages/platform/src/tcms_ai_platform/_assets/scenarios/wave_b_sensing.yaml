@@ -1,0 +1,31 @@
+# 场景扩容 Wave B（无孤儿覆盖）：speed_sensor_noise_burst, sensor_power_supply_fault, sensor_connector_loose
+name: 速度脉冲噪声·传感器供电·接插件松动编排
+desc: 演示故障序列：速度脉冲噪声、传感器供电故障、传感器接插件松动。
+steps:
+- at: 3.0
+  inject:
+    node: vcu
+    fault: speed_sensor_noise_burst
+    level: minor
+    impact: 速度脉冲瞬时跳变（干扰），短时测速受扰
+    expect: warning
+- at: 4.5
+  inject:
+    node: vcu
+    fault: sensor_power_supply_fault
+    level: major
+    impact: 传感器供电异常（欠压/过流），采集通道失效
+    expect: warning
+- at: 6.0
+  inject:
+    node: vcu
+    fault: sensor_connector_loose
+    level: minor
+    impact: 传感器接插件接触不良（间歇性丢信号）
+    expect: warning
+- at: 10.0
+  recover: speed_sensor_noise_burst
+- at: 11.5
+  recover: sensor_power_supply_fault
+- at: 13.0
+  recover: sensor_connector_loose
