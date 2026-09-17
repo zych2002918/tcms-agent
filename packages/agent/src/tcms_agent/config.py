@@ -79,6 +79,19 @@ class AgentConfig:
     artifacts_dir: Path = field(default_factory=lambda: Path.home() / ".tcms-agent" / "artifacts")
     """正式归档目录（promote_artifact 的落点；把沙箱产物提升为可追溯归档）。"""
 
+    # --- 记忆（四层）---
+    memory_enabled: bool = True
+    """是否启用记忆召回（读侧）。
+
+    关闭后 Agent 不看历史记忆，但运行仍会写入运行日志——**便于做"有记忆 vs 无记忆"
+    的 A/B 对照**（R7 的评测就靠这个开关）。"""
+
+    journal_enabled: bool = True
+    """是否把本次运行写入运行日志（写侧，供后续召回）。
+
+    日志是自动追加的派生索引，不含人工判断，因此不需要审批；
+    真正会污染长期记忆的是**程序性技能**，那条路径走 write_memory（需审批 + 门禁）。"""
+
     approval_required: bool = True
     """R3 工具是否强制人工审批。
 

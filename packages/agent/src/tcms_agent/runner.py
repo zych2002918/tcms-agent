@@ -41,6 +41,9 @@ class AgentRunResult:
     approvals: list[dict] = field(default_factory=list)
     """人工审批记录（批准/拒绝 + 理由）。空列表表示本次运行没触发过审批。"""
 
+    memory_hits: list[dict] = field(default_factory=list)
+    """本次召回到的历史记忆（结构化明细，供审计"到底想起了什么"）。"""
+
     @property
     def passed(self) -> bool:
         return bool(self.verdict.get("passed"))
@@ -66,6 +69,7 @@ class AgentRunResult:
             "evidence": self.evidence,
             "trace": self.trace,
             "approvals": self.approvals,
+            "memory_hits": self.memory_hits,
         }
 
 
@@ -121,6 +125,7 @@ class AgentRunner:
             }
             init = {
                 "goal": goal,
+                "run_id": tid,
                 "messages": [HumanMessage(goal)],
                 "steps": 0,
                 "finished": False,
@@ -130,13 +135,15 @@ class AgentRunner:
                 "trace": [],
                 "pending": [],
                 "approvals": [],
+                "memory_context": "",
+                "memory_hits": [],
             }
             final = graph.invoke(init, config)
             final = self._drive_approvals(graph, config, final, approver)
         finally:
             conn.close()
 
-        return AgentRunResult(
+        result = AgentRunResult(
             thread_id=tid,
             goal=goal,
             model_kind=model_kind,
@@ -147,7 +154,23 @@ class AgentRunner:
             sources=list(dict.fromkeys(final.get("sources") or [])),
             audit=registry.audit_summary(),
             approvals=list(final.get("approvals") or []),
+            memory_hits=list(final.get("memory_hits") or []),
         )
+        self._journal(result)
+        return result
+
+    # ---- 情景记忆：运行日志（写侧）----
+
+    def _journal(self, result: AgentRunResult) -> None:
+        """把本次运行追加进运行日志（供后续召回）。失败不影响主流程。"""
+        if not self.cfg.journal_enabled:
+            return
+        try:
+            from .memory.journal import RunJournal, RunRecord
+
+            RunJournal.under(self.cfg.memory_dir).append(RunRecord.from_result(result))
+        except Exception:  # noqa: BLE001 - 日志写失败不该让一次成功的运行变成失败
+            pass
 
     # ---- 人在环路：中断 → 征求决策 → 恢复 ----
 

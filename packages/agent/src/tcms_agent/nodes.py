@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Callable
 
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
@@ -48,22 +49,78 @@ SYSTEM_PROMPT = """你是 TCMS（列车网络控制系统）测试工程师 Agen
 """
 
 
-def _system_message(knowledge: KnowledgeContext, registry: ToolRegistry) -> SystemMessage:
-    """系统提示：角色 + 纪律 + 本次运行真实可用的工具清单（由注册表生成，不手写）。"""
+def _system_message(
+    knowledge: KnowledgeContext, registry: ToolRegistry, memory_context: str = ""
+) -> SystemMessage:
+    """系统提示：角色 + 纪律 + 本次真实可用的工具清单 + 召回的历史记忆。
+
+    工具清单由注册表生成（不手写）；记忆块由召回节点渲染（空则不出现）。
+    """
     tools_txt = "\n".join(
         f"  - {t['name']} [{t['level_label']}] {t['description']}"
         for t in registry.describe()
         if t["allowed"]
     )
     stats = knowledge.stats()
-    return SystemMessage(
-        content=(
-            f"{SYSTEM_PROMPT}\n"
-            f"本次可用工具（权限已按级别裁剪）：\n{tools_txt}\n\n"
-            f"知识底座规模：{stats['faults']} 个故障 / {stats['scenarios']} 个场景 / "
-            f"{stats['graph_nodes']} 个图谱节点（模式 {stats['asset_mode']}）。"
-        )
+    body = (
+        f"{SYSTEM_PROMPT}\n"
+        f"本次可用工具（权限已按级别裁剪）：\n{tools_txt}\n\n"
+        f"知识底座规模：{stats['faults']} 个故障 / {stats['scenarios']} 个场景 / "
+        f"{stats['graph_nodes']} 个图谱节点（模式 {stats['asset_mode']}）。"
     )
+    if memory_context:
+        body += f"\n\n{memory_context}"
+    return SystemMessage(content=body)
+
+
+# ---------------------------------------------------------------------------
+# recall —— 记忆召回（四层记忆的"读"侧）
+# ---------------------------------------------------------------------------
+
+
+def make_recall_node(memory_dir: Any, *, enabled: bool = True) -> Callable[[AgentState], dict]:
+    """按当前目标召回历史运行与沉淀技能，渲染成注入提示词的文本块。
+
+    设计说明：
+    - **每次运行重建索引**：日志与技能都是小体量本地文件，重建比维护缓存更不容易出错，
+      也保证"刚写完的记忆下一次运行就能用上"。体量上来后再加缓存。
+    - **排除自己**：`include_self` 传当前 run_id，避免召回本次运行（否则会自我强化）。
+    - 召回为空时明确写入"无历史记忆"，而不是留空——让轨迹能区分"没想起来"与"没做召回"。
+    """
+
+    def recall_node(state: AgentState) -> dict:
+        step = int(state.get("steps", 0))
+        goal = state.get("goal", "")
+        if not enabled:
+            return {
+                "memory_context": "",
+                "trace": [_e("recall", "recall", "记忆召回已关闭（配置 disabled）", step)],
+            }
+        try:
+            from .memory.recall import build_index, format_memory_context
+
+            idx = build_index(Path(memory_dir))
+            hits = idx.recall(goal, k_episodic=3, k_procedural=2, include_self=state.get("run_id"))
+            ctx = format_memory_context(hits)
+        except Exception as e:  # noqa: BLE001 - 记忆不可用不该阻断任务
+            return {
+                "memory_context": "",
+                "trace": [_e("recall", "recall", f"记忆召回失败（已忽略）: {type(e).__name__}: {e}", step)],
+            }
+        detail = (
+            f"召回 {len(hits)} 条历史记忆"
+            f"（过往运行 {sum(1 for h in hits if h.kind == 'episodic')} / "
+            f"沉淀技能 {sum(1 for h in hits if h.kind == 'procedural')}）"
+            if hits
+            else "无相关历史记忆（首次遇到这类目标）"
+        )
+        return {
+            "memory_context": ctx,
+            "memory_hits": [h.to_dict() for h in hits],
+            "trace": [_e("recall", "recall", detail, step, hits=[h.id for h in hits])],
+        }
+
+    return recall_node
 
 
 def _e(node: str, event: str, detail: str, step: int, **data: Any) -> TraceEvent:
@@ -128,7 +185,10 @@ def make_agent_node(
                 "trace": [_e("agent", "budget_exhausted", f"步数预算用尽（{step}/{cfg.max_steps}）", step)],
             }
 
-        msgs = [_system_message(knowledge, registry), *state["messages"]]
+        msgs = [
+            _system_message(knowledge, registry, state.get("memory_context", "")),
+            *state["messages"],
+        ]
         ai: AIMessage = bound.invoke(msgs)
         calls = list(getattr(ai, "tool_calls", None) or [])
         if calls:

@@ -41,16 +41,34 @@ def test_tool_audit_is_recorded(cfg, knowledge) -> None:
     assert len(res.audit["tools_available"]) == 13, "9 只读 + 1 沙箱写 + 3 执行"
 
 
-def test_run_is_deterministic(cfg, knowledge) -> None:
-    """离线臂必须可复现：两次运行的决策序列与引用集合完全一致。"""
-    runner = AgentRunner(cfg, knowledge)
-    a = runner.run(GOAL)
-    b = runner.run(GOAL)
+def test_run_is_deterministic_without_memory(cfg, knowledge) -> None:
+    """在**记忆关闭**时，两次运行的决策序列与引用集合完全一致。
+
+    为什么要显式关掉记忆：记忆一旦开启，第二次运行会召回第一次的结果，
+    轨迹就**应当**不同——那是记忆在起作用，不是不确定性。可复现性的准确表述是
+    "同一配置 + 同一记忆状态下可复现"，见下一条测试。
+    """
+    off = cfg.with_(memory_enabled=False)
+    runner = AgentRunner(off, knowledge)
+    a = runner.run(GOAL, thread_id="det-a")
+    b = runner.run(GOAL, thread_id="det-b")
     seq_a = [(t["node"], t["event"], t["detail"]) for t in a.trace]
     seq_b = [(t["node"], t["event"], t["detail"]) for t in b.trace]
     assert seq_a == seq_b
     assert a.sources == b.sources
     assert a.verdict["passed"] == b.verdict["passed"]
+
+
+def test_memory_makes_runs_path_dependent(cfg, knowledge) -> None:
+    """开启记忆后，第二次运行的轨迹**应当**与第一次不同（记忆确实参与了）。"""
+    runner = AgentRunner(cfg, knowledge)
+    a = runner.run(GOAL, thread_id="mem-a")
+    b = runner.run(GOAL, thread_id="mem-b")
+    assert a.memory_hits == []
+    assert b.memory_hits, "第二次运行应召回第一次"
+    recall_a = next(t["detail"] for t in a.trace if t["node"] == "recall")
+    recall_b = next(t["detail"] for t in b.trace if t["node"] == "recall")
+    assert recall_a != recall_b, "轨迹差异来自记忆召回，这正是记忆在起作用"
 
 
 def test_different_goals_resolve_to_their_own_faults(cfg, knowledge) -> None:

@@ -21,5 +21,17 @@ def knowledge():
 
 @pytest.fixture
 def cfg(tmp_path: Path) -> AgentConfig:
-    """离线、短预算的测试配置（轨迹写到 tmp，不污染用户目录）。"""
-    return AgentConfig(offline=True, max_steps=6, db_path=tmp_path / "cp.sqlite")
+    """离线、短预算的测试配置。
+
+    **所有落盘位置都必须指到 tmp**：db（轨迹）/ memory（记忆+运行日志）/ sandbox（草稿+
+    执行产物）/ artifacts（正式归档）。少隔离任何一个，测试都会污染用户的真实
+    `~/.tcms-agent/` 目录——这类"测试写脏用户环境"的缺陷很容易在本地被忽略。
+    """
+    return AgentConfig(
+        offline=True,
+        max_steps=10,
+        db_path=tmp_path / "cp.sqlite",
+        memory_dir=tmp_path / "memory",
+        sandbox_dir=tmp_path / "sandbox",
+        artifacts_dir=tmp_path / "artifacts",
+    )

@@ -44,6 +44,9 @@ class AgentState(TypedDict, total=False):
     goal: str
     """用户的自然语言目标，例如「验证车门故障必须触发降级处置」。"""
 
+    run_id: str
+    """本次运行的 id（= thread_id）。用于记忆召回时排除自己，避免自引。"""
+
     # --- 循环载体 ---
     messages: Annotated[list[AnyMessage], add_messages]
     steps: int
@@ -52,7 +55,16 @@ class AgentState(TypedDict, total=False):
     # --- 计划（外化，可审计）---
     plan: list[PlanItem]
 
-    # --- 人在环路审批 ---
+    # --- 记忆（四层里的"被读到"那一半）---
+    memory_context: str
+    """召回并渲染好的历史记忆文本块（注入 Agent 提示词）。
+
+    只放**已渲染**的文本，不放原始对象——图状态要可序列化（要落 checkpoint）。"""
+
+    memory_hits: Annotated[list[dict], operator.add]
+    """召回明细（结构化，供审计：这次到底想起了什么、相似度多少）。"""
+
+    # --- 审批 ---
     pending: list[dict[str, Any]]
     """待人工审批的工具调用（R3 持久化类）。
 

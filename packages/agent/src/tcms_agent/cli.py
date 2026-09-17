@@ -105,8 +105,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         offline=not args.llm,
         max_steps=args.max_steps,
         max_level=max_level,
+        memory_enabled=not args.no_memory,
         upstream=Path(args.upstream) if args.upstream else None,
         db_path=Path(args.db) if args.db else AgentConfig().db_path,
+        memory_dir=Path(args.memory) if args.memory else AgentConfig().memory_dir,
+        sandbox_dir=Path(args.sandbox) if args.sandbox else AgentConfig().sandbox_dir,
     )
     if args.llm and not llm_available():
         print("[!] --llm 指定了真模型，但未检测到可用 key → 自动降级为离线规则臂。")
@@ -154,6 +157,75 @@ def cmd_history(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# memory —— 四层记忆的查看与巩固
+# ---------------------------------------------------------------------------
+
+
+def _memory_dir(args: argparse.Namespace) -> Path:
+    return Path(args.memory) if getattr(args, "memory", None) else AgentConfig().memory_dir
+
+
+def cmd_memory_stats(args: argparse.Namespace) -> int:
+    from .memory.journal import RunJournal
+    from .memory.recall import load_skills
+
+    md = _memory_dir(args)
+    j = RunJournal.under(md)
+    print(f"记忆目录：{md}")
+    print(f"情景记忆（运行日志）：{json.dumps(j.stats(), ensure_ascii=False)}")
+    skills = load_skills(md)
+    print(f"程序性记忆（技能）：{len(skills)} 条")
+    for s in skills:
+        ev = s.get("evidence") or []
+        print(f"  - {s.get('title')}  [模式 {s.get('pattern')} · 证据 {len(ev)} 次运行]")
+    return 0
+
+
+def cmd_memory_recall(args: argparse.Namespace) -> int:
+    from .memory.recall import build_index, format_memory_context
+
+    md = _memory_dir(args)
+    idx = build_index(md)
+    hits = idx.recall(args.query, k_episodic=args.k, k_procedural=args.k)
+    if not hits:
+        print(f"索引 {len(idx)} 条，但没有与「{args.query}」足够相似的记忆（阈值以上为空）。")
+        return 1
+    print(f"索引 {len(idx)} 条，召回 {len(hits)} 条：")
+    for h in hits:
+        print(f"  [{h.kind:<10}] {h.score:.3f}  {h.title[:60]}")
+    print("\n将注入提示词的内容：\n" + format_memory_context(hits))
+    return 0
+
+
+def cmd_memory_consolidate(args: argparse.Namespace) -> int:
+    from .knowledge import build_knowledge
+    from .memory.consolidate import consolidate
+    from .nodes import check_reference
+
+    md = _memory_dir(args)
+    k = build_knowledge()
+    res = consolidate(
+        md,
+        check_ref=lambda r: check_reference(r, k),
+        min_occurrences=args.min_occurrences,
+        write=args.write,
+    )
+    print(f"扫描运行 {res['runs_scanned']} 次；提出 {res['proposed']} 条；"
+          f"通过门禁 {res['accepted']} 条；被拒 {res['rejected']} 条")
+    for t in res["accepted_titles"]:
+        print(f"  ✅ {t}")
+    for r in res["rejected_detail"]:
+        print(f"  ❌ {r['title']} —— {'；'.join(r['reasons'])}")
+    if args.write:
+        print(f"\n已写入 {len(res['written'])} 条程序性记忆：")
+        for w in res["written"]:
+            print(f"  - {w}")
+    else:
+        print("\n（未写入；加 --write 才会落盘。先看清提案再写是刻意的设计。）")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="tcms-agent",
@@ -184,12 +256,38 @@ def build_parser() -> argparse.ArgumentParser:
     )
     r.add_argument("--yes", action="store_true", help="自动批准所有持久化写入（不推荐）")
     r.add_argument("--no", action="store_true", help="一律拒绝持久化写入（配合 --allow-write）")
+    r.add_argument("--memory", help="记忆目录（默认 ~/.tcms-agent/memory）")
+    r.add_argument("--sandbox", help="沙箱目录（默认 ~/.tcms-agent/sandbox）")
+    r.add_argument(
+        "--no-memory",
+        action="store_true",
+        help="关闭记忆召回（不看历史；用于做「有记忆 vs 无记忆」对照实验）",
+    )
     r.set_defaults(func=cmd_run)
 
     h = sub.add_parser("history", help="回放某次运行的轨迹")
     h.add_argument("thread", help="thread_id")
     h.add_argument("--db", help="轨迹数据库路径")
     h.set_defaults(func=cmd_history)
+
+    m = sub.add_parser("memory", help="四层记忆：查看 / 召回 / 离线巩固")
+    msub = m.add_subparsers(dest="mcmd", required=True)
+
+    ms = msub.add_parser("stats", help="记忆规模与已有技能")
+    ms.add_argument("--memory", help="记忆目录（默认 ~/.tcms-agent/memory）")
+    ms.set_defaults(func=cmd_memory_stats)
+
+    mr = msub.add_parser("recall", help="试召回：看某个目标会想起什么")
+    mr.add_argument("query", help="查询文本（通常是目标）")
+    mr.add_argument("-k", type=int, default=3, help="每类召回条数（默认 3）")
+    mr.add_argument("--memory", help="记忆目录")
+    mr.set_defaults(func=cmd_memory_recall)
+
+    mc = msub.add_parser("consolidate", help="离线巩固：从历史运行提炼可复用经验")
+    mc.add_argument("--min-occurrences", type=int, default=2, help="至少重复出现几次才成提案")
+    mc.add_argument("--write", action="store_true", help="通过门禁后写入程序性记忆")
+    mc.add_argument("--memory", help="记忆目录")
+    mc.set_defaults(func=cmd_memory_consolidate)
     return p
 
 

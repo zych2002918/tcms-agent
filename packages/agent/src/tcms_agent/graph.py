@@ -26,6 +26,7 @@ from .nodes import (
     make_agent_node,
     make_approve_node,
     make_plan_node,
+    make_recall_node,
     make_report_node,
     make_verify_node,
 )
@@ -112,6 +113,7 @@ def build_graph(
     model, model_kind = build_chat_model(cfg, knowledge)
 
     g = StateGraph(AgentState)
+    g.add_node("recall", make_recall_node(cfg.memory_dir, enabled=cfg.memory_enabled))
     g.add_node("plan", make_plan_node(knowledge))
     g.add_node("agent", make_agent_node(model, registry, knowledge, cfg))
     g.add_node("act", make_act_node(registry, approval_required=cfg.approval_required))
@@ -119,7 +121,8 @@ def build_graph(
     g.add_node("verify", make_verify_node(knowledge))
     g.add_node("report", make_report_node())
 
-    g.add_edge(START, "plan")
+    g.add_edge(START, "recall")
+    g.add_edge("recall", "plan")
     g.add_edge("plan", "agent")
     g.add_conditional_edges(
         "agent",

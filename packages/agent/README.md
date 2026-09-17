@@ -73,30 +73,69 @@ uv run tcms-agent run "..." --allow-write --yes   # 一律批准（不推荐，�
 
 结果里的 `model_kind` 如实标注，**不会把规则结果说成 AI 决策**。
 
-## 工具权限
+## 工具权限（四级已全部落地）
 
 | 级别 | 工具 | 现状 |
 |---|---|---|
-| **R0 只读** | kb_search / kb_filter_assets / symptom_diagnose / kb_node / list_scenarios / fault_detail / list_requirements | ✅ |
-| **R2 真实执行** | run_scenario / verify_fault_action（子进程 + 真超时 + 产物归档） | ✅ |
-| **R3 持久化** | write_memory（引用门禁）/ promote_artifact | ✅ 需人工审批 |
-| R1 沙箱写 | 生成受约束 DSL 用例 → 编译 → 真跑 | ⬜ R4 |
+| **R0 只读**（9） | kb_search / kb_filter_assets / symptom_diagnose / kb_node / list_scenarios / fault_detail / list_requirements / **dsl_reference** / **list_drafts** | ✅ |
+| **R1 沙箱写**（1） | **draft_test_case**（受约束 DSL，编译期校验，只写沙箱可丢弃） | ✅ |
+| **R2 真实执行**（3） | run_scenario / verify_fault_action / **run_draft**（子进程 + 真超时 + 产物归档） | ✅ |
+| **R3 持久化**（2） | write_memory（引用门禁）/ promote_artifact | ✅ 需人工审批 |
+
+**完整闭环**：查清语义(R0) → 造用例(R1) → 编译成真实 pytest 并跑(R2) → 沉淀(R3，人工审批)。
 
 三道**互相不可替代**的闸门：权限级别（存不存在）→ 人工审批（人放不放行）
 → 机器门禁（内容能不能核实）。高权限工具既不出现在送给模型的 schema 里，
 也不可在 `invoke()` 时执行。
 
+**反思自愈由 Agent 自己做**：`run_draft` 只返回真实失败要点（`failure_lines`），
+不内置固定修复循环——Agent 自己决定要不要改写、怎么改写（同 `draft_id` 覆盖即迭代）。
+
+## 四层记忆
+
+| 层 | 实现 | 写入纪律 |
+|---|---|---|
+| 工作记忆 | LangGraph state（当前 trajectory） | 自动 |
+| **情景记忆** | `memory/journal.py` 运行日志 JSONL | 自动（机器事实） |
+| 语义记忆 | platform 知识底座（资产/图谱/检索） | 来自真实资产 |
+| **程序性记忆** | `memory/consolidate.py` 离线巩固出的技能 | **两道门禁 + 人工 --write** |
+
+```bash
+# 看记忆规模与已有技能
+uv run tcms-agent memory stats
+
+# 试召回：这个目标会想起什么
+uv run tcms-agent memory recall "验证车门故障不能发车"
+
+# 离线巩固：从历史运行提炼可复用经验
+uv run tcms-agent memory consolidate --min-occurrences 2          # 只看提案
+uv run tcms-agent memory consolidate --min-occurrences 2 --write  # 过门禁后写入
+
+# 关闭记忆（做「有记忆 vs 无记忆」对照）
+uv run tcms-agent run "..." --no-memory
+```
+
+跑两次同族目标即可看到闭环：首次「无相关历史记忆」→ 第二次「召回 1 条」→
+巩固出技能 → 之后「召回 N 条（过往运行 x / 沉淀技能 y）」。
+
+**写入为什么必须过门禁**：一条编造的"经验"一旦入库，会被后续召回反复强化。
+所以要求 ① 引用的资产真实存在；② 必须指出它来自哪些运行，且这些 run_id 真的在日志里。
+
+**召回口径**：字符重合度，不是语义（与知识底座同一通道）。真语义通道属 R6 范围。
+
 ## 测试
 
 ```bash
 cd packages/agent
-pytest -q      # 59 passed：无 API key，全部离线可复现
+pytest -q      # 75 passed：无 API key，全部离线可复现
 ```
 
 覆盖：权限门禁（含"被拒的调用绝不能真的执行"）、诚实错误、审计记录、
 引用校验（含"校验器不得误杀真实故障键"的自证）、端到端确定性、预算强制、
-轨迹持久化与回放、**审批三态**（默认拒绝/批准落盘/拒绝回填）、
-**引用门禁独立于审批生效**、报告披露被拒写入。
+轨迹持久化与回放、审批三态（默认拒绝/批准落盘/拒绝回填）、
+引用门禁独立于审批生效、报告披露被拒写入、
+**DSL 词表与编译器白名单防漂移**、**沙箱隔离（草稿不得进仓库）**、
+**自我修复闭环（失败→改→重跑通过）**。
 
 ## 文档
 
