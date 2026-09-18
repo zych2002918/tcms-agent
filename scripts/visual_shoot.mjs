@@ -79,11 +79,19 @@ if (goal) {
 }
 
 if (click) {
+  // 点"包含这段文字"的元素。**不只找 button**：表格行（<tr>）、列表项、标签
+  // 都可能是可点目标——只认 button 会在"点某一行看详情"这种最常见的验证里失效。
+  // 取"最深的匹配"（最小的那个元素），避免点到包住一大片的容器。
   const expr = `(() => {
-    const b = [...document.querySelectorAll('button')].find(x => x.textContent.includes(${JSON.stringify(click)}));
-    if (!b) return 'no-button';
-    b.click();
-    return 'clicked';
+    const target = ${JSON.stringify(click)};
+    const cands = [...document.querySelectorAll('button,[role="option"],[role="tab"],tr,a,li,label')]
+      .filter(el => (el.textContent || '').includes(target));
+    if (!cands.length) return 'no-match';
+    const deepest = cands.filter(el => !cands.some(o => o !== el && el.contains(o)));
+    const el = deepest[0];
+    el.scrollIntoView({ block: 'center' });
+    el.click();
+    return 'clicked:' + el.tagName.toLowerCase();
   })()`;
   const r = await send("Runtime.evaluate", { expression: expr, returnByValue: true });
   console.log("click:", r.result?.result?.value);

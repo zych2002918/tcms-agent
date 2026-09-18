@@ -1029,10 +1029,14 @@ function computeLayout(sub: KbSubgraph): Layout {
 const shortLabel = (s: string) => (s.length > 15 ? s.slice(0, 14) + "…" : s);
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-/** 自动模式下常显标签的关键节点个数（按度数取前 N）。
- *  为什么是 12：56 节点的默认骨架视图里，度数 top 12 基本覆盖"系统域 + 代表功能"，
- *  再多就重新糊成一片了（这个数是看图定的，不是拍的）。 */
-const LABEL_TOP_N = 12;
+/** 自动模式下"常显标签"的预算：**随节点数缩放**，而不是一个死数。
+ *
+ * 为什么不用固定值：固定 12 在两端都不对——
+ *  · 检索出来的小子图（5–20 个节点）本身就是"答案集"，只标 12 个等于让用户猜其余的；
+ *  · 大图（几百节点）12 个又太稀，看不出结构在哪。
+ * 规则：≤20 个节点全标；否则取 22% 并在 [10, 20] 内夹住。
+ * 56 节点的默认骨架视图算出正好 12——与原先看图定下的值一致，那个视图观感不变。 */
+const labelBudget = (n: number) => (n <= 20 ? n : clamp(Math.round(n * 0.22), 10, 20));
 
 /** 只服务"标签何时显示"的索引：度数排行 + 邻接表。
  *  不参与布局/物理——力导向算法一个字没动。 */
@@ -1050,7 +1054,7 @@ function graphIndex(sub: KbSubgraph): { topLabels: Set<string>; neighbors: Map<s
   const topLabels = new Set(
     [...sub.nodes]
       .sort((a, b) => (deg.get(b.id) ?? 0) - (deg.get(a.id) ?? 0))
-      .slice(0, LABEL_TOP_N)
+      .slice(0, labelBudget(sub.nodes.length))
       .map((n) => n.id),
   );
   return { topLabels, neighbors };

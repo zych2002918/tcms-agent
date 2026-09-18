@@ -114,6 +114,8 @@ export function AssetsPage() {
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState(false);
   const [selFault, setSelFault] = useState<FaultInfo | null>(null);
+  /** 选中故障的详情（含列表接口不具备的散文字段）；未回来时用列表字段顶替 */
+  const [faultDetail, setFaultDetail] = useState<FaultInfo | null>(null);
   const [q, setQ] = useState("");
   const [focusId, setFocusId] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE); // 当前分类一次渲染多少行
@@ -253,6 +255,33 @@ export function AssetsPage() {
     if (f) setSelFault(f);
   }, [focusId, faults]);
 
+  /** 选中故障后拉一次详情：**列表接口不带散文字段**。
+   *
+   * `GET /api/faults` 只返回 fid/key/name/子系统/等级/处置/SIL 这些标量，
+   * 而字典里真正教人干活的 desc / 如何检测 / 如何注入 / 如何恢复在
+   * `GET /api/faults/{key}` 里。此前详情侧栏直接读列表对象，于是那四段
+   * **永远渲染不出来**（代码看着对、界面一直是空的）——203 条故障的
+   * "怎么检测、怎么注入、怎么恢复"全被吞了。
+   * 现在选中即拉详情；拉取失败时退回列表字段（只显示拿得到的，不编造）。 */
+  useEffect(() => {
+    if (!selFault) {
+      setFaultDetail(null);
+      return;
+    }
+    let alive = true;
+    const key = selFault.key;
+    setFaultDetail(null); // 换故障先清空：避免把上一个故障的"如何恢复"显示给这一条
+    api
+      .fault(key)
+      .then((d) => {
+        if (alive) setFaultDetail(d);
+      })
+      .catch(() => undefined); // 失败静默退回：上面已有列表字段可用
+    return () => {
+      alive = false;
+    };
+  }, [selFault]);
+
   // 换分类或改关键词 → 回到第一段（否则会停在上一次"显示更多"的位置）
   useEffect(() => {
     setLimit(PAGE);
@@ -280,6 +309,10 @@ export function AssetsPage() {
   const more = () => setLimit((n) => n + PAGE);
   /** 每张表统一的表尾："显示更多"的步长与统计口径只在这里改一次 */
   const foot = (shownTotal: number) => <TableFoot shown={Math.min(limit, shownTotal)} total={shownTotal} onMore={more} />;
+
+  /** 详情侧栏的数据源：详情已到位就用详情（含散文字段），否则用列表行顶替。
+   *  加 key 相等判断，避免快速切换故障时把上一条的详情显示给下一条。 */
+  const fd = selFault && faultDetail?.key === selFault.key ? faultDetail : selFault;
 
   return (
     <div className="mx-auto w-full max-w-[1800px] space-y-4">
@@ -539,11 +572,11 @@ export function AssetsPage() {
               </div>
               {/* 详情侧栏：标量字段用键值行排整齐（原来是一堆 dt/dd 竖排，字段名与值对不齐） */}
               <div className="lg:col-span-2">
-                {selFault ? (
+                {fd ? (
                   <Panel
                     title={
                       <>
-                        <Tag tone={LEVEL_TONE[selFault.level] ?? "info"}>{selFault.level}</Tag> {selFault.name}
+                        <Tag tone={LEVEL_TONE[fd.level] ?? "info"}>{fd.level}</Tag> {fd.name}
                       </>
                     }
                     right={
@@ -554,44 +587,43 @@ export function AssetsPage() {
                     bodyClass="p-3"
                   >
                     <div className="space-y-1">
-                      <KV k="故障 ID" v={selFault.fid} mono />
-                      <KV k="故障 key" v={selFault.key} mono />
-                      <KV k="子系统" v={selFault.subsystem} />
+                      <KV k="故障 ID" v={fd.fid} mono />
+                      <KV k="故障 key" v={fd.key} mono />
+                      <KV k="子系统" v={fd.subsystem} />
                       <KV
                         k="安全等级 SIL"
                         v={
-                          <Tag tone={Number(selFault.sil) >= 3 ? "bad" : Number(selFault.sil) >= 2 ? "warn" : "dim"}>
-                            {selFault.sil}
+                          <Tag tone={Number(fd.sil) >= 3 ? "bad" : Number(fd.sil) >= 2 ? "warn" : "dim"}>
+                            {fd.sil}
                           </Tag>
                         }
                       />
-                      <KV k="处置动作" v={selFault.action} mono />
-                      <KV k="注入层" v={selFault.layer} />
+                      <KV k="处置动作" v={fd.action} mono />
+                      <KV k="注入层" v={fd.layer} />
                     </div>
-                    {selFault.action_note && (
+                    {fd.action_note && (
                       <p className="mt-2.5 rounded-[var(--radius-md)] border border-vio/30 bg-vio/8 px-2.5 py-1.5 text-[11.5px] leading-5 text-vio">
-                        ⚙ 处置取决于原因：{selFault.action_note}
+                        ⚙ 处置取决于原因：{fd.action_note}
                       </p>
                     )}
+                    {/* 散文类字段用 KV wrap：与上面的标量字段同一套排版，
+                        但整段读得完（截断一段说明等于没写） */}
                     <div className="mt-3 space-y-2">
                       {[
-                        { k: "描述", v: selFault.desc },
-                        { k: "如何检测", v: selFault.detect },
-                        { k: "如何注入", v: selFault.inject },
-                        { k: "如何恢复", v: selFault.recovery },
+                        { k: "描述", v: fd.desc },
+                        { k: "如何检测", v: fd.detect },
+                        { k: "如何注入", v: fd.inject },
+                        { k: "如何恢复", v: fd.recovery },
                       ]
                         .filter((x) => x.v)
                         .map((x) => (
-                          <div key={x.k}>
-                            <div className="text-[11px] text-ink-faint">{x.k}</div>
-                            <div className="mt-0.5 text-[12.5px] leading-5 text-ink-dim">{x.v}</div>
-                          </div>
+                          <KV key={x.k} k={x.k} v={x.v} wrap />
                         ))}
                     </div>
                     <div className="mt-3">
                       <button
                         className="btn btn-sm"
-                        onClick={() => (window.location.href = `/graph?focus=fault:${selFault.key}`)}
+                        onClick={() => (window.location.href = `/graph?focus=fault:${fd.key}`)}
                       >
                         在图谱中查看 →
                       </button>

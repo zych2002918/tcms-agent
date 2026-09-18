@@ -341,12 +341,31 @@ export function Explain({ text }: { text: string }) {
   return <p className="text-xs text-ink-dim leading-5">{text}</p>;
 }
 
-/** 键值行（把技术细节排整齐，而不是糊成一句话） */
-export function KV({ k, v, mono = false }: { k: string; v: ReactNode; mono?: boolean }) {
+/** 键值行（把技术细节排整齐，而不是糊成一句话）。
+ *
+ * `wrap`：短值（ID / 路径 / 枚举）默认单行截断、悬停看全文——列表里更整齐；
+ * 长值（描述、检测 / 注入 / 恢复方式这类散文）用 `wrap` 让整段读得完——
+ * 截断一段说明等于没写，用户还得悬停去猜。 */
+export function KV({
+  k,
+  v,
+  mono = false,
+  wrap = false,
+}: {
+  k: string;
+  v: ReactNode;
+  mono?: boolean;
+  wrap?: boolean;
+}) {
   return (
-    <div className="flex items-baseline gap-2 min-w-0 text-[12px]">
-      <span className="text-ink-faint shrink-0">{k}</span>
-      <span className={`text-ink-dim truncate ${mono ? "kbd-mono" : ""}`} title={typeof v === "string" ? v : undefined}>
+    <div className={`flex gap-2 min-w-0 text-[12px] ${wrap ? "items-start" : "items-baseline"}`}>
+      <span className={`text-ink-faint shrink-0 ${wrap ? "pt-[1px]" : ""}`}>{k}</span>
+      <span
+        className={`text-ink-dim min-w-0 ${wrap ? "whitespace-pre-wrap break-words" : "truncate"} ${
+          mono ? "kbd-mono" : ""
+        }`}
+        title={!wrap && typeof v === "string" ? v : undefined}
+      >
         {v}
       </span>
     </div>
