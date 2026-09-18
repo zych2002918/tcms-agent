@@ -21,6 +21,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useClampedPopover } from "../lib/popover";
 
 export interface PickerItem {
   /** 唯一键（场景场景 = 文件名） */
@@ -112,9 +113,13 @@ export function SearchPicker({
     setQ("");
   };
 
+  // 与 ModelPicker 同一套定位：夹在可裁剪祖先内（写死 left/right 会在窄容器里被裁）
+  const { anchorRef, popRef, style: popStyle } = useClampedPopover<HTMLButtonElement>(open, 560);
+
   return (
     <div className={`relative min-w-0 flex-1 ${className}`} ref={boxRef}>
       <button
+        ref={anchorRef}
         type="button"
         className="select w-full flex items-center gap-2 text-left disabled:cursor-not-allowed disabled:text-ink-faint"
         onClick={() => setOpen((v) => !v)}
@@ -142,7 +147,12 @@ export function SearchPicker({
 
       {open && (
         <div
-          className="panel-float absolute left-0 z-[var(--z-popover)] mt-1.5 w-full max-w-[560px] overflow-hidden p-0 step-in"
+          ref={popRef}
+          style={{
+            ...(popStyle ?? { left: 0, width: 560 }),
+            visibility: popStyle ? "visible" : "hidden",
+          }}
+          className="panel-float absolute z-[var(--z-popover)] mt-1.5 overflow-hidden p-0 step-in"
           role="dialog"
           aria-label={dialogLabel}
         >

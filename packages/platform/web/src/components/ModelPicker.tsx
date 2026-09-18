@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { type ModelChoice, isOverridden } from "../lib/modelChoice";
+import { useClampedPopover } from "../lib/popover";
 
 /** 按名称粗分"非对话类"模型（embedding / 语音 / 视觉 / 重排…）。
  *  这是**启发式**，只用来减少噪音：拿不准的一律留在"对话"里，不武断隐藏。 */
@@ -126,9 +127,14 @@ export function ModelPicker({
     setOpen(false);
   };
 
+  // 浮层位置由几何计算给出（夹在可裁剪祖先内），不再写死 right-0：
+  // 写死时，触发器一变窄（模型名短）浮层就会跑出滚动容器被裁掉。
+  const { anchorRef, popRef, style: popStyle } = useClampedPopover<HTMLButtonElement>(open, 400);
+
   return (
     <div className="relative" ref={boxRef}>
       <button
+        ref={anchorRef}
         type="button"
         className="btn-ghost max-w-[320px] disabled:opacity-50"
         onClick={() => setOpen((v) => !v)}
@@ -152,7 +158,13 @@ export function ModelPicker({
 
       {open && (
         <div
-          className="panel-float absolute right-0 z-[var(--z-popover)] mt-1.5 w-[400px] max-w-[92vw] p-0 overflow-hidden step-in"
+          ref={popRef}
+          style={{
+            ...(popStyle ?? { left: 0, width: 400 }),
+            // 首帧还没量到位置：先隐藏，避免在错误位置闪一下
+            visibility: popStyle ? "visible" : "hidden",
+          }}
+          className="panel-float absolute z-[var(--z-popover)] mt-1.5 p-0 overflow-hidden step-in"
           role="dialog"
           aria-label="选择本次运行使用的模型"
         >
