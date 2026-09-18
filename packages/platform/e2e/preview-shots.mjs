@@ -13,10 +13,13 @@ const mk = async (path, name, setup) => {
 await mk("/", "1-dashboard", null);
 await mk("/graph", "2-graph-empty", null);
 await mk("/graph", "3-graph-search", async (p) => { await p.fill("input[placeholder*='大白话']", "车门故障不能发车"); await p.click("button:has-text('检索')"); });
-await mk("/scenarios", "4-scenario-running", async (p) => { await p.selectOption("select", "door_cascade.yaml"); await p.click("button:has-text('运行此场景')"); });
-await mk("/scenarios", "5-scenario-done", async (p) => { await p.selectOption("select", "eb_failure_eb.yaml"); await p.click("button:has-text('运行此场景')"); await p.waitForSelector("text=运行完成", { timeout: 10000 }); });
+// 场景选择器从原生 <select> 换成了可搜索浮层（UI 重构），因此这里改用**深链**直达：
+// `/scenarios?file=` 与 `/faultlab?scenario=` 是页面本来就支持的入口，
+// 比"点开浮层 → 填筛选 → 点选项"更稳（少三个易碎步骤）。
+await mk("/scenarios?file=door_cascade.yaml", "4-scenario-running", async (p) => { await p.click("button:has-text('运行此场景')"); });
+await mk("/scenarios?file=eb_failure_eb.yaml", "5-scenario-done", async (p) => { await p.click("button:has-text('运行此场景')"); await p.waitForSelector("text=运行完成", { timeout: 10000 }); });
 await mk("/assets", "6-assets-faults", async (p) => { await p.click("button:has-text('故障')"); await p.waitForTimeout(400); await p.click("tr:has-text('紧急制动执行失败')"); });
-await mk("/faultlab", "8-faultlab", async (p) => { await p.selectOption("select", "overspeed_derate.yaml"); await p.click("button:has-text('演示此场景')"); await p.waitForTimeout(1100); });
+await mk("/faultlab?scenario=overspeed_derate.yaml", "8-faultlab", async (p) => { await p.click("button:has-text('演示此场景')"); await p.waitForTimeout(1100); });
 await mk("/agent", "7-agent-done", async (p) => { await p.click("button:has-text('执行此任务')"); await p.waitForSelector("text=评分", { timeout: 15000 }); });
 console.log("preview shots done");
 await b.close();

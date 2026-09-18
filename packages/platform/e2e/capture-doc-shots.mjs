@@ -63,9 +63,9 @@ try {
 
   // ---- 2. FaultLab（light）----
   await theme("light");
-  await page.goto(BASE + "/faultlab", { waitUntil: "networkidle" });
+  // 场景选择器已换为可搜索浮层 → 用页面本就支持的深链直达
+  await page.goto(BASE + "/faultlab?scenario=overspeed_derate.yaml", { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
-  await page.selectOption("select", "overspeed_derate.yaml");
   await page.click("button:has-text('演示此场景')");
   await page.waitForTimeout(1800);
   const fBody = await page.locator("body").innerText();

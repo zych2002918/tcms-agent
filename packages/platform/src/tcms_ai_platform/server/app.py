@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json as _json
 import queue as _queue
+import re as _re
 import threading as _threading
 import time as _time
 from pathlib import Path
@@ -35,6 +36,20 @@ from ..knowledge import (
 # 供 uvicorn 直接 import 的默认实例（app:main 兼容）
 _app_model: AssetModel | None = None
 _app_upstream: Path | None = None
+
+
+def _resolve_web_dist() -> Path:
+    """前端产物目录：源码运行取 `packages/platform/web/dist`；冻结包取包内快照。
+
+    抽出来是为了让"服务静态资源的路径"与"报告界面构建标识的路径"**只有一处**——
+    两处各算一次，迟早会算出不一样的结果。
+    """
+    import sys as _sys
+
+    if getattr(_sys, "frozen", False):
+        bundle = Path(getattr(_sys, "_MEIPASS", Path(__file__).resolve().parent))
+        return bundle / "web" / "dist"
+    return Path(__file__).resolve().parents[3] / "web" / "dist"
 
 
 def _validate_steps(m: AssetModel, steps: list[dict]) -> None:
@@ -539,9 +554,37 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
     def source() -> dict:
         return {"upstream": asset_model.source_upstream, "load": asset_model.load_stats}
 
+    def _web_build_id() -> dict:
+        """界面构建标识：让"我现在看的是哪一版界面"永远可回答。
+
+        为什么需要：这台机器上同时躺着**多份可启动的副本**（monorepo 本体、
+        旧仓库、昨天的发布包），它们界面长得像、默认端口还可能一样。
+        用户一旦打开的是旧副本，看到的现象是"功能没了、样式不对"，
+        却没有任何线索指向"你开的是旧版"——于是只能怀疑"你到底改没改"。
+
+        这里把前端产物的哈希与构建时间暴露给界面（显示在侧栏底部）：
+        一句话就能确认版本，不用翻目录、不用问人。
+        """
+        try:
+            dist = _resolve_web_dist()
+            idx = dist / "index.html"
+            if not idx.is_file():
+                return {"available": False, "hash": "", "built": ""}
+            html = idx.read_text(encoding="utf-8")
+            m = _re.search(r"assets/index-([A-Za-z0-9_\-]+)\.js", html)
+            asset = dist / "assets" / f"index-{m.group(1)}.js" if m else None
+            ts = (asset if asset and asset.is_file() else idx).stat().st_mtime
+            return {
+                "available": True,
+                "hash": (m.group(1)[:8] if m else ""),
+                "built": _time.strftime("%Y-%m-%d %H:%M", _time.localtime(ts)),
+            }
+        except Exception:  # noqa: BLE001 - 报告版本失败不该影响状态接口
+            return {"available": False, "hash": "", "built": ""}
+
     @app.get("/api/system/status")
     def system_status() -> dict:
-        """环境状态（供前端引导）：引擎 / LLM key / 资产源 / 可用能力。"""
+        """环境状态（供前端引导）：引擎 / LLM key / 资产源 / 可用能力 / **界面构建标识**。"""
         from ..agent import llm_available
 
         has_key = llm_available()
@@ -551,6 +594,7 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
             "llm_key": has_key,
             "agent_backend": _current_backend_mode(),  # mock(离线) / llm(已配 key)
             "asset_mode": asset_model.source_upstream,
+            "web_build": _web_build_id(),
             "capabilities": {
                 "browse_assets": True,
                 "knowledge_graph": True,
@@ -2015,11 +2059,7 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
     # 源码运行时在仓库 web/dist。
     import sys as _sys
 
-    if getattr(_sys, "frozen", False):
-        _bundle = Path(getattr(_sys, "_MEIPASS", Path(__file__).resolve().parent))
-        _web_dist = _bundle / "web" / "dist"
-    else:
-        _web_dist = Path(__file__).resolve().parents[3] / "web" / "dist"
+    _web_dist = _resolve_web_dist()
     if _web_dist.is_dir():
         from fastapi.responses import FileResponse, HTMLResponse
         from fastapi.staticfiles import StaticFiles
@@ -2081,7 +2121,18 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
                     f'<html lang="zh-CN" class="theme-{theme}" data-theme="{theme}"',
                     1,
                 )
-            return HTMLResponse(html)
+            # **禁止缓存入口 HTML**：SPA 外壳里写的是带内容哈希的资源名，
+            # 一旦被浏览器缓存，用户会继续加载上一版的 JS/CSS——而磁盘上那些文件
+            # 早被新构建清掉了。现象就是"我明明重启了，界面还是旧的"，甚至白屏。
+            # 哈希资源本身可以长期缓存（StaticFiles 会带 ETag），唯独入口不能。
+            return HTMLResponse(
+                html,
+                headers={
+                    "Cache-Control": "no-store, no-cache, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                },
+            )
 
     return app
 

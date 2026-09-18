@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, type FaultLabCurvePoint, type FaultLabEvent, type FaultLabResp } from "../api";
-import { Panel, Tag, EmptyState, SkeletonRows } from "../components/ui";
+import { Callout, KV, Panel, Tag, EmptyState, SkeletonRows } from "../components/ui";
 import { ScenarioCompositionCard } from "../components/ScenarioCompositionCard";
 import { advancePlayback, activeSpanKeys, buildSpans, eventWindow } from "../lib/playerState";
 
@@ -478,6 +478,159 @@ function SourceNote({ e }: { e: FaultLabEventEx }) {
   return null;
 }
 
+/** 场景选择器（可搜索浮层）。
+ *
+ * 为什么不用原生 `<select>`：资产库有 104 个场景，选项是"中文名 + 文件名"的长文本，
+ * 原生下拉里只能靠滚动翻找，看不出"这个场景注入了几个故障、几步编排"，
+ * 也没法按故障 key 反查（用户常常是从"我想看超速"出发的）。
+ * 这里只做呈现：选中后仍与原来的 `<select>` 一样只更新 sel，是否演示由「演示此场景」决定。
+ * 关闭方式与 ModelPicker 一致（点外 / Esc），并带 aria-expanded。
+ */
+function ScenarioPicker({
+  scenarios,
+  value,
+  onPick,
+  disabled,
+}: {
+  scenarios: { file: string; name: string; steps: number; fault_keys: string[] }[];
+  value: string;
+  onPick: (file: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // 点外面 / Esc 关闭（键盘也能关）
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // 打开即聚焦筛选框：键盘用户不用再 Tab 一次
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  const kw = q.trim().toLowerCase();
+  const list = useMemo(() => {
+    if (!kw) return scenarios;
+    return scenarios.filter(
+      (s) =>
+        s.name.toLowerCase().includes(kw) ||
+        s.file.toLowerCase().includes(kw) ||
+        s.fault_keys.some((k) => k.toLowerCase().includes(kw))
+    );
+  }, [scenarios, kw]);
+
+  const cur = scenarios.find((s) => s.file === value);
+  const curTitle = cur ? `${cur.name}（${cur.file}）· ${cur.steps} 步 · ${cur.fault_keys.length} 个故障` : "选择一个真实故障场景";
+
+  return (
+    <div className="relative min-w-0 flex-1" ref={boxRef}>
+      <button
+        type="button"
+        className="select w-full flex items-center gap-2 text-left disabled:cursor-not-allowed disabled:text-ink-faint"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        title={curTitle}
+      >
+        <span className="shrink-0 text-[11px] text-ink-faint">场景</span>
+        <span className={`min-w-0 flex-1 truncate ${cur ? "text-ink" : "text-ink-faint"}`}>
+          {cur ? cur.name : "还没有场景列表"}
+        </span>
+        {cur && (
+          <span className="hidden md:inline shrink-0 max-w-[260px] truncate kbd-mono text-[11px] text-ink-faint">
+            {cur.file}
+          </span>
+        )}
+        <span className="shrink-0 text-[11px] text-ink-faint num whitespace-nowrap">共 {scenarios.length} 个</span>
+        <span className="shrink-0 text-[10px] text-ink-faint">▾</span>
+      </button>
+
+      {open && (
+        <div
+          className="panel-float absolute left-0 z-[var(--z-popover)] mt-1.5 w-full sm:w-[540px] sm:max-w-full overflow-hidden step-in"
+          role="listbox"
+          aria-label="选择演示场景"
+        >
+          <div className="flex items-center gap-2 px-2.5 py-2 border-b border-line-soft">
+            <input
+              ref={inputRef}
+              className="input !py-1 text-[12px] flex-1"
+              placeholder="筛选：场景名 / 文件名 / 故障 key（如 overspeed）"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && list.length > 0) {
+                  onPick(list[0].file);
+                  setOpen(false);
+                }
+              }}
+              aria-label="筛选场景"
+            />
+            <span className="shrink-0 text-[11px] text-ink-faint num whitespace-nowrap">
+              {list.length} / {scenarios.length}
+            </span>
+          </div>
+          <div className="max-h-[320px] overflow-y-auto">
+            {list.length === 0 ? (
+              <div className="px-3 py-4 text-[12px] text-ink-dim">
+                没有匹配「{q}」的场景。试试清空筛选，或直接搜故障 key（如 overspeed / door_fault）。
+              </div>
+            ) : (
+              list.map((s) => {
+                const active = s.file === value;
+                return (
+                  <button
+                    key={s.file}
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    onClick={() => {
+                      onPick(s.file);
+                      setOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 flex items-start gap-2 transition-colors ${
+                      active ? "bg-info/10" : "hover:bg-surface-2"
+                    }`}
+                  >
+                    <span className={`shrink-0 text-[11px] pt-0.5 ${active ? "text-info" : "text-ink-faint"}`}>
+                      {active ? "●" : "○"}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate text-[12.5px] ${active ? "text-ink font-medium" : "text-ink-dim"}`}>
+                        {s.name}
+                      </span>
+                      <span className="block truncate kbd-mono text-[10.5px] text-ink-faint">
+                        {s.file} · {s.steps} 步 · {s.fault_keys.length} 个故障
+                      </span>
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FaultLabPage() {
   const [searchParams] = useSearchParams();
   //: 从某故障跳转进来时带上的"入口故障"（用于把"你点的那个"标出来）
@@ -592,7 +745,10 @@ export function FaultLabPage() {
   useEffect(() => {
     api.faultlabScenarios().then((s) => {
       setScenarios(s);
-      if (s.length) setSel(s[0].file);
+      // 只在"还没选过"时兜底选第一个：StrictMode 下本 effect 会跑两次，
+      // 无条件 setSel(s[0]) 会把 URL 直达（?scenario=）或用户刚做的选择覆盖掉，
+      // 于是选择器显示 A、实际演示的是 B。
+      if (s.length) setSel((prev) => prev || s[0].file);
     }).catch((e) => setErr(String(e)));
   }, []);
 
@@ -672,64 +828,103 @@ export function FaultLabPage() {
   const stepColor = (kind?: string) => (kind ? STEP_META[kind]?.color ?? SOURCE_META[kind]?.color ?? "var(--ink-dim)" : "var(--ink-dim)");
 
   return (
-    <div className="mx-auto w-full max-w-[1760px] space-y-4">
-      <Panel title="故障演示 · FaultLab" bodyClass="p-3">
+    <div className="mx-auto w-full max-w-[1800px] space-y-4">
+      <Panel
+        title="故障演示 · FaultLab"
+        sub="真实场景资产 → 可播放的事件时间线"
+        right={
+          entry && phase === "ready" && data ? (
+            <Tag tone={entry.tone} title={entry.note}>
+              当前演示 · {entry.label}
+            </Tag>
+          ) : undefined
+        }
+        bodyClass="p-3"
+      >
         <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-          <select className="select flex-1" value={sel} onChange={(e) => setSel(e.target.value)} aria-label="选择演示场景">
-            {scenarios.map((s) => (
-              <option key={s.file} value={s.file}>
-                {s.name} — {s.file}
-              </option>
-            ))}
-          </select>
-          <button className="btn justify-center" onClick={() => load(sel)} disabled={phase === "loading" || !sel}>
+          <ScenarioPicker
+            scenarios={scenarios}
+            value={sel}
+            onPick={setSel}
+            disabled={phase === "loading" || scenarios.length === 0}
+          />
+          <button className="btn justify-center shrink-0" onClick={() => load(sel)} disabled={phase === "loading" || !sel}>
             {phase === "loading" ? "加载中…" : "▶ 演示此场景"}
           </button>
         </div>
-        {entry && phase === "ready" && data && (
-          <div className="mt-2 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10.5px]" style={{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
-            <span className={`inline-block h-1.5 w-1.5 rounded-full ${entry.tone === "vio" ? "bg-vio" : "bg-info"}`} />
-            <span className="text-ink-dim">
-              当前演示 = <span className="text-ink font-medium">{entry.label}</span>
-              {entry.note ? ` · ${entry.note}` : ""}
-              <span className="text-ink-faint">（下拉选择 + 「演示此场景」可回到手动挑选）</span>
-            </span>
-          </div>
-        )}
-        <p className="mt-2 text-[11px] text-ink-faint leading-5">
-          动画 = 真实场景资产 + 故障部位资产 + 处置效果资产组合渲染：事件时刻来自真实场景 YAML（或你从场景执行 / Agent 执行跳转过来的本次执行步骤）；
-          处置结果由真实引擎断言（若已执行），否则取故障字典 action；
-          速度/压力曲线是按真实阈值（160 km/h 限速、300 kPa 制动缸）的示意物理模型。每条事件与下方「数据管线 · 引擎观察窗」都可溯源。
-          拖动进度条会暂停回放，方便停在故障发生的瞬间观察部位高亮。
-        </p>
+        <Callout
+          className="mt-2.5"
+          tone="dim"
+          icon="ⓘ"
+          title="动画里的每一步都来自真实场景与引擎断言，不是示意图。"
+          details={
+            <>
+              <p>事件时刻来自真实场景 YAML；从「场景执行 / Agent 执行」跳转过来时，用的是你这次执行的真实步骤。</p>
+              <p>处置结果：引擎已真实执行时取引擎断言，否则取故障字典里该故障的 action 字段——两种来源在每条事件下方分别标注。</p>
+              <p>速度与制动缸压力曲线是按真实阈值（160 km/h 限速、300 kPa 制动缸）重建的示意物理模型，不是录波数据。</p>
+              <p>每条事件的来源在「完整事件时间线」里逐条可见，整条构建链路见页尾「数据管线 · 引擎观察窗」。</p>
+              <p>拖动进度条会暂停回放，方便停在故障发生的瞬间观察部位高亮。</p>
+            </>
+          }
+        />
       </Panel>
 
-      {err && <div className="panel border-bad/40 bg-bad/10 px-4 py-2.5 text-sm text-bad">⚠ {err}</div>}
+      {err && (
+        <div className="panel border-bad/40 bg-bad/10 px-4 py-2.5 flex items-start gap-2 text-[13px] text-bad">
+          <span className="shrink-0">⚠</span>
+          <span className="min-w-0 flex-1 break-words">{err}</span>
+          <button
+            className="btn-ghost btn-sm shrink-0"
+            onClick={() => load(sel)}
+            disabled={!sel || phase === "loading"}
+          >
+            重试
+          </button>
+        </div>
+      )}
 
       {phase === "loading" && (
-        <Panel title="正在重建演示…" bodyClass="py-2">
+        <Panel title="正在重建演示…" sub="装载场景 → 真实执行 → 组合资产 → 生成时间线" bodyClass="p-3">
           <SkeletonRows rows={3} cols={3} />
-          <p className="text-[11px] text-ink-faint mt-1">
-            装载场景/步骤 → 真实执行（若引擎可用）→ 组合故障部位与处置效果资产 → 生成事件时间线与通道曲线
-          </p>
         </Panel>
       )}
 
       {phase === "error" && !err && (
-        <Panel><EmptyState icon="⚠" title="演示加载失败" desc="请确认后端与引擎状态后重试。" /></Panel>
+        <Panel bodyClass="p-3">
+          <EmptyState
+            compact
+            icon="⚠"
+            title="演示加载失败"
+            desc="没有拿到这个场景的演示数据。确认后端服务与 TCMS 引擎状态后重试；引擎缺失时动画仍可播放，只是处置结果取自故障字典而不是引擎断言。"
+            action={
+              <button className="btn-ghost btn-sm" onClick={() => load(sel)} disabled={!sel}>
+                重试
+              </button>
+            }
+          />
+        </Panel>
       )}
 
       {phase === "ready" && data && currentPt && (
         <div className="step-in space-y-4">
           {/* 顶部摘要：场景 + 处置来源（t4：跳转/外部序列 → 来源 Tag） */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
             <Tag tone="info">{data.demo.scenario_name}</Tag>
-            <code className="kbd-mono">{data.demo.scenario}</code>
-            <span className="text-ink-faint">总时长 {data.demo.duration}s · {data.demo.events.length} 个事件</span>
+            <code className="kbd-mono truncate max-w-[300px]" title={data.demo.scenario}>
+              {data.demo.scenario}
+            </code>
+            <span className="text-ink-faint num whitespace-nowrap">
+              总时长 {data.demo.duration}s · {data.demo.events.length} 个事件
+            </span>
             {entry && (
               <Tag tone={entry.tone} title={entry.note}>
                 {entry.label}
               </Tag>
+            )}
+            {entry?.note && (
+              <span className="min-w-0 max-w-[320px] truncate text-[11px] text-ink-faint" title={entry.note}>
+                {entry.note}
+              </span>
             )}
             {engineAsserted ? (
               <Tag tone="ok">处置已由真实引擎断言</Tag>
@@ -792,20 +987,55 @@ export function FaultLabPage() {
           {/* 速度/压力曲线 */}
           <Panel title="速度与制动缸压力（示意回放）" bodyClass="p-2">
             <Curves curve={data.curve} t={t} limitKmh={data.demo.params.limit_kmh} />
-            {/* 控制条 */}
-            <div className="mt-2 flex items-center gap-2 flex-wrap">
-              <button className="btn-ghost btn-sm" onClick={() => { setPlaying((p) => !p); if (!playing && t >= dur) seek(0); }} disabled={!data}>
-                {playing ? "⏸ 暂停" : "▶ 播放"}
+            {/* 控制条：播放/暂停/重播的状态直接写在按钮文字里，并用语义色区分（不是靠图标猜） */}
+            <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                className={`btn btn-sm shrink-0 border ${playing ? "!bg-ok/10 !text-ok !border-ok/40" : "border-transparent"}`}
+                onClick={() => {
+                  setPlaying((p) => !p);
+                  if (!playing && t >= dur) seek(0);
+                }}
+                disabled={!data}
+                aria-pressed={playing}
+                title={playing ? "暂停回放（拖动进度条也会自动暂停）" : t >= dur ? "从头重播" : "继续播放"}
+              >
+                {playing ? "⏸ 播放中" : t <= 0 ? "▶ 播放" : t >= dur ? "↻ 重播" : "▶ 继续"}
               </button>
-              <button className="btn-ghost btn-sm" onClick={() => { setPlaying(false); seek(0); }}>↺ 重置</button>
-              <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className="btn-ghost btn-sm shrink-0"
+                onClick={() => {
+                  setPlaying(false);
+                  seek(0);
+                }}
+                title="停止播放并回到 0 秒"
+              >
+                ↺ 回到开头
+              </button>
+              <div
+                role="group"
+                aria-label="回放倍速"
+                className="inline-flex shrink-0 items-center gap-0.5 rounded-[var(--radius-md)] border border-line bg-surface-2 p-0.5"
+              >
                 {[0.5, 1, 2, 4].map((s) => (
-                  <button key={s} className={`btn-ghost btn-sm ${speed === s ? "!text-info !border-info/50" : ""}`} onClick={() => setSpeed(s)}>
+                  <button
+                    key={s}
+                    type="button"
+                    aria-pressed={speed === s}
+                    title={`${s} 倍速回放`}
+                    onClick={() => setSpeed(s)}
+                    className={`num rounded-[5px] px-2 py-0.5 text-[11.5px] transition-colors ${
+                      speed === s ? "bg-surface font-medium text-info shadow-[var(--shadow-xs)]" : "text-ink-dim hover:text-ink"
+                    }`}
+                  >
                     {s}×
                   </button>
                 ))}
               </div>
-              <span className="text-[11px] text-ink-faint num ml-auto">{t.toFixed(1)}s / {dur.toFixed(0)}s</span>
+              <span className="ml-auto shrink-0 whitespace-nowrap text-[11px] text-ink-dim num">
+                {t.toFixed(1)}s / {dur.toFixed(0)}s
+              </span>
             </div>
             {/* 时间轴 scrubber：拖动即暂停（onPointerDown 置 playing=false），松手保持暂停，让用户看清再点播放 */}
             <input
@@ -821,24 +1051,29 @@ export function FaultLabPage() {
               className={`w-full mt-2 faultlab-range ${scrubbing ? "cursor-grabbing" : "cursor-pointer"}`}
               aria-label="回放进度（拖动时暂停）"
             />
-            {/* 事件刻度条 */}
-            <div className="relative h-6 mt-0.5" aria-hidden>
+            {/* 事件刻度条：点一下即跳到该事件；命中区加宽到 13px（视觉仍是 3px 细条，便于点击） */}
+            <div className="relative h-6 mt-1" aria-hidden>
               {data.demo.events.map((e, i) => {
                 const left = (e.t / dur) * 100;
                 return (
                   <span
                     key={i}
                     onClick={() => seek(e.t)}
-                    className="absolute top-1/2 -translate-y-1/2 h-3.5 w-[3px] rounded-full cursor-pointer hover:scale-y-150 transition-transform"
-                    style={{ left: `calc(${left}% - 1px)`, background: KIND_COLOR[e.kind] }}
+                    className="absolute top-1/2 grid h-5 w-[13px] -translate-x-1/2 -translate-y-1/2 cursor-pointer place-items-center"
+                    style={{ left: `${left}%` }}
                     title={`${e.t}s ${KIND_LABEL[e.kind]}：${e.label}`}
-                  />
+                  >
+                    <span
+                      className="h-3.5 w-[3px] rounded-full transition-transform hover:scale-y-150"
+                      style={{ background: KIND_COLOR[e.kind] }}
+                    />
+                  </span>
                 );
               })}
               {/* 播放头 */}
               <span
-                className="absolute top-0 bottom-0 w-[2px] bg-ink/70"
-                style={{ left: `calc(${(t / dur) * 100}% - 1px)` }}
+                className="absolute top-0 bottom-0 w-[2px] -translate-x-1/2 bg-ink/70"
+                style={{ left: `${(t / dur) * 100}%` }}
               />
             </div>
             <div className="flex gap-3 mt-1 flex-wrap">
@@ -877,9 +1112,11 @@ export function FaultLabPage() {
             )}
           </Panel>
 
-          {/* 完整事件时间线（叙事流：一屏看清故障生命周期） */}
-          <Panel title="完整事件时间线" bodyClass="p-3">
-            <div className="space-y-1">
+          {/* 完整事件时间线（叙事流：一屏看清故障生命周期）
+              当前事件用「左侧色条 + 语义描边 + 此刻标记」三重高亮，其余行靠文字深浅区分——
+              不再整行降到 55% 透明度：那样最该读的几行反而最糊。 */}
+          <Panel title="完整事件时间线" sub="点任意一行跳到该时刻" bodyClass="p-2">
+            <div className="space-y-0.5">
               {data.demo.events.map((e, i) => {
                 const isNear = Math.abs(e.t - t) < 0.5;
                 const isPast = e.t <= t;
@@ -887,16 +1124,28 @@ export function FaultLabPage() {
                   <button
                     key={i}
                     onClick={() => seek(e.t)}
-                    className={`w-full text-left flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 transition-colors ${
-                      isNear ? "bg-info/10 border border-info/30" : isPast ? "hover:bg-surface-2/60 opacity-90" : "opacity-55 hover:bg-surface-2/40"
+                    aria-current={isNear ? "true" : undefined}
+                    title={`跳到 ${e.t.toFixed(1)}s · ${KIND_LABEL[e.kind]}：${e.label}`}
+                    className={`w-full text-left flex items-start gap-2.5 rounded-[var(--radius-md)] border py-1.5 pl-0 pr-2.5 transition-colors ${
+                      isNear ? "border-info/40 bg-info/10" : "border-transparent hover:bg-surface-2/60"
                     }`}
                   >
-                    <span className="text-ink-faint text-[10px] num pt-0.5 w-10 shrink-0">{e.t.toFixed(1)}s</span>
+                    <span
+                      aria-hidden
+                      className="w-[3px] shrink-0 self-stretch rounded-full"
+                      style={{ background: KIND_COLOR[e.kind], opacity: isNear ? 1 : isPast ? 0.65 : 0.3 }}
+                    />
+                    <span className={`w-10 shrink-0 pt-0.5 text-right text-[10px] num ${isNear ? "text-ink" : "text-ink-faint"}`}>
+                      {e.t.toFixed(1)}s
+                    </span>
                     <Tag tone={e.kind === "inject" ? "warn" : e.kind === "action" ? "bad" : e.kind === "recover" ? "ok" : e.kind === "detect" ? "info" : "dim"}>
                       {KIND_LABEL[e.kind]}
                     </Tag>
-                    <span className={`flex-1 text-[12.5px] leading-5 min-w-0 ${isNear ? "text-ink" : "text-ink-dim"}`}>
-                      <span className={isNear ? "text-ink font-medium" : ""}>{e.label}</span>
+                    <span className="flex-1 text-[12.5px] leading-5 min-w-0">
+                      <span className={isNear ? "text-ink font-medium" : isPast ? "text-ink-dim" : "text-ink-faint"}>
+                        {e.label}
+                      </span>
+                      {isNear && <Tag tone="info">此刻</Tag>}
                       {isNear && e.detail && <div className="text-ink-dim text-[11.5px]">{e.detail}</div>}
                       {/* 事件来源：数据从哪来，替代「（示意）」道歉 */}
                       {e.source?.desc ? (
@@ -983,19 +1232,37 @@ export function FaultLabPage() {
                 </ul>
               )}
               {(constReal.length > 0 || constSchematic.length > 0) && (
-                <div className="text-[10px] leading-4 text-ink-faint space-y-1">
+                <div className="space-y-2">
+                  {/* 常量表排成键值行：原来用「 · 」串成一长条灰字，中间任何一项都难找 */}
                   {constReal.length > 0 && (
                     <div>
-                      <span className="text-ok/80 font-medium">真实常量：</span>
-                      {constReal.slice(0, 5).map((r) => `${r.name}=${String(r.value)}${r.unit ? " " + r.unit : ""}（${r.source}）`).join(" · ")}
-                      {constReal.length > 5 && <span> · 等 {constReal.length} 项</span>}
+                      <div className="mb-1 text-[10.5px] font-medium text-ok">真实常量（取自资产文件）</div>
+                      <div className="grid gap-x-5 gap-y-0.5 sm:grid-cols-2">
+                        {constReal.slice(0, 6).map((r, i) => (
+                          <KV
+                            key={i}
+                            k={r.name ?? "常量"}
+                            v={`${String(r.value)}${r.unit ? " " + r.unit : ""}${r.source ? "（" + r.source + "）" : ""}`}
+                            mono
+                          />
+                        ))}
+                      </div>
+                      {constReal.length > 6 && (
+                        <div className="mt-0.5 text-[10px] text-ink-faint num">…共 {constReal.length} 项</div>
+                      )}
                     </div>
                   )}
                   {constSchematic.length > 0 && (
                     <div>
-                      <span className="text-ink-dim font-medium">示意模型常量：</span>
-                      {constSchematic.slice(0, 5).map((r) => `${r.name}=${String(r.value)}${r.unit ? " " + r.unit : ""}`).join(" · ")}
-                      {constSchematic.length > 5 && <span> · 等 {constSchematic.length} 项</span>}
+                      <div className="mb-1 text-[10.5px] font-medium text-ink-dim">示意模型常量（按真实阈值重建）</div>
+                      <div className="grid gap-x-5 gap-y-0.5 sm:grid-cols-2">
+                        {constSchematic.slice(0, 6).map((r, i) => (
+                          <KV key={i} k={r.name ?? "常量"} v={`${String(r.value)}${r.unit ? " " + r.unit : ""}`} mono />
+                        ))}
+                      </div>
+                      {constSchematic.length > 6 && (
+                        <div className="mt-0.5 text-[10px] text-ink-faint num">…共 {constSchematic.length} 项</div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1012,11 +1279,18 @@ export function FaultLabPage() {
       )}
 
       {phase === "idle" && (
-        <Panel>
+        <Panel title="还没有开始演示" bodyClass="p-3">
           <EmptyState
+            compact
             icon="⚙"
             title="选一个真实故障场景，看它如何发生"
-            desc="FaultLab 把真实场景 YAML（或场景执行 / Agent 执行跳转过来的步骤序列）变成可播放的事件时间线：故障注入 → 检测 → 处置 → 恢复。动画由场景资产 + 故障部位资产 + 处置效果资产组合渲染；列车状态、故障部位高亮、速度曲线会随时间轴同步推进；拖动进度条即暂停，方便停在关键瞬间。"
+            desc="FaultLab 把真实场景 YAML（或你从场景执行 / Agent 执行跳转过来的步骤）变成可播放的事件时间线；下面是它固定会走完的四步。"
+            steps={[
+              { icon: "⚡", title: "① 注入 · 故障发生", desc: "列车剖面上对应部位出现脉冲高亮与闪烁" },
+              { icon: "◎", title: "② 检测 · 系统识别", desc: "子系统判定等级并写入事件，时刻来自场景" },
+              { icon: "⛔", title: "③ 处置 · 引擎断言", desc: "限速 / 制动 / 降级，给出期望值与实际值" },
+              { icon: "✓", title: "④ 恢复 · 回到正常", desc: "通道状态复位，可拖进度条回看关键瞬间" },
+            ]}
           />
         </Panel>
       )}

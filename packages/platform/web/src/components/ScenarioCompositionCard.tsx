@@ -56,7 +56,7 @@ export function ScenarioCompositionCard({
     : `ⓘ 本场景把同一个故障注入了 ${comp.total_injections} 次`;
 
   return (
-    <div className="panel border-info/40 bg-info/5 px-3 py-2.5 step-in">
+    <div className="rounded-[var(--radius-md)] border border-info/30 bg-info/8 px-3 py-2.5 step-in">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-info text-sm font-medium">{headline}</span>
         <span className="text-[11px] text-ink-faint">
@@ -104,7 +104,7 @@ export function ScenarioCompositionCard({
       {open ? (
         <div className="mt-2 border-line/60 border-t pt-2 text-xs">
           <p className="text-ink-dim leading-6">{comp.why}</p>
-          <div className="mt-1.5 rounded bg-surface-2/60 px-2.5 py-1.5">
+          <div className="mt-1.5 rounded-[var(--radius-sm)] bg-surface-2/60 px-2.5 py-1.5">
             <div className="text-[11px] text-ink-faint">演示口径（可直接照读）</div>
             <div className="text-ink-dim mt-0.5">{comp.oneliner}</div>
           </div>
@@ -113,18 +113,18 @@ export function ScenarioCompositionCard({
           ) : null}
           <table className="mt-2 w-full text-[11px]">
             <thead>
-              <tr className="text-ink-faint text-left">
-                <th className="font-normal py-0.5">时刻</th>
-                <th className="font-normal">故障</th>
-                <th className="font-normal">等级</th>
-                <th className="font-normal">期望处置</th>
-                <th className="font-normal">角色</th>
+              <tr className="text-ink-faint text-left border-b border-line-soft">
+                <th className="font-normal py-1">时刻</th>
+                <th className="font-normal py-1">故障</th>
+                <th className="font-normal py-1">等级</th>
+                <th className="font-normal py-1">期望处置</th>
+                <th className="font-normal py-1">角色</th>
               </tr>
             </thead>
             <tbody>
               {comp.injections.map((i) => (
-                <tr key={i.fault} className="text-ink-dim">
-                  <td className="py-0.5 tabular-nums">@{i.at.toFixed(1)}s</td>
+                <tr key={i.fault} className="text-ink-dim border-b border-line-soft/60 last:border-0">
+                  <td className="py-1 tabular-nums num">@{i.at.toFixed(1)}s</td>
                   <td>
                     {i.fault_name || i.fault}{" "}
                     <code className="kbd-mono text-ink-faint">{i.fault}</code>

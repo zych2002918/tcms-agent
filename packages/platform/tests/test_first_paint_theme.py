@@ -65,3 +65,16 @@ def test_frontend_script_prefers_server_theme(client):
     i_server = html.index("el.dataset.theme")
     i_local = html.index("localStorage.getItem")
     assert i_server < i_local, "服务端主题必须先于 localStorage 被读取"
+
+
+@NEEDS_UPSTREAM
+def test_entry_html_is_never_cached(client):
+    """入口 HTML 必须 `no-store`：否则用户会一直加载上一版的哈希资源。
+
+    这是"我明明重启了，界面还是旧的"最常见的原因之一——SPA 外壳里写的是
+    带内容哈希的 JS/CSS 文件名，外壳被缓存 = 永远指向已经不存在的旧资源。
+    哈希资源本身可以长期缓存，唯独入口不行。
+    """
+    r = client.get("/agent")
+    cc = r.headers.get("cache-control", "")
+    assert "no-store" in cc, f"入口 HTML 缺 no-store，实际：{cc!r}"

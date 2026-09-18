@@ -152,7 +152,7 @@ export function ModelPicker({
 
       {open && (
         <div
-          className="panel-float absolute right-0 z-40 mt-1.5 w-[400px] max-w-[92vw] p-0 overflow-hidden step-in"
+          className="panel-float absolute right-0 z-[var(--z-popover)] mt-1.5 w-[400px] max-w-[92vw] p-0 overflow-hidden step-in"
           role="dialog"
           aria-label="选择本次运行使用的模型"
         >

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, type KbNode, type KbSearchHit, type KbSubgraph } from "../api";
-import { Panel, Tag, SkeletonRows, EmptyState, Explain } from "../components/ui";
+import { Callout, EmptyState, Explain, KV, Panel, SkeletonRows, Tabs, Tag } from "../components/ui";
 import { KIND_META, plainExplain } from "../lib/explanations";
 import {
   CAM_DEFAULT as CAM3D_DEFAULT,
@@ -37,6 +37,100 @@ const KIND_VAR: Record<string, string> = {
 };
 const kindHex = (kind: string): string => KIND_VAR[kind] ?? "var(--kind-run)";
 
+/** 中文类型名/说明：共享词典（lib/explanations.ts 的 KIND_META）暂未收录的类型，在本页兜底。
+ *  词典补齐后这里自动让位，不需要改本页。 */
+const KIND_META_FALLBACK: Record<string, { label: string; what: string }> = {
+  symptom: {
+    label: "异常现象",
+    what: "一个能被观察到的异常现象（如仪表盘闪烁），它指向若干可疑故障。",
+  },
+};
+const kindLabel = (kind: string): string =>
+  KIND_META[kind]?.label ?? KIND_META_FALLBACK[kind]?.label ?? kind;
+const kindWhat = (kind: string): string => KIND_META[kind]?.what ?? KIND_META_FALLBACK[kind]?.what ?? "";
+
+/** 首屏示例问句（点一下即检索）。
+ *
+ * 纪律：**界面上广告过的句子必须真的能检索到命中**（见 docs/decisions.md ADR-022）。
+ * 前两句为本轮新增，已用真实检索接口逐句实测（离线、无 key 也能出结果）；
+ * 后两句沿用原输入框占位符里的那两句——Python 侧 test_free_goal_situation.py 的
+ * 「ADVERTISED_GOAL_EXAMPLES」清单与它们同步，改这里要一并核对，否则又会出现
+ * 「界面给了例子、用户照着输却查不到」的老问题。
+ */
+const SEARCH_EXAMPLES = [
+  "车门故障不能发车",
+  "仪表盘闪烁但无故障码",
+  "车门故障了还能发车吗",
+  "紧急制动失败会怎样",
+];
+
+/** 检索三通道的中文名（与 /api/kb/search 响应里的 channels 字段一一对应） */
+const CHANNEL_ZH: Record<string, string> = {
+  vector: "向量语义",
+  lexical: "词法精确",
+  graph: "图谱扩展",
+};
+
+/** 可直接浏览的对象（骨架视图之外的一键入口） */
+const OBJECT_SHORTCUTS = ["message:DoorControl", "fault:overspeed", "function:F-EBM", "requirement:SR-01"];
+
+/** 命中里后端**确实返回**、但 api.ts 未声明的字段。
+ *  这里只是本页的展示视图类型，不改接口：字段名与后端保持一致（channels / source_ref /
+ *  anchor_stats），缺失时按「未提供」渲染，不猜测。 */
+type HitEvidence = KbSearchHit & {
+  channels?: string[];
+  source_ref?: string;
+  anchor_stats?: Record<string, number>;
+};
+
+const asEvidence = (h: KbSearchHit): HitEvidence => h as HitEvidence;
+
+/** 可点的 chip（用真 button：键盘可达、有可见焦点环） */
+function PickChip({
+  label,
+  title,
+  active = false,
+  onPick,
+}: {
+  label: string;
+  title: string;
+  active?: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onPick}
+      className={`tag cursor-pointer transition-colors ${
+        active
+          ? "text-info border-info/45 bg-info/10"
+          : "text-ink-dim border-line bg-surface-2 hover:text-ink hover:border-ink-faint/40"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** 滚轮缩放：React 的 onWheel 挂在根节点上且是**被动监听**（preventDefault 无效），
+ *  结果是"在画布上滚轮 = 页面跟着滚 + 图缩放"——两件事一起发生。
+ *  这里挂原生非被动监听，让「滚轮在画布上 = 只缩放」成立。 */
+function useWheelZoom(
+  ref: React.RefObject<SVGSVGElement | null>,
+  onWheel: (e: WheelEvent) => void,
+) {
+  const cb = useRef(onWheel);
+  cb.current = onWheel;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => cb.current(e);
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [ref]);
+}
+
 /** 力导向 SVG（保持既有算法，视觉改用 token） */
 
 export function GraphWorkspace() {
@@ -51,6 +145,10 @@ export function GraphWorkspace() {
   const [depth, setDepth] = useState(2);
   const [seedLabel, setSeedLabel] = useState("");
   const [showValue, setShowValue] = useState(false);
+  // 本轮新增的两个「本地界面状态」：选中哪条命中（右侧证据面板跟随）、是否已经检索过
+  // （决定首屏还显不显示「从哪开始」的引导）。都不影响任何接口调用。
+  const [selHit, setSelHit] = useState<string | null>(null);
+  const [searched, setSearched] = useState(false);
   const [selNode, setSelNode] = useState<{ id: string; kind: string; label: string; props?: Record<string, unknown>; neighbors?: KbNode[] } | null>(null);
   const [err, setErr] = useState("");
   const [activeKind, setActiveKind] = useState<string>("all");
@@ -91,6 +189,7 @@ export function GraphWorkspace() {
       setSeedLabel("基础关联图谱（13 系统域骨架）");
       setSelNode(null);
       setSelId(null);
+      setSelHit(null);
     } catch (e) {
       setErr(String(e));
     }
@@ -113,6 +212,7 @@ export function GraphWorkspace() {
       setSeedLabel(r.nodes.find((n) => n.id === seedId)?.label ?? seedId);
       setSelNode(null);
       setSelId(null);
+      setSelHit(null);
     } catch (e) {
       setErr(String(e));
     }
@@ -137,6 +237,7 @@ export function GraphWorkspace() {
       setHits(null);
       setSelNode(null);
       setSelId(null);
+      setSelHit(null);
     } catch (e) {
       setErr(String(e));
     }
@@ -164,6 +265,7 @@ export function GraphWorkspace() {
     setSearching(true);
     setErr("");
     setSub(null);
+    setSearched(true);
     try {
       const r = await api.kbSearch(text, 10);
       setHits(r.hits);
@@ -176,11 +278,24 @@ export function GraphWorkspace() {
       setActiveKind("all");
       setSelNode(null);
       setSelId(null);
+      setSelHit(r.hits[0]?.doc_id ?? null); // 默认选中第一条：证据面板一进来就有内容
     } catch (e) {
       setErr(String(e));
     } finally {
       setSearching(false);
     }
+  };
+
+  /** 示例问句：点一下即用它检索（输入框同步显示，用户看得见自己"问了什么"） */
+  const runExample = (q: string) => {
+    setQuery(q);
+    void search(q);
+  };
+
+  /** 直接浏览某个对象（以它为中心展开） */
+  const openObject = (id: string) => {
+    setSearched(true);
+    void focus(id);
   };
 
   const openNode = async (id: string) => {
@@ -203,9 +318,24 @@ export function GraphWorkspace() {
     return by;
   }, [hits]);
 
-  const order = ["fault", "message", "signal", "scenario", "requirement", "function", "device", "run"];
+  // 命中在整体结果里的名次（排序分是 RRF 融合分，绝对值不可读，名次才是人能用的信息）
+  const rankOf = useMemo(() => {
+    const m = new Map<string, number>();
+    hits?.forEach((h, i) => m.set(h.doc_id, i + 1));
+    return m;
+  }, [hits]);
+
+  // 分类：按"该类型里最好的名次"排组，结果从上往下读就是相关度顺序。
+  // 类型以**本次真实命中里出现的**为准，不再用固定白名单——原来只列了 8 类，
+  // 命中的 symptom / system 等会整组消失（用户看不到它们，却占着排序名次）。
   const kindTabs = grouped
-    ? order.filter((k) => grouped[k]?.length).map((k) => ({ kind: k, n: grouped[k]!.length }))
+    ? Object.keys(grouped)
+        .map((k) => ({
+          kind: k,
+          n: grouped[k]!.length,
+          best: Math.min(...grouped[k]!.map((h) => rankOf.get(h.doc_id) ?? 999)),
+        }))
+        .sort((a, b) => a.best - b.best)
     : [];
 
   // 当前子图按 kind 计数（「更进一步拓展」的分布统计行；kind 标签/颜色与图例一致）
@@ -225,23 +355,541 @@ export function GraphWorkspace() {
     );
   }, [sub, subKinds, kbStats]);
 
+  // 右侧证据面板要展示的那一条（未选中任何命中时为 null）
+  const selHitView = useMemo(() => {
+    if (!hits || !selHit) return null;
+    const idx = hits.findIndex((h) => h.doc_id === selHit);
+    if (idx < 0) return null;
+    return { hit: asEvidence(hits[idx]), rank: idx + 1, total: hits.length };
+  }, [hits, selHit]);
+
+  // 选中节点 → 一键动作的目标场景（scenario 本体，或关联里的第一个复现场景）
+  const selScenFile = selNode
+    ? selNode.kind === "scenario"
+      ? selNode.id.split(":")[1]
+      : (selNode.neighbors?.find((nb) => nb.kind === "scenario")?.id.split(":")[1] ?? null)
+    : null;
+
+  // 有命中或有子图时才开右栏；否则主区占满宽度（窄屏下两栏自动上下堆叠）
+  const showAside = (hits?.length ?? 0) > 0 || Boolean(sub);
+
+  /** 分域英文键 → 中文名：用本次检索的路由结果（routed_domains 与 routed_zh 一一对应），
+   *  对不上时如实显示原始键，不硬编码一张可能过期的映射表。 */
+  const domainZh = new Map((route?.domains ?? []).map((d, i) => [d, route?.zh[i] ?? d]));
+  const domainLabel = (d?: string) => (!d ? "" : `域 · ${domainZh.get(d) ?? d}`);
+
   return (
-    <div className="mx-auto w-full max-w-[1840px] space-y-4">
-      {/* KB 索引概览（图谱+向量规模：让人一眼看到知识底座的深度） */}
-      {kbStats && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-[11px] text-ink-dim">
-          <span className="font-medium text-ink">
-            知识底座
-          </span>
-          <span className="num">图谱 <b className="text-info">{kbStats.graph.nodes}</b> 节点 / <b className="text-info">{kbStats.graph.edges}</b> 边</span>
-          <span className="num">向量索引 <b className="text-vio">{kbStats.vector.docs}</b> 条文档</span>
-          <span className="text-ink-faint">
-            实体类型：{Object.keys(kbStats.graph.by_kind).length} 种（资产 + 领域知识：驾驶模式 / 联锁 / 阈值 / 危害…）
-          </span>
+    <div className="mx-auto w-full max-w-[1800px] space-y-4">
+      {/* ============ 第一屏的主角：检索 ============
+          用户来这一页只有一个动作——问一句话。所以输入框占满宽度放在最上面，
+          示例问句就在手边（点一下即检索），环境事实（图谱规模）贴在同一屏里。 */}
+      <Panel bodyClass="p-4">
+        <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1 min-w-0">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint text-[15px]">🔍</span>
+              <input
+                className="input h-11 pl-10 text-[14px]"
+                placeholder="用大白话问，如：车门故障了还能发车吗 / 紧急制动失败会怎样（回车即检索）"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void search()}
+                aria-label="知识检索"
+              />
+            </div>
+            <button
+              className="btn h-11 px-6 justify-center whitespace-nowrap"
+              onClick={() => void search()}
+              disabled={searching || !query.trim()}
+            >
+              {searching ? "检索中…" : "检索"}
+            </button>
+          </div>
+
+          {/* 可点的示例问句：点一下直接检索（这些句子都实测能出命中，见上方 SEARCH_EXAMPLES 注释） */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-ink-faint shrink-0">试试：</span>
+            {SEARCH_EXAMPLES.map((ex) => (
+              <PickChip
+                key={ex}
+                label={ex}
+                active={query.trim() === ex}
+                title={`用这句话检索：${ex}`}
+                onPick={() => runExample(ex)}
+              />
+            ))}
+          </div>
+
+          {/* 环境事实（机器自证）：图谱规模 + 向量索引 */}
+          {kbStats && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-faint">
+              <span className="num">
+                图谱 <b className="text-ink-dim font-medium">{kbStats.graph.nodes}</b> 节点 /{" "}
+                <b className="text-ink-dim font-medium">{kbStats.graph.edges}</b> 边
+              </span>
+              <span className="num">
+                向量索引 <b className="text-ink-dim font-medium">{kbStats.vector.docs}</b> 条文档
+              </span>
+              <span>实体类型 {Object.keys(kbStats.graph.by_kind).length} 种</span>
+            </div>
+          )}
+
+          {/* 原理收进可展开层：明面只留一句人话 */}
+          <Callout
+            tone="dim"
+            icon="⌕"
+            title="三通道融合检索："
+            details={
+              <div className="space-y-1">
+                <div>· 向量语义：说法不同、意思相近也能召回（如「门没关就发车」）。</div>
+                <div>· 词法精确：字面必须命中，防止语义跑偏。</div>
+                <div>· 图谱扩展：沿真实关系边补召回另外两路都漏掉的相邻资产。</div>
+                <div>· 每条命中都会摊开：资产 ID、排序分（RRF 融合分，仅用于排序）、命中通道、资产出处与关联实体。</div>
+              </div>
+            }
+          >
+            向量语义 + 词法精确 + 图谱扩展三路召回，每条命中都带得出证据。
+          </Callout>
         </div>
+      </Panel>
+
+      {err && <div className="panel border-bad/40 bg-bad/10 px-4 py-2.5 text-sm text-bad">⚠ {err}</div>}
+
+      {/* 检索中 */}
+      {searching && (
+        <Panel title="正在检索领域知识…" bodyClass="py-1">
+          <SkeletonRows rows={3} cols={3} />
+        </Panel>
       )}
 
-      {/* 图谱双价值：这一张图，人怎么用 / AI 怎么用（默认收起，想看时展开） */}
+      {/* 宽屏两栏工作台：左边是「图 / 命中列表」主舞台，右边是「证据 / 详情」；
+          窄屏（< xl）自动上下堆叠，画布与面板都不会被压变形。 */}
+      <div className={`grid gap-4 ${showAside ? "xl:grid-cols-[minmax(0,1fr)_344px] xl:items-start" : ""}`}>
+        <div className="space-y-4 min-w-0">
+          {/* 起步引导（还没检索过时显示）：紧凑 + 预告结构 + 一键对象，不占半屏 */}
+          {!searched && (
+            <Panel bodyClass="p-3">
+              <EmptyState
+                compact
+                icon="◈"
+                title="问一句话就行，不用背术语"
+                desc="上面已放好示例问句，点一下即检索。检索结果会长这样："
+                steps={[
+                  { icon: "1", title: "命中卡", desc: "哪种资产 · 资产 ID · 排序名次 · 资产出处" },
+                  { icon: "2", title: "点一条看证据", desc: "右侧摊开排序分、命中通道、出处与关联实体" },
+                  { icon: "3", title: "展开关系图谱", desc: "以它为中心，看谁影响谁，可单击/双击漫游" },
+                ]}
+                action={
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-ink-faint">或者直接看一个对象：</span>
+                    {OBJECT_SHORTCUTS.map((id) => (
+                      <PickChip
+                        key={id}
+                        label={id}
+                        title={`以 ${id} 为中心展开关系图谱（${KIND_META[id.split(":")[0]]?.what ?? ""}）`}
+                        onPick={() => openObject(id)}
+                      />
+                    ))}
+                  </div>
+                }
+              />
+            </Panel>
+          )}
+
+          {/* 结果（分类展示） */}
+          {!searching && hits && (
+            <>
+              {hits.length === 0 ? (
+                <Panel bodyClass="p-3">
+                  <EmptyState
+                    compact
+                    icon="?"
+                    title="没找到直接匹配"
+                    desc="试试更口语化的问法，例如「心跳丢失」「门没关就发车」「超速」；也可以点上面的示例问句。"
+                  />
+                </Panel>
+              ) : (
+                <>
+                  {/* 检索走向（有界分层：先图谱路由到域，再域内 topk） */}
+                  {route && (route.domains.length > 0 || route.zh.length > 0) && (
+                    <div className="flex flex-wrap items-center gap-1.5 px-1 text-[11px] text-ink-faint">
+                      <span>路由到分域：</span>
+                      {route.zh.map((z) => (
+                        <Tag key={z} tone="info">
+                          {z}
+                        </Tag>
+                      ))}
+                      {route.bounded && <span>· 域内有界检索（不整库迷失）</span>}
+                      {route.mixed && <span>· 域内不足已全局补召回</span>}
+                    </div>
+                  )}
+
+                  {/* 分类切换：真 Tab（带计数），不再用一排并列按钮让用户猜哪个是当前态 */}
+                  <Tabs
+                    items={[
+                      { value: "all", label: "全部", hint: "显示全部命中", count: hits.length },
+                      ...kindTabs.map(({ kind, n }) => ({
+                        value: kind,
+                        label: kindLabel(kind),
+                        hint: kindWhat(kind),
+                        count: n,
+                      })),
+                    ]}
+                    value={activeKind}
+                    onChange={setActiveKind}
+                  />
+
+                  {/* 结果组 */}
+                  <div className="space-y-4">
+                    {kindTabs
+                      .filter(({ kind }) => activeKind === "all" || activeKind === kind)
+                      .map(({ kind, n }) => (
+                        <div key={kind}>
+                          <div className="px-1 mb-1.5 flex items-baseline gap-2 min-w-0">
+                            <span className="text-[12px] font-semibold text-ink whitespace-nowrap">
+                              {kindLabel(kind)}{" "}
+                              <span className="text-ink-faint font-normal tabular-nums">({n})</span>
+                            </span>
+                            <span className="text-[11px] text-ink-faint truncate min-w-0">
+                              {kindWhat(kind)}
+                            </span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {grouped![kind].map((h) => {
+                              const ev = asEvidence(h);
+                              const on = selHit === h.doc_id;
+                              return (
+                                <div
+                                  key={h.doc_id}
+                                  className={`panel p-3 transition-colors ${
+                                    on ? "border-info/50 bg-info/[0.04]" : "panel-hover"
+                                  }`}
+                                >
+                                  {/* 卡体本身是按钮：点它=选中（右侧看证据），不会一不留神把结果列表换掉 */}
+                                  <button
+                                    type="button"
+                                    aria-pressed={on}
+                                    onClick={() => setSelHit(h.doc_id)}
+                                    className="block w-full text-left cursor-pointer"
+                                    title="点一下：在右侧摊开它的证据"
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <Tag tone={KIND_META[kind]?.color}>
+                                        {kindLabel(kind)}
+                                      </Tag>
+                                      <code className="kbd-mono truncate min-w-0 flex-1" title={h.doc_id}>
+                                        {h.doc_id}
+                                      </code>
+                                      <span className="text-[10.5px] text-ink-faint tabular-nums shrink-0">
+                                        #{rankOf.get(h.doc_id) ?? "-"}
+                                      </span>
+                                      {on && <Tag tone="info">已选中</Tag>}
+                                    </div>
+                                    <p className="mt-1.5 text-[13px] text-ink leading-5 line-clamp-2">
+                                      {h.text.slice(0, 160)}
+                                      {h.text.length > 160 ? "…" : ""}
+                                    </p>
+                                  </button>
+                                  {on && <Explain text={plainExplain(h.doc_id, h.text)} />}
+                                  <div className="mt-2 flex items-center gap-2 min-w-0">
+                                    <span
+                                      className="text-[10.5px] text-ink-faint truncate min-w-0"
+                                      title={`资产出处：${ev.source_ref ?? h.doc_id}`}
+                                    >
+                                      出处 {ev.source_ref ?? h.doc_id}
+                                    </span>
+                                    {ev.channels && ev.channels.length > 0 && (
+                                      <span className="hidden sm:inline text-[10.5px] text-ink-faint truncate">
+                                        通道 {ev.channels.map((c) => CHANNEL_ZH[c] ?? c).join(" / ")}
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      className="btn-ghost btn-sm ml-auto shrink-0 whitespace-nowrap"
+                                      onClick={() => void focus(h.doc_id)}
+                                      title="以它为中心展开关系图谱"
+                                    >
+                                      关系图谱 →
+                                    </button>
+                                  </div>
+                                  {on && h.graph_neighbors.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-1">
+                                      {h.graph_neighbors.slice(0, 6).map((nb) => (
+                                        <Tag
+                                          key={nb.id}
+                                          tone="dim"
+                                          title={`${nb.via} → ${nb.label}（点击以它为中心展开）`}
+                                          onClick={() => void focus(nb.id)}
+                                        >
+                                          {kindLabel(nb.kind)} · {nb.label}
+                                        </Tag>
+                                      ))}
+                                      {h.graph_neighbors.length > 6 && (
+                                        <span className="text-[11px] text-ink-faint self-center">
+                                          +{h.graph_neighbors.length - 6}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* 图谱 */}
+          {sub && (
+            <>
+              <Panel
+                title={
+                  <>
+                    关系图谱 · <span className="text-ink">{seedLabel}</span>
+                  </>
+                }
+                right={
+                  <div className="flex items-center gap-2">
+                    <Tag tone="dim">{sub.node_count} 节点 / {sub.edges.length} 边</Tag>
+                    {histLen > 0 && (
+                      <button className="btn-ghost btn-sm" onClick={() => void goBack()} title="返回上一视图（浏览历史可回退）">
+                        ⬅ 返回
+                      </button>
+                    )}
+                    {!isOverview && (
+                      <button className="btn-ghost btn-sm" onClick={() => void loadOverview()} title="回到 13 系统域基础关联图谱">
+                        ↺ 骨架
+                      </button>
+                    )}
+                  </div>
+                }
+                bodyClass="p-0"
+              >
+                {/* 视图控件放在画布之外的工具条上（原先是浮在画布左上角，会压住节点标签） */}
+                <GraphCanvas
+                  sub={sub}
+                  selId={selId}
+                  onNodeClick={openNode}
+                  onJump={focus}
+                  depth={depth}
+                  onDepthChange={changeDepth}
+                  isOverview={isOverview}
+                />
+                {/* 读图说明（原来是一段贴在图下的灰字）：收进可展开层，想看再看 */}
+                <details className="border-t border-line-soft px-3 py-2">
+                  <summary className="text-[11px] text-ink-faint cursor-pointer select-none hover:text-ink-dim">
+                    怎么读这张图？
+                  </summary>
+                  <div className="mt-1 text-[11.5px] text-ink-dim leading-5">
+                    中心是「{seedLabel}」，连线上的词是关系（如「发送方→」「触发」）；色点代表实体类型，数字是该类型在本子图里的个数。
+                    单击节点=选中并看详情（图上出现高亮环），双击节点=以它为中心跳转；「深度」扩/缩关联范围，⬅ 返回回上一视图。
+                  </div>
+                </details>
+              </Panel>
+            </>
+          )}
+        </div>
+
+        {showAside && (
+          <aside className="space-y-4 min-w-0">
+            {/* 命中证据：doc_id / 排序分 / 命中通道 / 资产出处 一律排成可核对的键值行 */}
+            {hits && hits.length > 0 && (
+              <Panel
+                title="命中证据"
+                sub={selHitView ? `${selHitView.rank} / ${selHitView.total}` : "机器可核对"}
+                right={
+                  selHitView ? (
+                    <Tag tone={KIND_META[selHitView.hit.kind]?.color}>
+                      {kindLabel(selHitView.hit.kind)}
+                    </Tag>
+                  ) : undefined
+                }
+                bodyClass="p-3"
+              >
+                {!selHitView ? (
+                  <EmptyState
+                    compact
+                    icon="☞"
+                    title="点左边任一条命中"
+                    desc="这里会摊开它的资产 ID、排序分、命中通道、资产出处与关联实体。"
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    <div className="min-w-0">
+                      <code className="kbd-mono block truncate" title={selHitView.hit.doc_id}>
+                        {selHitView.hit.doc_id}
+                      </code>
+                      <div className="mt-1">
+                        <Explain text={plainExplain(selHitView.hit.doc_id, selHitView.hit.text)} />
+                      </div>
+                    </div>
+                    <div className="space-y-1 border-t border-line-soft pt-2">
+                      <KV k="排序分" v={selHitView.hit.score.toFixed(4)} mono />
+                      <KV
+                        k="命中通道"
+                        v={
+                          (selHitView.hit.channels ?? []).map((c) => CHANNEL_ZH[c] ?? c).join(" / ") || "未标注"
+                        }
+                      />
+                      <KV k="资产出处" v={selHitView.hit.source_ref ?? selHitView.hit.doc_id} mono />
+                      <KV
+                        k="所属分域"
+                        v={selHitView.hit.domain ? domainLabel(selHitView.hit.domain) : "未分区（全局检索）"}
+                      />
+                      <KV k="直接关系" v={`${selHitView.hit.graph_neighbors.length} 条`} />
+                      {selHitView.hit.anchor_stats && Object.keys(selHitView.hit.anchor_stats).length > 0 && (
+                        <KV
+                          k="邻接构成"
+                          v={Object.entries(selHitView.hit.anchor_stats)
+                            .map(([k, n]) => `${kindLabel(k)} ×${n}`)
+                            .join(" · ")}
+                        />
+                      )}
+                    </div>
+                    <div className="text-[10.5px] text-ink-faint leading-4">
+                      排序分是三通道排名融合（RRF）的结果，只用于排序，不是匹配概率。
+                    </div>
+                    {selHitView.hit.graph_neighbors.length > 0 && (
+                      <div>
+                        <div className="text-[11px] text-ink-faint mb-1.5">
+                          关联实体（{selHitView.hit.graph_neighbors.length}）· 点击以其为中心展开
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selHitView.hit.graph_neighbors.map((nb) => (
+                            <Tag
+                              key={nb.id}
+                              tone={KIND_META[nb.kind]?.color}
+                              title={`${nb.via} → ${nb.label}`}
+                              onClick={() => void focus(nb.id)}
+                            >
+                              {nb.label}
+                            </Tag>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      className="btn btn-sm w-full justify-center"
+                      onClick={() => void focus(selHitView.hit.doc_id)}
+                      title="以这条命中为中心拉出关系子图"
+                    >
+                      ⤢ 以它为中心展开图谱
+                    </button>
+                  </div>
+                )}
+              </Panel>
+            )}
+
+            {/* 选中节点详情（图上单击节点后出现；原先是页面底部一张通栏面板） */}
+            {sub && (
+              <Panel
+                title="选中节点"
+                right={
+                  selNode ? (
+                    <button className="btn-ghost btn-sm" onClick={() => setSelNode(null)}>
+                      关闭
+                    </button>
+                  ) : undefined
+                }
+                bodyClass="p-3"
+              >
+                {!selNode ? (
+                  <EmptyState
+                    compact
+                    icon="◉"
+                    title="单击图上节点看详情"
+                    desc="双击节点=以它为中心重新展开；色点颜色代表实体类型（见下方图例）。"
+                  />
+                ) : (
+                  <div className="space-y-2.5">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <Tag tone={KIND_META[selNode.kind]?.color}>
+                        {kindLabel(selNode.kind)}
+                      </Tag>
+                      <span className="text-[13px] font-medium text-ink min-w-0 break-words">{selNode.label}</span>
+                    </div>
+                    <code className="kbd-mono block truncate" title={selNode.id}>
+                      {selNode.id}
+                    </code>
+                    {KIND_META[selNode.kind] && <Explain text={KIND_META[selNode.kind].what} />}
+                    {/* 图谱 → 动作（不绕回其它页） */}
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        className="btn btn-sm"
+                        onClick={() => {
+                          setSelNode(null);
+                          void focus(selNode.id);
+                        }}
+                        title="以该节点为中心重新拉子图（与图上双击同效）"
+                      >
+                        ⤢ 以它为中心扩展
+                      </button>
+                      {selScenFile && (
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => {
+                            window.location.href = `/faultlab?scenario=${encodeURIComponent(selScenFile)}&from=kb`;
+                          }}
+                          title="跳到 FaultLab 播放该场景的故障动画"
+                        >
+                          ▶ 去 FaultLab 演示
+                        </button>
+                      )}
+                    </div>
+                    {selNode.props && Object.keys(selNode.props).length > 0 && (
+                      <div className="space-y-1 border-t border-line-soft pt-2">
+                        {Object.entries(selNode.props).map(([k, v]) => (
+                          <KV key={k} k={k} v={String(v)} />
+                        ))}
+                      </div>
+                    )}
+                    {selNode.neighbors && selNode.neighbors.length > 0 && (
+                      <div>
+                        <div className="text-[11px] text-ink-faint mb-1.5">
+                          直接关联（{selNode.neighbors.length}）· 点击跳转
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selNode.neighbors.map((nb) => (
+                            <Tag
+                              key={nb.id}
+                              tone={KIND_META[nb.kind]?.color}
+                              onClick={() => void focus(nb.id)}
+                              title="点击跳转到该节点"
+                            >
+                              {nb.label}
+                            </Tag>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Panel>
+            )}
+
+            {/* 图例与构成：当前子图实际含有的类型（色点与画布一致） */}
+            {sub && (
+              <Panel title="图例与构成" sub={`${sub.node_count} 节点 / ${sub.edges.length} 边`} dense>
+                <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+                  {legendKinds.map((k) => (
+                    <span key={k} className="inline-flex items-center gap-1.5 text-[11px] text-ink-dim">
+                      <span className="h-2 w-2 rounded-full shrink-0" style={{ background: kindHex(k) }} />
+                      {kindLabel(k)}
+                      <span className="text-ink-faint num">×{subKinds?.[k] ?? 0}</span>
+                    </span>
+                  ))}
+                </div>
+              </Panel>
+            )}
+          </aside>
+        )}
+      </div>
+
+      {/* 收尾：这张图谱给谁用（教育性内容，移到页面最后，默认收起，不挡检索） */}
       <div className="panel overflow-hidden">
         <button
           className="w-full flex items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-surface-2/40"
@@ -255,7 +903,7 @@ export function GraphWorkspace() {
         {showValue && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-4 pb-4 pt-1">
             {/* 给人 */}
-            <div className="bg-surface-2/40 rounded-xl p-3.5 border border-line-soft">
+            <div className="bg-surface-2/40 rounded-[var(--radius-md)] p-3.5 border border-line-soft">
               <div className="flex items-center gap-2 mb-2">
                 <Tag tone="info">给人</Tag>
                 <span className="text-[12px] text-ink-dim">查证 / 理解 · 用大白话问，不用懂报文</span>
@@ -267,7 +915,7 @@ export function GraphWorkspace() {
               </ul>
             </div>
             {/* 给 AI */}
-            <div className="bg-surface-2/40 rounded-xl p-3.5 border border-line-soft">
+            <div className="bg-surface-2/40 rounded-[var(--radius-md)] p-3.5 border border-line-soft">
               <div className="flex items-center gap-2 mb-2">
                 <Tag tone="vio">给 AI</Tag>
                 <span className="text-[12px] text-ink-dim">检索 / 追溯 / 沉淀 · 是 Agent 的「领域记忆」</span>
@@ -281,297 +929,6 @@ export function GraphWorkspace() {
           </div>
         )}
       </div>
-
-      {/* 检索区 */}
-      <Panel bodyClass="p-3">
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint text-sm">🔍</span>
-            <input
-              className="input pl-9"
-              placeholder="用大白话问，如：车门故障了还能发车吗 / 紧急制动失败会怎样"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && search()}
-              aria-label="知识检索"
-            />
-          </div>
-          <button className="btn justify-center sm:w-auto" onClick={() => search()} disabled={searching || !query.trim()}>
-            {searching ? "检索中…" : "检索"}
-          </button>
-        </div>
-        <Explain text="怎么读结果：每一条命中都带「它是哪种资产 + 一句话解释 + 它与谁相连」。点任意条目可展开成关系图谱。" />
-      </Panel>
-
-      {err && <div className="panel border-bad/40 bg-bad/10 px-4 py-2.5 text-sm text-bad">⚠ {err}</div>}
-
-      {/* 检索中 */}
-      {searching && (
-        <Panel title="正在检索领域知识…" bodyClass="py-1">
-          <SkeletonRows rows={3} cols={3} />
-        </Panel>
-      )}
-
-      {/* 结果（分类展示） */}
-      {!searching && hits && (
-        <>
-          {hits.length === 0 ? (
-            <Panel>
-              <EmptyState
-                icon="?"
-                title="没找到直接匹配"
-                desc="试试更口语化的问法，例如「心跳丢失」「门没关就发车」「超速」。也可点击下方类型直接浏览资产。"
-              />
-            </Panel>
-          ) : (
-            <>
-              {/* 检索走向（Q4 有界分层：先图谱路由到域，再域内向量 topk） */}
-              {route && route.domains.length > 0 && (
-                <div className="px-1 -mt-1 mb-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-faint">
-                  <span>检索已路由到分域：</span>
-                  {route.zh.map((z) => (
-                    <span key={z} className="tag text-info border-info/30 bg-info/5">
-                      {z}
-                    </span>
-                  ))}
-                  {route.bounded && <span>· 有界域内检索（不整库迷失）</span>}
-                  {route.mixed && <span>· 域内不足已全局补召回</span>}
-                </div>
-              )}
-              {/* 分类 tab */}
-              <div className="flex flex-wrap items-center gap-1.5 px-1">
-                <button
-                  className={`btn-ghost btn-sm ${activeKind === "all" ? "!text-info !border-info/50" : ""}`}
-                  onClick={() => setActiveKind("all")}
-                >
-                  全部 {hits.length}
-                </button>
-                {kindTabs.map(({ kind, n }) => (
-                  <button
-                    key={kind}
-                    className={`btn-ghost btn-sm ${activeKind === kind ? "!text-info !border-info/50" : ""}`}
-                    onClick={() => setActiveKind(kind)}
-                  >
-                    {KIND_META[kind]?.label ?? kind} {n}
-                  </button>
-                ))}
-              </div>
-
-              {/* 结果组 */}
-              <div className="space-y-4 mt-1">
-                {kindTabs
-                  .filter(({ kind }) => activeKind === "all" || activeKind === kind)
-                  .map(({ kind, n }) => (
-                    <div key={kind}>
-                      <div className="px-1 mb-1.5 flex items-baseline gap-2">
-                        <span className="text-[12px] font-semibold text-ink">
-                          {KIND_META[kind]?.label} <span className="text-ink-faint font-normal">({n})</span>
-                        </span>
-                        <span className="text-[11px] text-ink-faint">{KIND_META[kind]?.what}</span>
-                      </div>
-                      <div className="space-y-1.5">
-                        {grouped![kind].map((h) => (
-                          <div
-                            key={h.doc_id}
-                            className="panel panel-hover p-3 cursor-pointer step-in"
-                            onClick={() => focus(h.doc_id)}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(e) => e.key === "Enter" && focus(h.doc_id)}
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <code className="kbd-mono">{h.doc_id}</code>
-                              <Tag tone={KIND_META[kind]?.color}>
-                                相关度 {(h.score * 100).toFixed(0)}%
-                              </Tag>
-                              {h.domain && (
-                                <span className="text-[10px] text-ink-faint tag !bg-transparent border-line-soft">
-                                  域·{h.domain}
-                                </span>
-                              )}
-                              <span className="ml-auto text-[11px] text-ink-faint">点击查看关系图谱 →</span>
-                            </div>
-                            <div className="mt-1.5 text-[13px] text-ink leading-5 line-clamp-2">
-                              {h.text.slice(0, 160)}
-                              {h.text.length > 160 ? "…" : ""}
-                            </div>
-                            <Explain text={plainExplain(h.doc_id, h.text)} />
-                            {h.graph_neighbors.length > 0 && (
-                              <div className="mt-1.5 flex flex-wrap gap-1">
-                                {h.graph_neighbors.slice(0, 5).map((nb) => (
-                                  <Tag key={nb.id} tone="dim" title={`${nb.via} → ${nb.label}`}>
-                                    {KIND_META[nb.kind]?.label ?? nb.kind} · {nb.label}
-                                  </Tag>
-                                ))}
-                                {h.graph_neighbors.length > 5 && (
-                                  <span className="text-[11px] text-ink-faint">+{h.graph_neighbors.length - 5}</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </>
-          )}
-        </>
-      )}
-
-      {/* 图谱 */}
-      {sub && (
-        <>
-          <Panel
-            title={
-              <>
-                关系图谱 · <span className="text-ink">{seedLabel}</span>
-              </>
-            }
-            right={
-              <div className="flex items-center gap-2">
-                {histLen > 0 && (
-                  <button className="btn-ghost btn-sm" onClick={() => void goBack()} title="返回上一视图（浏览历史可回退）">
-                    ⬅ 返回
-                  </button>
-                )}
-                {isOverview ? (
-                  <Tag tone="info">基础骨架 · 单击看详情 / 双击跳转</Tag>
-                ) : (
-                  <div className="flex items-center gap-1 text-[11px] text-ink-faint">
-                    深度
-                    {[1, 2, 3].map((d) => (
-                      <button
-                        key={d}
-                        className={`btn-ghost btn-sm !px-2 !py-0.5 !text-[11px] ${depth === d ? "!text-info !border-info/50" : ""}`}
-                        onClick={() => changeDepth(d)}
-                        disabled={d === depth}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <Tag tone="dim">{sub.node_count} 节点 / {sub.edges.length} 边</Tag>
-                {!isOverview && (
-                  <button className="btn-ghost btn-sm" onClick={() => void loadOverview()} title="回到 13 系统域基础关联图谱">
-                    ↺ 骨架
-                  </button>
-                )}
-              </div>
-            }
-            bodyClass="p-0"
-          >
-            {/* 图例 + 分布（当前子图按类型统计；色点与画布一致） */}
-            <div className="px-4 pt-2.5 flex flex-wrap items-center gap-x-1 gap-y-1.5">
-              {legendKinds.map((k) => (
-                <span key={k} className="inline-flex items-center gap-1.5 text-[11px] text-ink-dim mr-2">
-                  <span className="h-2 w-2 rounded-full" style={{ background: kindHex(k) }} />
-                  {KIND_META[k]?.label ?? k}
-                  {subKinds ? <span className="text-ink-faint num">×{subKinds[k] ?? 0}</span> : null}
-                </span>
-              ))}
-            </div>
-            <GraphCanvas sub={sub} selId={selId} onNodeClick={openNode} onJump={focus} />
-          </Panel>
-          <div className="px-1 -mt-2 text-[11px] text-ink-faint">
-            说明：中心是「{seedLabel}」，连线标着关系（如“发送方→”“触发”）；色点代表实体类型，数字是该类型在本子图里的个数。
-            单击节点=选中并看详情（图上会出现高亮环），双击节点=以其为中心跳转；点节点旁标签也可跳转；调整「深度」可扩/缩关联范围，⬅ 返回可回上一视图。
-          </div>
-        </>
-      )}
-
-      {/* 节点详情 */}
-      {selNode && (() => {
-        // 一键动作目标：scenario 本体，或 fault/… 关联的第一个复现场景
-        const scenFile = selNode.kind === "scenario"
-          ? selNode.id.split(":")[1]
-          : (selNode.neighbors?.find((nb) => nb.kind === "scenario")?.id.split(":")[1] ?? null);
-        return (
-        <Panel
-          title={
-            <>
-              <Tag tone={KIND_META[selNode.kind]?.color}>{KIND_META[selNode.kind]?.label ?? selNode.kind}</Tag>{" "}
-              {selNode.label}
-            </>
-          }
-          right={
-            <button className="btn-ghost btn-sm" onClick={() => setSelNode(null)}>
-              关闭
-            </button>
-          }
-        >
-          <div className="kbd-mono mb-2">{selNode.id}</div>
-          {KIND_META[selNode.kind] && <Explain text={KIND_META[selNode.kind].what} />}
-          {/* 图谱 → 动作（不绕回其它页） */}
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <button
-              className="btn btn-sm"
-              onClick={() => {
-                setSelNode(null);
-                void focus(selNode.id);
-              }}
-              title="以该节点为中心重新拉子图（与图上双击同效）"
-            >
-              ⤢ 以它为中心扩展
-            </button>
-            {scenFile && (
-              <button
-                className="btn btn-sm"
-                onClick={() => {
-                  window.location.href = `/faultlab?scenario=${encodeURIComponent(scenFile)}&from=kb`;
-                }}
-                title="跳到 FaultLab 播放该场景的故障动画"
-              >
-                ▶ 去 FaultLab 演示
-              </button>
-            )}
-          </div>
-          {selNode.props && Object.keys(selNode.props).length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 mt-2">
-              {Object.entries(selNode.props).map(([k, v]) => (
-                <div key={k} className="text-xs flex gap-2">
-                  <span className="text-ink-faint shrink-0">{k}</span>
-                  <span className="text-ink truncate" title={String(v)}>
-                    {String(v)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          {selNode.neighbors && selNode.neighbors.length > 0 && (
-            <div className="mt-3">
-              <div className="text-[11px] text-ink-faint mb-1.5">直接关联（{selNode.neighbors.length}）</div>
-              <div className="flex flex-wrap gap-1.5">
-                {selNode.neighbors.map((nb) => (
-                  <Tag key={nb.id} tone={KIND_META[nb.kind]?.color} onClick={() => focus(nb.id)} title="点击跳转到该节点">
-                    {nb.label}
-                  </Tag>
-                ))}
-              </div>
-            </div>
-          )}
-        </Panel>
-        );
-      })()}
-
-      {/* 无任何操作时：提示浏览实体 */}
-      {!hits && !sub && !selNode && !searching && (
-        <Panel bodyClass="py-1">
-          <EmptyState
-            icon="◈"
-            title="从这里开始检索"
-            desc="上方输入框支持大白话提问。也可以先看几个高频对象找感觉："
-          />
-          <div className="flex flex-wrap gap-1.5 justify-center pb-3">
-            {["message:DoorControl", "fault:overspeed", "function:F-EBM", "requirement:SR-01"].map((id) => (
-              <Tag key={id} tone={KIND_META[id.split(":")[0]]?.color} onClick={() => focus(id)}>
-                {id}
-              </Tag>
-            ))}
-          </div>
-        </Panel>
-      )}
     </div>
   );
 }
@@ -586,6 +943,7 @@ const GRAPH_W = 960;
 const GRAPH_H = 600;
 
 type ViewMode = "2d" | "3d";
+type LabelMode = "auto" | "all" | "off";
 interface ViewState {
   scale: number;
   tx: number;
@@ -671,6 +1029,33 @@ function computeLayout(sub: KbSubgraph): Layout {
 const shortLabel = (s: string) => (s.length > 15 ? s.slice(0, 14) + "…" : s);
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/** 自动模式下常显标签的关键节点个数（按度数取前 N）。
+ *  为什么是 12：56 节点的默认骨架视图里，度数 top 12 基本覆盖"系统域 + 代表功能"，
+ *  再多就重新糊成一片了（这个数是看图定的，不是拍的）。 */
+const LABEL_TOP_N = 12;
+
+/** 只服务"标签何时显示"的索引：度数排行 + 邻接表。
+ *  不参与布局/物理——力导向算法一个字没动。 */
+function graphIndex(sub: KbSubgraph): { topLabels: Set<string>; neighbors: Map<string, Set<string>> } {
+  const deg = new Map<string, number>();
+  const neighbors = new Map<string, Set<string>>();
+  for (const e of sub.edges) {
+    deg.set(e.src, (deg.get(e.src) ?? 0) + 1);
+    deg.set(e.dst, (deg.get(e.dst) ?? 0) + 1);
+    if (!neighbors.has(e.src)) neighbors.set(e.src, new Set());
+    if (!neighbors.has(e.dst)) neighbors.set(e.dst, new Set());
+    neighbors.get(e.src)!.add(e.dst);
+    neighbors.get(e.dst)!.add(e.src);
+  }
+  const topLabels = new Set(
+    [...sub.nodes]
+      .sort((a, b) => (deg.get(b.id) ?? 0) - (deg.get(a.id) ?? 0))
+      .slice(0, LABEL_TOP_N)
+      .map((n) => n.id),
+  );
+  return { topLabels, neighbors };
+}
+
 /** 2D 力导向 + 缩放平移画布 */
 function GraphCanvas2D({
   sub,
@@ -678,18 +1063,22 @@ function GraphCanvas2D({
   onNodeClick,
   onJump,
   fitSignal,
+  labelMode,
 }: {
   sub: KbSubgraph;
   selId: string | null;
   onNodeClick: (id: string) => void;
   onJump?: (id: string) => void;
   fitSignal: number;
+  labelMode: LabelMode;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [view, setView] = useState<ViewState>({ scale: 1, tx: 0, ty: 0 });
+  const [hover, setHover] = useState<string | null>(null);
   const drag = useRef<{ x: number; y: number; tx: number; ty: number; moved: boolean } | null>(null);
 
   const layout = useMemo(() => computeLayout(sub), [sub]);
+  const index = useMemo(() => graphIndex(sub), [sub]);
 
   const fit = useCallback(() => {
     const pts = [...layout.values()];
@@ -712,11 +1101,23 @@ function GraphCanvas2D({
     fit();
   }, [fit, fitSignal]);
 
+  /** 屏幕坐标 → viewBox 坐标。
+   *  SVG 用 preserveAspectRatio=meet 撑满容器时会留边（letterbox），
+   *  直接按容器宽高做比例换算会让"以光标为中心缩放/拖拽"在窄屏上偏掉，
+   *  所以这里按真实缩放系数 k 与留白偏移换算。 */
+  const viewScale = (rect: DOMRect) => {
+    if (!rect.width || !rect.height) return 1;
+    return Math.min(rect.width / GRAPH_W, rect.height / GRAPH_H);
+  };
+
   const toLocal = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
     const r = svg.getBoundingClientRect();
-    return { x: ((clientX - r.left) / r.width) * GRAPH_W, y: ((clientY - r.top) / r.height) * GRAPH_H };
+    const k = viewScale(r);
+    const offX = (r.width - GRAPH_W * k) / 2;
+    const offY = (r.height - GRAPH_H * k) / 2;
+    return { x: (clientX - r.left - offX) / k, y: (clientY - r.top - offY) / k };
   };
 
   const zoomAt = (mx: number, my: number, factor: number) => {
@@ -727,10 +1128,12 @@ function GraphCanvas2D({
     });
   };
 
-  const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+  // 滚轮 = 只缩放（不带着页面一起滚）
+  useWheelZoom(svgRef, (e) => {
+    e.preventDefault();
     const { x, y } = toLocal(e.clientX, e.clientY);
     zoomAt(x, y, e.deltaY < 0 ? 1.18 : 1 / 1.18);
-  };
+  });
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.button !== 0) return;
@@ -741,10 +1144,9 @@ function GraphCanvas2D({
     const d = drag.current;
     if (!d) return;
     const rect = svgRef.current?.getBoundingClientRect();
-    const w = rect?.width ?? GRAPH_W;
-    const h = rect?.height ?? GRAPH_H;
-    const dx = ((e.clientX - d.x) / w) * GRAPH_W;
-    const dy = ((e.clientY - d.y) / h) * GRAPH_H;
+    const k = rect ? viewScale(rect) : 1;
+    const dx = (e.clientX - d.x) / k;
+    const dy = (e.clientY - d.y) / k;
     if (Math.abs(dx) + Math.abs(dy) > 1) d.moved = true;
     setView((v) => ({ ...v, tx: d.tx + dx, ty: d.ty + dy }));
   };
@@ -759,17 +1161,33 @@ function GraphCanvas2D({
   const showLabels = view.scale >= 0.42;
   const showEdgeText = view.scale >= 0.85;
 
+  // 标签降噪（只影响"何时显示"，不碰布局）：选中优先、其次悬停，作为"关注点"
+  const focusId = selId ?? hover;
+  const near = focusId ? index.neighbors.get(focusId) : undefined;
+  const labelOn = (id: string): boolean => {
+    if (labelMode === "off" || !showLabels) return false;
+    if (labelMode === "all") return true;
+    // 自动：只常显关键节点（度数 top N）+ 中心节点；其余在悬停/选中/与关注点相邻时出现
+    return id === sub.seed || index.topLabels.has(id) || id === focusId || Boolean(near?.has(id));
+  };
+  const edgeTextOn = (src: string, dst: string): boolean => {
+    if (labelMode === "off" || !showEdgeText) return false;
+    if (labelMode === "all") return true;
+    if (!focusId) return false; // 自动：只标出与关注点相连的那几条边
+    return src === focusId || dst === focusId;
+  };
+
   return (
     <svg
       ref={svgRef}
       width="100%"
-      height={GRAPH_H}
+      height="100%"
       viewBox={`0 0 ${GRAPH_W} ${GRAPH_H}`}
-      className="chart-bg"
-      style={{ display: "block", touchAction: "none", cursor: drag.current ? "grabbing" : "grab", userSelect: "none", WebkitUserSelect: "none" }}
+      preserveAspectRatio="xMidYMid meet"
+      className="chart-bg block h-full w-full"
+      style={{ touchAction: "none", cursor: drag.current ? "grabbing" : "grab", userSelect: "none", WebkitUserSelect: "none" }}
       role="img"
       aria-label="资产关系图谱（2D：滚轮缩放，拖拽平移，双击适配）"
-      onWheel={onWheel}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
@@ -781,11 +1199,30 @@ function GraphCanvas2D({
           const a = layout.get(e.src);
           const b = layout.get(e.dst);
           if (!a || !b) return null;
+          const onFocus = focusId === e.src || focusId === e.dst;
           return (
             <g key={i}>
-              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="var(--line)" strokeWidth={1.1 / view.scale} />
-              {showEdgeText && (
-                <text x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 5} fill="var(--ink-faint)" fontSize={9 / view.scale} textAnchor="middle" style={{ pointerEvents: "none" }}>
+              <line
+                x1={a.x}
+                y1={a.y}
+                x2={b.x}
+                y2={b.y}
+                stroke={onFocus ? "var(--ink-faint)" : "var(--line)"}
+                strokeWidth={(onFocus ? 1.6 : 1.1) / view.scale}
+              />
+              {edgeTextOn(e.src, e.dst) && (
+                <text
+                  x={(a.x + b.x) / 2}
+                  y={(a.y + b.y) / 2 - 5}
+                  fill="var(--ink-dim)"
+                  fontSize={9 / view.scale}
+                  textAnchor="middle"
+                  stroke="var(--input)"
+                  strokeWidth={2.5 / view.scale}
+                  strokeLinejoin="round"
+                  paintOrder="stroke"
+                  style={{ pointerEvents: "none" }}
+                >
                   {e.kind}
                 </text>
               )}
@@ -805,6 +1242,8 @@ function GraphCanvas2D({
               data-nid={n.id}
               transform={`translate(${p.x},${p.y})`}
               style={{ cursor: "pointer" }}
+              onPointerEnter={() => setHover(n.id)}
+              onPointerLeave={() => setHover((h) => (h === n.id ? null : h))}
               onPointerDown={(ev) => ev.stopPropagation()} /* 节点上按下不进平移捕获，保住 click/dblclick */
               onClick={(ev) => {
                 ev.stopPropagation();
@@ -823,12 +1262,17 @@ function GraphCanvas2D({
               {selId === n.id && (
                 <circle r={dr + 5 / view.scale} fill="none" stroke="var(--info)" strokeWidth={2.2 / view.scale} opacity={0.95} />
               )}
-              {showLabels && (
+              {labelOn(n.id) && (
                 <text
                   y={(isSeed ? 30 : 23) / view.scale}
                   fill="var(--ink-dim)"
                   fontSize={(isSeed ? 11.5 : 10) / view.scale}
                   textAnchor="middle"
+                  /* 文字底色描边（paint-order: stroke）：压在连线/其它标签上时也读得出字 */
+                  stroke="var(--input)"
+                  strokeWidth={3 / view.scale}
+                  strokeLinejoin="round"
+                  paintOrder="stroke"
                   style={{ pointerEvents: "none", fontWeight: isSeed ? 600 : 400 }}
                 >
                   {shortLabel(n.label)}
@@ -851,6 +1295,7 @@ function GraphCanvas3D({
   auto,
   onAutoChange,
   fitSignal,
+  labelMode,
 }: {
   sub: KbSubgraph;
   selId: string | null;
@@ -859,10 +1304,12 @@ function GraphCanvas3D({
   auto: boolean;
   onAutoChange: (v: boolean) => void;
   fitSignal: number;
+  labelMode: LabelMode;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [rot, setRot] = useState<Rot3>({ ...ROT_DEFAULT });
   const [cam, setCam] = useState(CAM3D_DEFAULT);
+  const [hover, setHover] = useState<string | null>(null);
   const drag = useRef<{ x: number; y: number; rx: number; ry: number } | null>(null);
   const raf = useRef<number | null>(null);
   const rotRef = useRef(rot);
@@ -893,6 +1340,17 @@ function GraphCanvas3D({
   }, [fitSignal]);
 
   const R = useMemo(() => clamp(130 + sub.nodes.length * 11, 150, 300), [sub.nodes.length]);
+  const index = useMemo(() => graphIndex(sub), [sub]);
+
+  // 3D 的标签降噪规则与 2D 同构：先用远近（depth）筛掉球背面，再按"关键节点 / 关注点及其邻居"
+  const focusId = selId ?? hover;
+  const near = focusId ? index.neighbors.get(focusId) : undefined;
+  const labelOn3d = (s: { n: { id: string }; depth: number }): boolean => {
+    if (labelMode === "off") return false;
+    if (s.depth <= 0.48) return false; // 球背面/边缘的标签一律不画，否则叠成一团
+    if (labelMode === "all") return true;
+    return s.n.id === sub.seed || index.topLabels.has(s.n.id) || s.n.id === focusId || Boolean(near?.has(s.n.id));
+  };
 
   const proj = useMemo(() => {
     const pts = fibonacciSphere(sub.nodes.length, R);
@@ -933,12 +1391,12 @@ function GraphCanvas3D({
     drag.current = null;
   };
 
-  // 滚轮缩放（cam 越大=拉得越远；限制在可视区间）
-  const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
-    e.stopPropagation();
+  // 滚轮缩放（cam 越大=拉得越远；限制在可视区间）——同样只缩放，不带着页面滚
+  useWheelZoom(svgRef, (e) => {
+    e.preventDefault();
     const f = e.deltaY < 0 ? 0.9 : 1.1;
     setCam((c) => clamp(c * f, CAM3D_MIN, CAM3D_MAX));
-  };
+  });
 
   const spots: { n: { id: string; kind: string; label: string }; sx: number; sy: number; depth: number; seed: boolean }[] = [];
 
@@ -963,10 +1421,11 @@ function GraphCanvas3D({
     <svg
       ref={svgRef}
       width="100%"
-      height={GRAPH_H}
+      height="100%"
       viewBox={`0 0 ${GRAPH_W} ${GRAPH_H}`}
-      className="chart-bg"
-      style={{ display: "block", touchAction: "none", cursor: drag.current ? "grabbing" : "grab", userSelect: "none", WebkitUserSelect: "none" }}
+      preserveAspectRatio="xMidYMid meet"
+      className="chart-bg block h-full w-full"
+      style={{ touchAction: "none", cursor: drag.current ? "grabbing" : "grab", userSelect: "none", WebkitUserSelect: "none" }}
       role="img"
       aria-label="资产关系图谱 3D 俯瞰（拖拽旋转 · 节点可点）"
       onPointerDownCapture={() => onAutoChange(false)} /* 捕获阶段即停自转：节点上按下也生效 */
@@ -974,19 +1433,21 @@ function GraphCanvas3D({
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerLeave={endDrag}
-      onWheel={onWheel}
     >
       {edgeSpots.map(({ a, b }, i) => (
         <line key={i} x1={a.sx} y1={a.sy} x2={b.sx} y2={b.sy} stroke="var(--line)" strokeWidth={0.5 + a.depth * b.depth} opacity={0.2 + a.depth * b.depth * 0.4} />
       ))}
       {spots.map((s) => {
         const r = (s.seed ? 11 : 6.5) * (0.55 + 0.5 * s.depth);
-        const fill = kindHex(s.n.kind);        return (
+        const fill = kindHex(s.n.kind);
+        return (
           <g
             key={s.n.id}
             data-nid={s.n.id}
             transform={`translate(${s.sx},${s.sy})`}
             style={{ cursor: "pointer", opacity: 0.3 + 0.7 * s.depth }}
+            onPointerEnter={() => setHover(s.n.id)}
+            onPointerLeave={() => setHover((h) => (h === s.n.id ? null : h))}
             onPointerDown={(ev) => ev.stopPropagation()} /* 节点上按下不进旋转捕获，保住 click/dblclick */
             onClick={(ev) => {
               ev.stopPropagation();
@@ -1005,8 +1466,18 @@ function GraphCanvas3D({
             {selId === s.n.id && (
               <circle r={r + 3.5} fill="none" stroke="var(--info)" strokeWidth={2} opacity={0.95} />
             )}
-            {s.depth > 0.48 && (
-              <text y={r + 13} fill="var(--ink-dim)" fontSize={s.seed ? 10.5 : 8.5} textAnchor="middle" style={{ pointerEvents: "none" }}>
+            {labelOn3d(s) && (
+              <text
+                y={r + 13}
+                fill="var(--ink-dim)"
+                fontSize={s.seed ? 10.5 : 8.5}
+                textAnchor="middle"
+                stroke="var(--input)"
+                strokeWidth={2.4}
+                strokeLinejoin="round"
+                paintOrder="stroke"
+                style={{ pointerEvents: "none" }}
+              >
                 {shortLabel(s.n.label)}
               </text>
             )}
@@ -1017,21 +1488,33 @@ function GraphCanvas3D({
   );
 }
 
-/** 图谱视图：2D（缩放/平移/适配）与 3D（轨道/自转/缩放）切换 + 控制条 */
+/** 图谱视图：2D（缩放/平移/适配）与 3D（轨道/自转/缩放）切换 + 视图工具条
+ *
+ *  为什么控件从画布上"搬出来"：原来 2D/3D、适配、自转浮在画布左上角，
+ *  恰好压在节点标签最密的地方；操作提示浮在右下角同理。现在统一放在画布上方的
+ *  工具条里，画布区域完全留给图本身。 */
 function GraphCanvas({
   sub,
   selId,
   onNodeClick,
   onJump,
+  depth,
+  onDepthChange,
+  isOverview,
 }: {
   sub: KbSubgraph;
   selId: string | null;
   onNodeClick: (id: string) => void;
   onJump?: (id: string) => void;
+  depth: number;
+  onDepthChange: (d: number) => void;
+  isOverview: boolean;
 }) {
   const [mode, setMode] = useState<ViewMode>("2d");
   const [fitSignal, setFitSignal] = useState(0);
   const [auto, setAuto] = useState(true);
+  /** 标签显示策略：自动（只常显关键节点，悬停/选中/相邻时再出） / 全部 / 关闭 */
+  const [labelMode, setLabelMode] = useState<LabelMode>("auto");
 
   // 3D 停转后 3.2s 无操作自动恢复待机自转（更好的“待机”体验）
   useEffect(() => {
@@ -1041,47 +1524,89 @@ function GraphCanvas({
   }, [auto, mode]);
 
   return (
-    <div className="relative">
-      {mode === "2d" ? (
-        <GraphCanvas2D sub={sub} selId={selId} onNodeClick={onNodeClick} onJump={onJump} fitSignal={fitSignal} />
-      ) : (
-        <GraphCanvas3D sub={sub} selId={selId} onNodeClick={onNodeClick} onJump={onJump} auto={auto} onAutoChange={setAuto} fitSignal={fitSignal} />
-      )}
-      {/* 视图控制条 */}
-      <div className="absolute left-2 top-2 z-10 flex items-center gap-1.5">
-        <div className="flex items-center rounded-lg border border-line bg-surface/90 p-0.5 shadow-sm">
-          {(["2d", "3d"] as ViewMode[]).map((m) => (
-            <button
-              key={m}
-              className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${mode === m ? "bg-info text-[color:var(--on-info)]" : "text-ink-dim hover:text-ink"}`}
-              onClick={() => setMode(m)}
-            >
-              {m === "2d" ? "◫ 2D" : "◍ 3D"}
-            </button>
-          ))}
-        </div>
-        {mode === "2d" ? (
-          <button className="btn-soft" onClick={() => setFitSignal((s) => s + 1)} title="把全部节点适配到可视区域（或双击画布）">
-            ⤢ 适配
+    <div>
+      {/* 视觉语义：分段控件（Tabs）= 切状态；带描边的 .btn-ghost = 执行一次动作 */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 border-b border-line-soft">
+        <Tabs
+          items={[
+            { value: "2d" as ViewMode, label: "◫ 2D", hint: "平面图：滚轮缩放、空白拖拽平移" },
+            { value: "3d" as ViewMode, label: "◍ 3D", hint: "球面俯瞰：拖拽旋转、可自动缓转" },
+          ]}
+          value={mode}
+          onChange={setMode}
+        />
+        <button
+          className="btn-ghost btn-sm"
+          onClick={() => setFitSignal((s) => s + 1)}
+          title={mode === "2d" ? "把全部节点适配到可视区域（或双击画布空白）" : "3D 视角重置：整球入画并回到初始姿态"}
+        >
+          ⤢ 适配
+        </button>
+        {mode === "3d" && (
+          <button
+            className={`btn-ghost btn-sm ${auto ? "!text-info" : ""}`}
+            onClick={() => setAuto((a) => !a)}
+            title={auto ? "停止自动旋转" : "开始自动旋转（停转后无操作 3 秒自动恢复）"}
+          >
+            {auto ? "⏸ 停转" : "▶ 自转"}
           </button>
-        ) : (
-          <>
-            <button className="btn-soft" onClick={() => setFitSignal((s) => s + 1)} title="3D 视角重置：整球入画并回到初始姿态">
-              ⤢ 适配
-            </button>
-            <button className={`btn-soft ${auto ? "!text-info" : ""}`} onClick={() => setAuto((a) => !a)} title={auto ? "停止自动旋转" : "开始自动旋转（停转后无操作 3 秒自动恢复）"}>
-              {auto ? "⏸ 停转" : "▶ 自转"}
-            </button>
-          </>
         )}
-      </div>
-      {/* 操作提示 */}
-      <div className="absolute bottom-2 right-2 z-10 pointer-events-none">
-        <span className="rounded-md border border-line-soft bg-surface/70 px-1.5 py-0.5 text-[10px] text-ink-faint">
+        {!isOverview && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-ink-faint">深度</span>
+            <Tabs
+              items={[
+                { value: "1", label: "1", hint: "只看直接相邻的一圈" },
+                { value: "2", label: "2", hint: "再多展开一跳" },
+                { value: "3", label: "3", hint: "展开到三跳（节点最多）" },
+              ]}
+              value={String(depth)}
+              onChange={(v) => onDepthChange(Number(v))}
+            />
+          </div>
+        )}
+        {/* 标签降噪：默认只常显关键节点，密集区才读得出字；想看全可切"全部" */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] text-ink-faint">标签</span>
+          <Tabs
+            items={[
+              { value: "auto" as LabelMode, label: "自动", hint: "只常显关键节点；悬停 / 选中 / 相邻时补显（推荐）" },
+              { value: "all" as LabelMode, label: "全部", hint: "所有节点都带名字，密集时可能互相压字" },
+              { value: "off" as LabelMode, label: "关闭", hint: "只看点与线，鼠标悬停仍可看单个名字" },
+            ]}
+            value={labelMode}
+            onChange={setLabelMode}
+          />
+        </div>
+        <span className="ml-auto hidden xl:inline text-[10.5px] text-ink-faint whitespace-nowrap">
           {mode === "2d"
-            ? "滚轮缩放 · 空白拖拽平移 · 单击节点=选中看详情 · 双击节点=以其为中心跳转 · 双击空白适配"
-            : "拖拽空白旋转 · 滚轮缩放 · 单击节点=选中看详情 · 双击节点=以其为中心跳转"}
+            ? "滚轮缩放 · 空白拖拽平移 · 悬停/单击节点看名字 · 双击节点换中心"
+            : "拖拽旋转 · 滚轮缩放 · 悬停/单击节点看名字 · 双击节点换中心"}
         </span>
+      </div>
+      {/* 画布容器：高度显式给足，窄屏也不塌；SVG 撑满容器（不再按 600px 固定高度裁切） */}
+      <div className="h-[360px] sm:h-[440px] lg:h-[540px] xl:h-[600px]">
+        {mode === "2d" ? (
+          <GraphCanvas2D
+            sub={sub}
+            selId={selId}
+            onNodeClick={onNodeClick}
+            onJump={onJump}
+            fitSignal={fitSignal}
+            labelMode={labelMode}
+          />
+        ) : (
+          <GraphCanvas3D
+            sub={sub}
+            selId={selId}
+            onNodeClick={onNodeClick}
+            onJump={onJump}
+            auto={auto}
+            onAutoChange={setAuto}
+            fitSignal={fitSignal}
+            labelMode={labelMode}
+          />
+        )}
       </div>
     </div>
   );

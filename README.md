@@ -189,7 +189,7 @@ uv run python scripts/build_release.py --no-uv    # 最小包（不含 uv）
 | 文档 | 内容 |
 |---|---|
 | `docs/ARCHITECTURE.md` | 架构说明（现状，非愿景）：图拓扑、四级权限、子进程执行、审批拆分、四层记忆、RAG、评测、nolib 对照 |
-| `docs/decisions.md` | 24 条 ADR：每条含背景 → 决策 → 理由 → 代价，以及**踩过的坑** |
+| `docs/decisions.md` | 26 条 ADR：每条含背景 → 决策 → 理由 → 代价，以及**踩过的坑** |
 | `packages/agent/README.md` | Agent 使用说明 |
 
 **这个项目的性格**：文档里写的每个数字都能在代码或测试里指到；

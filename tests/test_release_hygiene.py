@@ -211,6 +211,45 @@ def test_frontend_jsx_has_no_inline_markdown_markers() -> None:
     assert offenders == [], f"JSX 里会把 markdown 星号原样显示给用户：{offenders[:3]}"
 
 
+def test_no_raw_zindex_in_components() -> None:
+    """前端不许写裸 z-index（`z-40` / `z-50`）：层级必须取自统计划度。
+
+    为什么值得一条测试：随手写 z 值的后果是"谁在上面"变成偶然——
+    弹窗被下拉盖住、提示被弹窗盖住，都属于这类没人能一眼看懂的冲突。
+    刻度定在 `index.css` 的 `--z-sticky/--z-popover/--z-modal/--z-toast`，
+    组件里一律用 `z-[var(--z-popover)]` 这种写法。
+    """
+    import re
+
+    raw_z = re.compile(r"\bz-\[?(\d{2,3})\]?\b")
+    offenders: list[str] = []
+    for f in _walk("packages/platform/web/src/**/*.tsx"):
+        for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            code = ln.split("//")[0]
+            for m in raw_z.finditer(code):
+                # z-0 / z-10 这类"局部叠放"（同一容器内的兄弟元素）不算违规，
+                # 违规的是"跨组件的全局层级"——它们只可能是这几个整十值。
+                if m.group(1) in {"40", "50", "60", "70", "80", "90", "100"}:
+                    offenders.append(f"{f.relative_to(ROOT)}:{i}: {ln.strip()[:80]}")
+    assert offenders == [], f"请改用层级刻度变量（--z-popover/--z-modal）：{offenders[:3]}"
+
+
+def test_frontend_css_has_no_transition_all() -> None:
+    """禁止 `transition: all`：它会连布局属性一起过渡，是掉帧与"莫名其妙抖动"的常见来源。
+
+    允许的做法是显式列出属性（或只用 transform/opacity）。
+    注意**先剥注释再判**：本文件自己就在注释里写着"禁止 transition: all"，
+    不剥注释就会把自己文档里的这句话当成违规（第一次跑就撞上了）。
+    """
+    import re
+
+    css = (ROOT / "packages/platform/web/src/index.css").read_text(encoding="utf-8")
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    bad = re.findall(r"transition\s*:\s*all\b", css, flags=re.I)
+    assert bad == [], "index.css 里出现 transition: all"
+    assert "transition-all" not in css, "index.css 里出现 transition-all（Tailwind 缩写同样要禁）"
+
+
 def test_documented_adr_count_matches_decisions_file() -> None:
     """文档里写死的"X 条 ADR"必须等于 decisions.md 的实际条数。
 

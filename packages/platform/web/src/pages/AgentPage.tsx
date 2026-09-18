@@ -453,7 +453,7 @@ export function AgentPage() {
     // 两栏工作台：左边下命令（目标 / 模型 / 任务），右边是舞台（白盒 / 结论 / 证据）。
     // 为什么不是一长条卡片堆：用户的心智是"我下命令 → 它干活给我看"，
     // 一列排下来会让"输入"和"它到底干了什么"离得很远，白盒也就被淹没了。
-    <div className="mx-auto grid w-full max-w-[1720px] gap-4 lg:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] xl:grid-cols-[minmax(400px,460px)_minmax(0,1fr)] lg:items-start">
+    <div className="mx-auto grid w-full max-w-[1800px] gap-4 lg:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] xl:grid-cols-[minmax(400px,460px)_minmax(0,1fr)] lg:items-start">
       <div className="space-y-4 min-w-0">
       {/* 自由目标（像 DSH 一样：给 Agent 一句话，它先理解再查证）。
           按下按钮那一刻，白盒就开始 —— 解析、检索、决策、真执行都摊在下面。 */}
@@ -521,7 +521,7 @@ export function AgentPage() {
 
       {/* 症状/无码故障多跳诊断（不走引擎执行：检索症状资产 → 图谱因果链 → 建议；诚实标注） */}
       <Panel title="没有故障码？描述异常现象 → 图谱多跳诊断" bodyClass="p-3">
-        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center flex-wrap">
           <input
             className="input flex-1"
             value={diagQ}
@@ -529,19 +529,20 @@ export function AgentPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter") void runDiagnose();
             }}
-            placeholder="如：仪表盘闪烁但无故障码 / SOC 跳变 / 网络时断时续…（无码症状 → 候选故障链 + 诊断建议）"
+            placeholder="如：仪表盘闪烁但无故障码"
+            title="说清现象即可（无故障码也能诊断）：会检索症状资产 → 沿图谱因果链给候选故障与诊断建议"
             aria-label="症状描述输入"
             disabled={diagBusy}
           />
-          <button className="btn justify-center" onClick={() => void runDiagnose()} disabled={diagBusy || !diagQ.trim()}>
+          <button className="btn justify-center whitespace-nowrap" onClick={() => void runDiagnose()} disabled={diagBusy || !diagQ.trim()}>
             {diagBusy ? "推理中…" : "🔎 症状诊断"}
           </button>
           {(diagSidRef.current || diagResp) && (
-            <button className="btn-ghost justify-center" onClick={resetDiagnose} title="清空多轮记忆与会话，开始全新诊断">
+            <button className="btn-ghost justify-center whitespace-nowrap" onClick={resetDiagnose} title="清空多轮记忆与会话，开始全新诊断">
               ⟲ 新会话
             </button>
           )}
-          <label className="inline-flex items-center gap-1.5 text-[11px] text-ink-dim cursor-pointer select-none" title="开启后 LLM 只在候选故障内重排诊断顺序（不引入候选外故障键）；需在设置中配置 API key">
+          <label className="inline-flex items-center gap-1.5 text-[11px] text-ink-dim cursor-pointer select-none whitespace-nowrap" title="开启后 LLM 只在候选故障内重排诊断顺序（不引入候选外故障键）；需在设置中配置 API key">
             <input type="checkbox" className="accent-info" checked={diagLlm} onChange={(e) => setDiagLlm(e.target.checked)} disabled={diagBusy} />
             LLM 候选内仲裁
           </label>

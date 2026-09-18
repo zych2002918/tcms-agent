@@ -396,6 +396,8 @@ export const api = {
       engine: { ok: boolean; version?: string; reason?: string };
       llm_key: boolean;
       asset_mode: string;
+      /** 界面构建标识（后端从 index.html 的产物哈希与时间派生）：回答"我开的是哪一版"。 */
+      web_build?: { available: boolean; hash: string; built: string };
       capabilities: Record<string, boolean>;
       fix_hints: { engine: string[]; llm: string[] };
     }>("/system/status"),

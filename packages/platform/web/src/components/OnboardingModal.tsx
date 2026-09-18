@@ -18,7 +18,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, type SettingsView } from "../api";
-import { Tag, StatusDot } from "./ui";
+import { Callout, KV, Tag, StatusDot } from "./ui";
 
 const STEPS = [
   { n: "①", label: "为什么接 AI" },
@@ -53,6 +53,27 @@ export function OnboardingModal({
   // 本地跟踪：本次会话内是否已保存 key（避免每步依赖父级 settings 往返）
   const [hasKeyLocal, setHasKeyLocal] = useState(settings.llm.has_key);
   const hasSavedKey = hasKeyLocal;
+
+  /** 弹窗打开期间：锁住背后的页面滚动 + Esc 关闭。
+   *
+   * 两件都是"浮层该有的基本礼貌"，缺了就是真实的体验缺陷：
+   * - 不锁滚动：鼠标滚轮会穿透到背后的页面（scroll chaining），
+   *   用户以为在滚弹窗内容，实际把底下的列表滚跑了；
+   * - 不响应 Esc：键盘用户被困在弹窗里，只能去够鼠标点"跳过"。
+   * 遮罩本身**故意不点即关**（引导要么走完、要么明确跳过），这一点保留。
+   */
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onDismiss();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onDismiss]);
   const provs = settings.providers ?? {};
   const stepRef = useRef<number>(0);
 
@@ -156,13 +177,18 @@ export function OnboardingModal({
   const stepState = (i: number): "done" | "active" | "todo" => (i < step ? "done" : i === step ? "active" : "todo");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="首次使用引导">
+    <div
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="首次使用引导"
+    >
       {/* 遮罩（点空白不关闭：引导应一次走完或明确跳过） */}
       <div className="absolute inset-0 modal-overlay bg-black/55 backdrop-blur-[2px]" />
 
-      <div className="relative modal-card w-full max-w-[560px] max-h-[90vh] overflow-y-auto panel bg-surface border border-line shadow-2xl">
+      <div className="relative modal-card w-full max-w-[560px] max-h-[90vh] overflow-y-auto overscroll-contain panel bg-surface border border-line shadow-2xl">
         {/* 顶栏：品牌 + 步骤条 */}
-        <header className="sticky top-0 z-10 bg-surface/95 backdrop-blur border-b border-line-soft px-5 py-3.5">
+        <header className="sticky top-0 z-[var(--z-sticky)] bg-surface/95 backdrop-blur border-b border-line-soft px-5 py-3.5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span className="text-lg">🚄</span>
@@ -171,8 +197,13 @@ export function OnboardingModal({
                 <div className="text-[10.5px] text-ink-faint">30 秒可选配置：把平台接上你自己的大模型</div>
               </div>
             </div>
-            <button className="btn-ghost btn-sm shrink-0" onClick={onDismiss} title="先跳过（离线 Mock 也能完整体验；下次启动会再次提醒）">
-              跳过
+            <button
+              className="btn-icon shrink-0"
+              onClick={onDismiss}
+              aria-label="关闭引导"
+              title="关闭引导（不接模型也能完整体验；下次启动会再提醒）"
+            >
+              ✕
             </button>
           </div>
           {/* 步骤条 */}
@@ -208,25 +239,39 @@ export function OnboardingModal({
               <h3 className="text-[15px] font-semibold text-ink">Agent 已经能干活了——接上你的大模型，它会更"聪明"</h3>
               <div className="space-y-2 text-[12.5px] text-ink-dim leading-5">
                 <p>
-                  <b className="text-ink">不接也能完整体验</b>：平台内置<b className="text-info">离线 Mock 后端</b>
-                  ——Agent 全流程（理解目标 → 检索证据 → 真实执行 → 自证）零成本、可复现地跑给你看。
+                  <b className="text-ink">不接也能完整体验</b>：Agent 全流程（理解目标 → 检索证据 →
+                  真实执行 → 自证）零成本、可复现地跑给你看，只是决策由<b className="text-ink">确定性规则</b>做出。
                 </p>
                 <p>
-                  <b className="text-ink">接上自己的 LLM</b> 后，Agent 的"规划 / 选场景 / 意图解析"由真实大模型决策，
-                  输出会标注 <Tag tone="vio">[LLM 模型名]</Tag>。兼容任何 <b className="text-ink">OpenAI 兼容协议</b>
-                  端点：阿里云百炼 / DeepSeek / OpenAI / 自建 vLLM 等。
+                  <b className="text-ink">接上自己的模型</b>后，"规划 / 选场景 / 意图解析"由真实大模型决策，
+                  输出会标注 <Tag tone="vio">[LLM 模型名]</Tag>——一眼能看出这次是谁在做决定，
+                  而不是让你猜。
                 </p>
               </div>
-              <div className="panel bg-surface-2/40 px-3 py-2.5 text-[11.5px] text-ink-dim leading-5 flex items-start gap-2">
-                <span className="shrink-0">🔒</span>
-                <span>
-                  Key 只写入本机设置文件（<code className="kbd-mono">{settings.dir}</code>），
-                  请求只发给你填的 base_url —— 平台后端不转发给第三方，仓库/日志绝不含 key。
-                </span>
-              </div>
+              <Callout
+                tone="dim"
+                icon="🔒"
+                title="Key 只留在你本机。"
+                details={
+                  <div className="space-y-1">
+                    <div>· 只写入本机设置文件（不发往任何第三方）：</div>
+                    <KV k="路径" v={settings.dir} mono />
+                    <div>· 请求只发给你自己填的 base_url；后端不做转发，仓库与日志绝不含 key。</div>
+                    <div>
+                      · 兼容任何 OpenAI 协议端点：阿里云百炼 / DeepSeek / OpenAI / 自建 vLLM 等。
+                    </div>
+                  </div>
+                }
+              >
+                写入本机设置文件，请求只发给你填的端点。
+              </Callout>
               <div className="flex justify-end gap-2 pt-1">
-                <button className="btn-ghost" onClick={onDismiss}>
-                  先跳过，用离线 Mock
+                <button
+                  className="btn-ghost"
+                  onClick={onDismiss}
+                  title="本次先不接模型：Agent 仍可完整跑（确定性规则决策），下次启动会再提醒"
+                >
+                  先跳过（离线也能完整跑）
                 </button>
                 <button className="btn" onClick={() => setStep(1)}>
                   开始配置 →

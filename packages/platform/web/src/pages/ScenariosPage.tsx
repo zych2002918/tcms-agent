@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, type FaultInfo, type RunScenarioResult, type ScenarioInfo } from "../api";
-import { Panel, Tag, EmptyState, SkeletonRows } from "../components/ui";
+import {
+  api,
+  type FaultInfo,
+  type RunScenarioResult,
+  type ScenarioComposition,
+  type ScenarioInfo,
+} from "../api";
+import { Panel, Tag, EmptyState, SkeletonRows, Callout, Tabs, StatCard } from "../components/ui";
 
 /**
  * 手动编排（自定义故障场景）—— 契约已由队长确认（be-contracts t1，POST /api/run/custom）：
@@ -288,6 +294,147 @@ const defaultRows = (): Row[] => [
   { id: nextId(), at: "20", action: "recover", fault: "overspeed", node: "vcu", level: "", expect: "", impact: "", err: "" },
 ];
 
+/* ===== 场景选择器：一百多个长文本选项 → 可搜索下拉 =====
+ * 为什么不用原生 <select>：选项上百、名字长，原生下拉只能靠滚动找人，也没法按故障键搜；
+ * 更要紧的是它显示不出"共多少个场景"这类决策信息。这里沿用 ModelPicker 的浮层做法：
+ * panel-float + 输入筛选 + 点外/Esc 关闭 + aria-expanded，选项本身是键盘可达的按钮。
+ * 摆放纪律：浮层必须落在**没有 overflow-hidden 的定位父级**里，否则会被裁一半——
+ * 根节点是 relative，且只在「内置场景」分支使用（该分支没有 overflow-hidden 容器）。 */
+function ScenarioPicker({
+  scenarios,
+  value,
+  onChange,
+  disabled,
+}: {
+  scenarios: ScenarioInfo[];
+  value: string;
+  onChange: (file: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const cur = scenarios.find((s) => s.file === value);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const kw = q.trim().toLowerCase();
+  const list = useMemo(
+    () =>
+      kw
+        ? scenarios.filter(
+            (s) =>
+              s.name.toLowerCase().includes(kw) ||
+              s.file.toLowerCase().includes(kw) ||
+              s.fault_keys.some((f) => f.toLowerCase().includes(kw)),
+          )
+        : scenarios,
+    [scenarios, kw],
+  );
+
+  const pick = (file: string) => {
+    onChange(file);
+    setOpen(false);
+    setQ("");
+  };
+
+  return (
+    <div className="relative min-w-0 flex-1" ref={boxRef}>
+      <button
+        type="button"
+        className="btn-ghost w-full justify-between text-left"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        title={cur ? `${cur.name}（${cur.file}）` : "选择一个内置场景"}
+      >
+        <span className={`truncate ${cur ? "text-ink" : "text-ink-faint"}`}>
+          {cur ? cur.name : scenarios.length ? "选择一个场景" : "场景加载中…"}
+        </span>
+        <span className="ml-2 flex shrink-0 items-center gap-1.5 text-[11px] text-ink-faint">
+          <span className="num">共 {scenarios.length} 个</span>
+          <span aria-hidden>▾</span>
+        </span>
+      </button>
+
+      {open && (
+        <div
+          className="panel-float absolute left-0 right-0 z-[var(--z-popover)] mt-1.5 overflow-hidden p-0 step-in"
+          role="dialog"
+          aria-label="选择要运行的场景"
+        >
+          <div className="border-b border-line-soft p-2">
+            <input
+              autoFocus
+              className="input py-1 text-[12px]"
+              placeholder="筛选：场景名 / 文件名 / 故障键（如 door、overspeed）"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && list.length > 0) pick(list[0].file);
+              }}
+              aria-label="筛选场景"
+            />
+          </div>
+          <div className="max-h-[320px] overflow-y-auto" role="listbox" aria-label="场景列表">
+            {list.length === 0 && (
+              <div className="px-3 py-3 text-[11.5px] text-ink-faint">没有匹配「{q}」的场景，换个词试试。</div>
+            )}
+            {list.map((s) => {
+              const active = s.file === value;
+              return (
+                <button
+                  key={s.file}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  onClick={() => pick(s.file)}
+                  title={s.desc || `${s.name}（${s.file}）`}
+                  className={`block w-full px-3 py-1.5 text-left transition-colors hover:bg-surface-2 ${
+                    active ? "bg-info/5" : ""
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`shrink-0 text-[11px] ${active ? "text-info" : "text-ink-faint"}`}>
+                      {active ? "●" : "○"}
+                    </span>
+                    <span className={`min-w-0 flex-1 truncate text-[12.5px] ${active ? "text-info" : "text-ink"}`}>
+                      {s.name}
+                    </span>
+                    <span className="num shrink-0 text-[10.5px] text-ink-faint">{s.steps} 步</span>
+                  </div>
+                  <div className="kbd-mono mt-0.5 truncate pl-4 text-[10.5px] text-ink-faint">{s.file}</div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2 border-t border-line-soft px-3 py-1.5 text-[10.5px] text-ink-faint">
+            <span>
+              显示 <span className="num">{list.length}</span> / 共 <span className="num">{scenarios.length}</span> 个场景
+            </span>
+            <span className="ml-auto">回车选中第一条 · Esc 关闭</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ScenariosPage() {
   const [scenarios, setScenarios] = useState<ScenarioInfo[]>([]);
   const [faults, setFaults] = useState<FaultInfo[]>([]);
@@ -315,6 +462,9 @@ export function ScenariosPage() {
   const [searchParams] = useSearchParams();
   const selByFile = searchParams.get("file");
   const prevQueryFile = useRef<string | null>(null);
+  // 场景构成预览（GET /api/scenarios/{file}/composition）：点运行之前先看清这条时间线
+  const [comp, setComp] = useState<ScenarioComposition | null>(null);
+  const [compState, setCompState] = useState<"idle" | "loading" | "error">("idle");
 
   // 读取 AssetsPage 跳转的 ?file=：预选该场景（不自动运行，留给人点「运行此场景」）
   useEffect(() => {
@@ -352,9 +502,63 @@ export function ScenariosPage() {
     api.systemStatus().then(setSys).catch(() => undefined);
   }, []);
 
+  // 选中即拉一次真实构成（未执行也能看）：字段全部来自接口，缺失的显示 —，不猜
+  useEffect(() => {
+    if (mode !== "builtin" || !sel) {
+      setComp(null);
+      setCompState("idle");
+      return;
+    }
+    let alive = true;
+    setCompState("loading");
+    api
+      .scenarioComposition(sel)
+      .then((c) => {
+        if (!alive) return;
+        setComp(c);
+        setCompState("idle");
+      })
+      .catch(() => {
+        if (!alive) return;
+        setComp(null);
+        setCompState("error");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [mode, sel]);
+
   const current = scenarios.find((s) => s.file === sel);
   const engineOk = sys?.engine.ok ?? true;
   const faultOpts = useMemo(() => [...faults].sort((a, b) => a.key.localeCompare(b.key)), [faults]);
+
+  /** 构成 → 时间线：注入与恢复按时刻合并（时刻/动作/故障键/等级/期望处置都取自接口） */
+  const timeline = useMemo(() => {
+    if (!comp?.available) return [];
+    const rows = [
+      ...comp.injections.map((i, idx) => ({
+        key: `inj-${i.fault}-${idx}`,
+        at: i.at,
+        kind: "inject" as const,
+        fault: i.fault,
+        name: i.fault_name ?? "",
+        level: i.level_label,
+        expect: i.expect_label,
+        detail: i.impact ?? "",
+      })),
+      ...comp.recoveries.map((r, idx) => ({
+        key: `rec-${r.fault}-${idx}`,
+        at: r.at,
+        kind: "recover" as const,
+        fault: r.fault,
+        name: "",
+        level: "",
+        expect: "",
+        detail: "",
+      })),
+    ];
+    return rows.sort((a, b) => a.at - b.at);
+  }, [comp]);
 
   /** 每行字段更新 */
   const patchRow = (id: number, p: Partial<Row>) =>
@@ -609,23 +813,12 @@ export function ScenariosPage() {
     };
   }, [rows, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const modeTab = (m: "builtin" | "custom", label: string) => (
-    <button
-      onClick={() => setMode(m)}
-      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-        mode === m ? "text-ink border-info/50 bg-info/10" : "text-ink-dim border-line hover:text-ink"
-      }`}
-    >
-      {label}
-    </button>
-  );
-
   /** 编排指引开合 */
   const toggleGuide = () => setGuideOpen((o) => !o);
 
   /** 渲染单条 AI 顾问消息（文本 + 候选 chips + 建议步骤 + 澄清 + 证据折叠） */
   const renderAiMsg = (m: ChatMsg) => (
-    <div className="space-y-2">
+    <div className="mx-auto w-full max-w-[1800px] space-y-4">
       {m.text && <p className="text-[13px] text-ink leading-5 whitespace-pre-wrap">{m.text}</p>}
       {m.intent === "out_of_domain" && (
         <p className="text-[10px] text-warn/80">（这句话偏离了 TCMS 故障编排域——顾问已给出引导；说故障/现象/意图才能排步骤）</p>
@@ -757,54 +950,61 @@ export function ScenariosPage() {
   const ctrl = "input !py-1.5 !px-2 text-[12px]";
 
   return (
-    <div className="mx-auto w-full max-w-[1720px] space-y-4">
+    <div className="mx-auto w-full max-w-[1800px] space-y-4">
       {/* 顶部：数量来源说明 + 模式切换 + 执行区 */}
       <Panel title="运行故障场景" bodyClass="p-3">
-        {/* 数量来源说明（机器自证：N = 实际拉到的场景数） */}
-        <p className="text-[11px] text-ink-faint leading-4.5 mb-2.5">
-          ℹ 这里的 <span className="num">{scenarios.length}</span> 个场景来自当前资产源
-          （真实引擎目录 <code className="kbd-mono">scenarios/</code> 或内置快照）—— 每个文件 = 一个场景；
-          往里加 <code className="kbd-mono">scenarios/*.yaml</code> 即可自动出现在这里（无需改代码）。
-        </p>
+        {/* 场景从哪来：一句人话在明面，"加文件即生效"这类说明收进 details */}
+        <Callout
+          tone="dim"
+          icon="◫"
+          className="mb-2.5"
+          title="这里的场景都来自当前资产源的场景目录"
+          details={
+            <>
+              每个 <code className="kbd-mono">scenarios/*.yaml</code> 文件就是一个场景，文件里写着在什么时刻、往哪个节点注入或恢复哪个故障、期望怎么处置。
+              把新的 YAML 放进场景目录并重启服务，它就会出现在这里，不需要改前端代码；
+              资产源是外部引擎目录还是内置快照，决定了这里能看到多少个场景。
+            </>
+          }
+        >
+          选一个场景先看它编排了什么，再点运行让它真实跑一遍。
+        </Callout>
 
-        {/* 内置 vs 手动编排 切换 */}
-        <div className="flex items-center gap-1.5 mb-2.5">
-          {modeTab("builtin", "▤ 内置场景")}
-          {modeTab("custom", "✎ 手动编排")}
-          {mode === "custom" && <span className="ml-auto text-[11px] text-ink-faint">自己编排故障注入 / 恢复步骤，真实执行</span>}
+        {/* 内置场景 vs 手动编排：真分段控件（选中态一眼可辨，键盘可达） */}
+        <div className="mb-2.5 flex flex-wrap items-center gap-2">
+          <Tabs
+            items={[
+              { value: "builtin", label: "内置场景", hint: "用现成场景真实执行", count: scenarios.length || undefined },
+              { value: "custom", label: "手动编排", hint: "自己拼注入 / 恢复步骤" },
+            ]}
+            value={mode}
+            onChange={setMode}
+          />
+          <span className="ml-auto hidden text-[11px] text-ink-faint sm:inline">
+            {mode === "builtin"
+              ? "选场景 → 看构成 → 运行 → 看逐条断言"
+              : "自己编排故障注入 / 恢复步骤，真实执行"}
+          </span>
         </div>
 
         {mode === "builtin" ? (
           <>
-            <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-              <select className="select flex-1" value={sel} onChange={(e) => setSel(e.target.value)} aria-label="选择场景">
-                {scenarios.map((s) => (
-                  <option key={s.file} value={s.file}>
-                    {s.name} — {s.file}
-                  </option>
-                ))}
-              </select>
-              <button className="btn justify-center" onClick={runBuiltin} disabled={phase === "running" || !sel || !engineOk}>
+            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+              <ScenarioPicker
+                scenarios={scenarios}
+                value={sel}
+                onChange={setSel}
+                disabled={phase === "running"}
+              />
+              <button
+                className="btn justify-center whitespace-nowrap"
+                onClick={runBuiltin}
+                disabled={phase === "running" || !sel || !engineOk}
+              >
                 {phase === "running" ? "运行中…" : "▶ 运行此场景"}
               </button>
             </div>
-            {current && (
-              <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs">
-                <span className="text-ink-faint">注入故障：</span>
-                {current.fault_keys.map((f) => (
-                  <Tag key={f} tone="warn">
-                    {f}
-                  </Tag>
-                ))}
-                <span className="text-ink-faint ml-2">涉及节点：</span>
-                {current.nodes.map((n) => (
-                  <Tag key={n} tone="dim">
-                    {n}
-                  </Tag>
-                ))}
-                <span className="ml-auto text-ink-faint">{current.steps} 步编排</span>
-              </div>
-            )}
+            {!engineOk && <div className="mt-2 text-[11px] text-warn">TCMS 引擎未接入，选中也无法真实执行（见下方说明）。</div>}
           </>
         ) : (
           /* ---------- 手动编排编辑器 ---------- */
@@ -1155,6 +1355,25 @@ export function ScenariosPage() {
             }
             bodyClass="p-3"
           >
+            {/* 真实引擎证据：先把"这不是模拟"说清楚，再往下看逐条断言 */}
+            <div
+              className={`mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--radius-md)] border px-3 py-2 ${
+                result.all_passed ? "border-ok/35 bg-ok/5" : "border-bad/35 bg-bad/5"
+              }`}
+            >
+              <span className={`text-[13px] font-medium ${result.all_passed ? "text-ok" : "text-bad"}`}>
+                {result.all_passed ? "✓ 全部断言通过" : `✗ ${result.failed} 条断言未通过`}
+              </span>
+              <span className="text-[12px] leading-5 text-ink-dim">
+                真实引擎证据：TCMS 引擎 v<span className="num">{result.engine_version}</span> 执行了{" "}
+                <span className="num">{result.steps}</span> 步编排，逐条断言{" "}
+                <span className="num">{result.assertions.length}</span> 条
+              </span>
+              {result.run_id && (
+                <span className="kbd-mono ml-auto text-[11px] text-ink-faint">run {result.run_id}</span>
+              )}
+            </div>
+
             {/* t5 跳转链：把「这次执行」送进 FaultLab 用动画重放（资产化动画，不是额定设置） */}
             {(() => {
               const canJump = lastRun?.kind === "builtin" && lastRun.file
@@ -1187,63 +1406,177 @@ export function ScenariosPage() {
                 </div>
               ) : null;
             })()}
-            <div className="grid grid-cols-3 gap-3 max-w-sm">
-              <div className="panel bg-surface-2/50 px-3 py-2">
-                <div className="stat-num text-ok num">{result.passed}</div>
-                <div className="text-[11px] text-ink-dim">断言通过</div>
-              </div>
-              <div className="panel bg-surface-2/50 px-3 py-2">
-                <div className={`stat-num num ${result.failed ? "text-bad" : "text-ink-faint"}`}>{result.failed}</div>
-                <div className="text-[11px] text-ink-dim">失败</div>
-              </div>
-              <div className="panel bg-surface-2/50 px-3 py-2">
-                <div className="stat-num text-ink-dim num text-[20px] mt-1.5">v{result.engine_version}</div>
-                <div className="text-[11px] text-ink-dim">TCMS 引擎</div>
-              </div>
+            <div className="grid max-w-[320px] grid-cols-2 gap-2.5">
+              <StatCard
+                value={result.passed}
+                label="断言通过"
+                tone={result.passed > 0 ? "ok" : "neutral"}
+                hint="本次运行中真实通过（且实际处置与期望一致）的断言条数"
+              />
+              <StatCard
+                value={result.failed}
+                label="断言未通过"
+                tone={result.failed > 0 ? "bad" : "neutral"}
+                hint="期望处置与实际处置不一致的断言条数"
+              />
             </div>
-            <div className="table-scroll mt-3">
-              <table>
-                <thead>
-                  <tr>
-                    <th className="th">时间</th>
-                    <th className="th">故障</th>
-                    <th className="th">期望处置</th>
-                    <th className="th">实际处置</th>
-                    <th className="th">结果</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.assertions.map((a, i) => (
-                    <tr key={i} className="tr-hover">
-                      <td className="td num">{a.ts}s</td>
-                      <td className="td">
-                        <code className="kbd-mono">{a.fault}</code>
-                      </td>
-                      <td className="td kbd-mono">{a.expected}</td>
-                      <td className="td kbd-mono">{a.actual}</td>
-                      <td className="td">
-                        {a.passed ? (
-                          <Tag tone="ok">✓ 通过</Tag>
-                        ) : (
-                          <Tag tone="bad">✗ 未通过</Tag>
-                        )}
-                      </td>
+            {result.assertions.length === 0 ? (
+              <div className="mt-3">
+                <EmptyState
+                  compact
+                  icon="◌"
+                  title="本次运行没有产生断言明细"
+                  desc="这个场景里没有写「期望处置」，或引擎没有回传逐条断言——运行本身已完成。可以换一个带断言的场景对比。"
+                />
+              </div>
+            ) : (
+              <div className="table-scroll mt-3">
+                <table>
+                  <thead>
+                    <tr>
+                      <th className="th">时刻</th>
+                      <th className="th">故障</th>
+                      <th className="th">期望处置 → 实际处置</th>
+                      <th className="th">结果</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {result.assertions.map((a, i) => (
+                      <tr key={i} className={`tr-hover ${a.passed ? "" : "bg-bad/5"}`}>
+                        <td className="td num text-ink-dim">{a.ts}s</td>
+                        <td className="td">
+                          <code className="kbd-mono">{a.fault}</code>
+                        </td>
+                        <td className="td">
+                          <span className="inline-flex flex-wrap items-center gap-1.5">
+                            <code className="kbd-mono">{a.expected}</code>
+                            <span className="text-ink-faint" aria-hidden>
+                              →
+                            </span>
+                            <code className={`kbd-mono ${a.passed ? "text-ok" : "text-bad"}`}>{a.actual}</code>
+                          </span>
+                        </td>
+                        <td className="td">
+                          {a.passed ? (
+                            <Tag tone="ok">✓ 通过</Tag>
+                          ) : (
+                            <Tag tone="bad">✗ 未通过</Tag>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Panel>
         </div>
       )}
 
-      {phase === "idle" && engineOk && (
-        <Panel>
-          <EmptyState
-            icon="▶"
-            title="选好场景后点「运行此场景」"
-            desc="引擎会真实执行：注入故障 → 推进时间线 → 断言期望处置。结果沉淀到知识库（run 记录）。"
-          />
+      {/* 运行前先看清会发生什么：选中场景即摊开它的构成（数据来自 composition 接口，未执行也不会编造） */}
+      {mode === "builtin" && phase !== "done" && (
+        <Panel
+          title={current ? "这次运行会发生什么" : "运行前的预览"}
+          sub={current?.file}
+          right={
+            current ? (
+              <Tag tone="dim">
+                {comp?.available
+                  ? `${comp.total_faults} 个故障 · ${comp.total_injections} 次注入${
+                      comp.recoveries.length ? ` · ${comp.recoveries.length} 次恢复` : ""
+                    }`
+                  : `${current.steps} 步编排`}
+              </Tag>
+            ) : undefined
+          }
+          bodyClass="p-3"
+        >
+          {!current ? (
+            <EmptyState
+              compact
+              icon="▶"
+              title={scenarios.length ? "先选一个场景" : "场景加载中…"}
+              desc="选中后这里会列出它的每一步——点运行之前就能知道会发生什么。"
+              steps={[
+                { icon: "1", title: "选场景", desc: "从内置场景里挑一个，或切到「手动编排」自己拼步骤" },
+                { icon: "2", title: "看构成", desc: "按时刻列出：注入还是恢复、哪个故障、什么等级、期望怎么处置" },
+                { icon: "3", title: "点运行", desc: "TCMS 引擎真实执行，逐条断言的结果回填在下方" },
+              ]}
+            />
+          ) : compState === "loading" ? (
+            <SkeletonRows rows={4} cols={5} />
+          ) : comp?.available ? (
+            <>
+              {comp.desc ? <p className="mb-2 text-[12px] leading-5 text-ink-dim">{comp.desc}</p> : null}
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th className="th">时刻</th>
+                      <th className="th">动作</th>
+                      <th className="th">故障</th>
+                      <th className="th">等级</th>
+                      <th className="th">期望处置</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {timeline.map((s) => (
+                      <tr key={s.key} className="tr-hover">
+                        <td className="td num text-ink-dim">{s.at}s</td>
+                        <td className="td">
+                          {s.kind === "inject" ? <Tag tone="warn">注入</Tag> : <Tag tone="ok">恢复</Tag>}
+                        </td>
+                        <td className="td">
+                          <code className="kbd-mono">{s.fault}</code>
+                          {s.name ? <span className="ml-1.5 text-ink">{s.name}</span> : null}
+                          {s.detail ? <span className="ml-1.5 text-[11px] text-ink-faint">{s.detail}</span> : null}
+                        </td>
+                        <td className="td text-ink-dim">{s.level || "—"}</td>
+                        <td className="td text-ink-dim">{s.expect || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-[11px] leading-4 text-ink-faint">
+                以上取自场景文件本身（此时还没有执行）。点「运行此场景」后，引擎按这条时间线推进并逐条断言期望处置。
+              </p>
+            </>
+          ) : (
+            <EmptyState
+              compact
+              icon="◌"
+              title="这个场景的构成明细暂时取不到"
+              desc="下面显示场景列表里已有的字段；点运行仍会真实执行，结果不受影响。"
+            />
+          )}
+
+          {/* 构成取不到时，退回列表里真实存在的字段（不补造步骤） */}
+          {current && !comp?.available && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11.5px]">
+              <span className="text-ink-faint">注入故障：</span>
+              {current.fault_keys.length ? (
+                current.fault_keys.map((f) => (
+                  <Tag key={f} tone="warn">
+                    {f}
+                  </Tag>
+                ))
+              ) : (
+                <span className="text-ink-faint">—</span>
+              )}
+              <span className="ml-2 text-ink-faint">涉及节点：</span>
+              {current.nodes.length ? (
+                current.nodes.map((n) => (
+                  <Tag key={n} tone="dim">
+                    {n}
+                  </Tag>
+                ))
+              ) : (
+                <span className="text-ink-faint">—</span>
+              )}
+              <span className="num ml-auto text-ink-faint">{current.steps} 步编排</span>
+            </div>
+          )}
         </Panel>
       )}
     </div>

@@ -517,6 +517,39 @@ tcms-agent eval gate --candidate a.json --baseline b.json
 
 ---
 
+## 2.12 界面设计系统、层级治理与"版本可自证"（platform/web）
+
+### 设计系统落在哪
+
+- `src/index.css`：语义 token（双主题各自取值，不是反相）+ 组件类（`.panel/.btn/.input/.tag/.th/.td…`）
+  + 动效基元 + 层级刻度。**保留类名只换取值**，因此 7 个页面无需逐页改写即整体换语言。
+- `src/components/ui.tsx`：唯一收敛点。`Callout`（一句人话在明面、长解释进 details）、
+  `Tabs`（真分段控件）、`KV`、`EmptyState(compact/steps)`、`StatCard(tone=neutral)`、`Panel(sub/dense)`。
+  纪律：语义色只表示状态；空态要**预告结构 + 给例子 + 说环境**，不是占位。
+- `src/components/ErrorBoundary.tsx`：页面级兜底（按路由 key 重置），一个页面崩了不整站白屏。
+
+### 层级与浮层（"冲突"几乎都出在这四类）
+
+| 类别 | 规则 |
+|---|---|
+| 层级刻度 | `--z-sticky:20 / --z-popover:40 / --z-modal:70 / --z-toast:90`，禁止裸 `z-40/z-50`（有测试守） |
+| `overflow-hidden` | 会**裁掉浮层**、让 `sticky` 失效——浮层与粘性表头不要放在带 overflow 裁剪的祖先里 |
+| 弹窗三件套 | 锁背景滚动（body + `overscroll-contain`）、Esc 关闭、关闭后恢复原状态 |
+| 入口缓存 | 入口 HTML 必须 `no-store`；哈希资源照常长期缓存 |
+
+### 为什么界面要自报版本（ADR-026）
+
+同一台机器上可能同时存在多份能启动的副本（monorepo / 旧仓库 / 发布包），
+界面像、默认端口还都是 8000。"打开了旧副本"如果没有任何线索，用户只能得出
+"你根本没改"的结论。因此 `/api/system/status` 返回 `web_build`
+（从 `index.html` 的产物哈希与派生时间），界面侧栏底部显示
+「界面 <构建时间> · <产物哈希>」——一句话确认版本，不必翻目录或问人。
+
+配套：旧仓库 `start.bat` 改为"只提示不启动"的壳（中文提示在 UTF-8 with BOM 的 `.ps1`，
+`.bat` 纯 ASCII；否则 cmd 按 OEM 代码页解析会乱码），并可直接拉起新仓库。
+
+---
+
 ## 3. 与 platform 的复用边界
 
 | 能力 | 来源 | 说明 |

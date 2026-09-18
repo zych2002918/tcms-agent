@@ -7,9 +7,10 @@ const out = [];
 const assert = (n, c) => out.push([n, c]);
 
 // FaultLab: demo overspeed with auto-play; check event list visible after load
-await p.goto(BASE + "/faultlab", { waitUntil: "networkidle" });
+// 场景选择器已从原生 <select> 换成可搜索浮层 —— 这里改走**深链**（页面本就支持
+// `/faultlab?scenario=<file>`），比模拟"开浮层→筛选→点选项"少三步易碎操作。
+await p.goto(BASE + "/faultlab?scenario=overspeed_derate.yaml", { waitUntil: "networkidle" });
 await p.waitForTimeout(500);
-await p.selectOption("select", "overspeed_derate.yaml");
 await p.click("button:has-text('演示此场景')");
 await p.waitForTimeout(900);
 let body = await p.locator("body").innerText();
@@ -26,7 +27,8 @@ assert("FaultLab 播放到事件后画面推进", body.includes("s / 24") || bod
 await p.screenshot({ path: "e2e/shots-faultlab-playing2.png" });
 
 // FaultLab eb_failure teaching point
-await p.selectOption("select", "eb_failure_eb.yaml");
+await p.goto(BASE + "/faultlab?scenario=eb_failure_eb.yaml", { waitUntil: "networkidle" });
+await p.waitForTimeout(500);
 await p.click("button:has-text('演示此场景')");
 await p.waitForTimeout(700);
 body = await p.locator("body").innerText();

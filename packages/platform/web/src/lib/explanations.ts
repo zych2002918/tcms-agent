@@ -27,6 +27,9 @@ export const KIND_META: Record<string, KindMeta> = {
   hazard: { label: "安全危害", what: "一种需要被防止的危险场景（H-01 起）。", color: "bad" },
   concept: { label: "领域概念", what: "面向新人的概念解释（EBM / ATP / SIL 等）。", color: "ok" },
   system: { label: "列车系统", what: "列车系统分类框架（S1000D 思想对齐）：一个系统族（如制动/车门/网络），聚合它的故障与设备，让检索先定位到系统视角。", color: "dim" },
+  // 下面两类是图谱检索真实会命中、但此前没有中文对照的类型：
+  // 界面上一旦命中它们，用户看到的就是英文 kind 或没有说明（重构时实测 symptom 排到第 2 名）。
+  symptom: { label: "现象", what: "用户能观察到的异常表现（如「仪表盘闪烁」「开门到位灯闪」），不一定带故障码——症状诊断就是从现象反查可能的故障链。", color: "warn" },
 };
 
 /** 给一条命中文档生成小白解释 */

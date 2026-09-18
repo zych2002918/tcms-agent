@@ -27,9 +27,8 @@ await p.waitForTimeout(500);
 body = await p.locator("body").innerText();
 assert("资产:故障详情侧栏(检测/恢复/处置)", body.includes("恢复") && body.includes("检测") && body.includes("处置"));
 
-// 3. 场景执行 —— 运行流程感
-await p.goto(BASE + "/scenarios", { waitUntil: "networkidle" });
-await p.selectOption("select", "eb_failure_eb.yaml");
+// 3. 场景执行 —— 运行流程感（场景选择器已换为可搜索浮层，改走深链）
+await p.goto(BASE + "/scenarios?file=eb_failure_eb.yaml", { waitUntil: "networkidle" });
 await p.click("button:has-text('运行此场景')");
 // 引擎执行 <20ms，瞬态「执行中」状态难稳定采样 —— 改为断言完成流程（更稳）
 await p.waitForSelector("text=运行完成", { timeout: 12000 });
@@ -46,9 +45,8 @@ assert("场景:手动编排默认示例行", body.includes("overspeed") && body.
 await p.click("button:has-text('内置场景')");
 await p.waitForTimeout(200);
 
-// 3b. 故障演示 —— 动画回放流程感
-await p.goto(BASE + "/faultlab", { waitUntil: "networkidle" });
-await p.selectOption("select", "overspeed_derate.yaml");
+// 3b. 故障演示 —— 动画回放流程感（同样改走深链）
+await p.goto(BASE + "/faultlab?scenario=overspeed_derate.yaml", { waitUntil: "networkidle" });
 await p.click("button:has-text('演示此场景')");
 await p.waitForTimeout(900);
 body = await p.locator("body").innerText();
