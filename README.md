@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.11+-2dd4a0)](#快速开始)
-[![tests](https://img.shields.io/badge/tests-1612%20passed-2dd4a0)](#测试与门禁)
+[![tests](https://img.shields.io/badge/tests-1615%20passed-2dd4a0)](#测试与门禁)
 [![License](https://img.shields.io/badge/license-MIT-8ca0c0)](#license)
 
 ---
@@ -171,10 +171,10 @@ uv run python scripts/build_release.py --no-uv    # 最小包（不含 uv）
 | 成员 | 命令（成员目录内） | 门禁 |
 |---|---|---|
 | engine | `pytest tests -q` | 覆盖率 `fail_under=97`（960 collected） |
-| platform | `pytest -q` | ruff + pytest + vitest（302 passed + 1 skipped） |
+| platform | `pytest -q` | ruff + pytest + vitest（303 passed + 1 skipped） |
 | testgen | `pytest tests --cov=tcms_ai_testgen` | 覆盖率 `fail_under=90`（165 passed） |
 | **agent** | `pytest -q` | 含**评测回归门禁**：规则臂 ≥10/11 且零幻觉（170 passed + 2 skipped） |
-| 全仓 | `uv run pytest`（仓库根） | 一把梭：**1612 passed + 4 skipped** |
+| 全仓 | `uv run pytest`（仓库根） | 一把梭：**1615 passed + 4 skipped** |
 
 > 4 条 skip 全部是**条件性**的：真语义向量通道 ×2、真实 CAN 硬件 ×1、平台语义通道 ×1。
 > 根 `conftest.py` 有一道护栏：monorepo 下找不到上游引擎时**大声中止**，

@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useSearchParams } from "react-router-dom";
 import { api, type FaultLabCurvePoint, type FaultLabEvent, type FaultLabResp } from "../api";
 import { Callout, KV, Panel, Tag, EmptyState, SkeletonRows } from "../components/ui";
+import { SearchPicker } from "../components/SearchPicker";
 import { ScenarioCompositionCard } from "../components/ScenarioCompositionCard";
 import { advancePlayback, activeSpanKeys, buildSpans, eventWindow } from "../lib/playerState";
 
@@ -478,158 +479,6 @@ function SourceNote({ e }: { e: FaultLabEventEx }) {
   return null;
 }
 
-/** 场景选择器（可搜索浮层）。
- *
- * 为什么不用原生 `<select>`：资产库有 104 个场景，选项是"中文名 + 文件名"的长文本，
- * 原生下拉里只能靠滚动翻找，看不出"这个场景注入了几个故障、几步编排"，
- * 也没法按故障 key 反查（用户常常是从"我想看超速"出发的）。
- * 这里只做呈现：选中后仍与原来的 `<select>` 一样只更新 sel，是否演示由「演示此场景」决定。
- * 关闭方式与 ModelPicker 一致（点外 / Esc），并带 aria-expanded。
- */
-function ScenarioPicker({
-  scenarios,
-  value,
-  onPick,
-  disabled,
-}: {
-  scenarios: { file: string; name: string; steps: number; fault_keys: string[] }[];
-  value: string;
-  onPick: (file: string) => void;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  // 点外面 / Esc 关闭（键盘也能关）
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  // 打开即聚焦筛选框：键盘用户不用再 Tab 一次
-  useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
-
-  const kw = q.trim().toLowerCase();
-  const list = useMemo(() => {
-    if (!kw) return scenarios;
-    return scenarios.filter(
-      (s) =>
-        s.name.toLowerCase().includes(kw) ||
-        s.file.toLowerCase().includes(kw) ||
-        s.fault_keys.some((k) => k.toLowerCase().includes(kw))
-    );
-  }, [scenarios, kw]);
-
-  const cur = scenarios.find((s) => s.file === value);
-  const curTitle = cur ? `${cur.name}（${cur.file}）· ${cur.steps} 步 · ${cur.fault_keys.length} 个故障` : "选择一个真实故障场景";
-
-  return (
-    <div className="relative min-w-0 flex-1" ref={boxRef}>
-      <button
-        type="button"
-        className="select w-full flex items-center gap-2 text-left disabled:cursor-not-allowed disabled:text-ink-faint"
-        onClick={() => setOpen((v) => !v)}
-        disabled={disabled}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        title={curTitle}
-      >
-        <span className="shrink-0 text-[11px] text-ink-faint">场景</span>
-        <span className={`min-w-0 flex-1 truncate ${cur ? "text-ink" : "text-ink-faint"}`}>
-          {cur ? cur.name : "还没有场景列表"}
-        </span>
-        {cur && (
-          <span className="hidden md:inline shrink-0 max-w-[260px] truncate kbd-mono text-[11px] text-ink-faint">
-            {cur.file}
-          </span>
-        )}
-        <span className="shrink-0 text-[11px] text-ink-faint num whitespace-nowrap">共 {scenarios.length} 个</span>
-        <span className="shrink-0 text-[10px] text-ink-faint">▾</span>
-      </button>
-
-      {open && (
-        <div
-          className="panel-float absolute left-0 z-[var(--z-popover)] mt-1.5 w-full sm:w-[540px] sm:max-w-full overflow-hidden step-in"
-          role="listbox"
-          aria-label="选择演示场景"
-        >
-          <div className="flex items-center gap-2 px-2.5 py-2 border-b border-line-soft">
-            <input
-              ref={inputRef}
-              className="input !py-1 text-[12px] flex-1"
-              placeholder="筛选：场景名 / 文件名 / 故障 key（如 overspeed）"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && list.length > 0) {
-                  onPick(list[0].file);
-                  setOpen(false);
-                }
-              }}
-              aria-label="筛选场景"
-            />
-            <span className="shrink-0 text-[11px] text-ink-faint num whitespace-nowrap">
-              {list.length} / {scenarios.length}
-            </span>
-          </div>
-          <div className="max-h-[320px] overflow-y-auto">
-            {list.length === 0 ? (
-              <div className="px-3 py-4 text-[12px] text-ink-dim">
-                没有匹配「{q}」的场景。试试清空筛选，或直接搜故障 key（如 overspeed / door_fault）。
-              </div>
-            ) : (
-              list.map((s) => {
-                const active = s.file === value;
-                return (
-                  <button
-                    key={s.file}
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    onClick={() => {
-                      onPick(s.file);
-                      setOpen(false);
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 flex items-start gap-2 transition-colors ${
-                      active ? "bg-info/10" : "hover:bg-surface-2"
-                    }`}
-                  >
-                    <span className={`shrink-0 text-[11px] pt-0.5 ${active ? "text-info" : "text-ink-faint"}`}>
-                      {active ? "●" : "○"}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className={`block truncate text-[12.5px] ${active ? "text-ink font-medium" : "text-ink-dim"}`}>
-                        {s.name}
-                      </span>
-                      <span className="block truncate kbd-mono text-[10.5px] text-ink-faint">
-                        {s.file} · {s.steps} 步 · {s.fault_keys.length} 个故障
-                      </span>
-                    </span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function FaultLabPage() {
   const [searchParams] = useSearchParams();
@@ -827,6 +676,20 @@ export function FaultLabPage() {
   const constSchematic = constRows?.schematic ?? [];
   const stepColor = (kind?: string) => (kind ? STEP_META[kind]?.color ?? SOURCE_META[kind]?.color ?? "var(--ink-dim)" : "var(--ink-dim)");
 
+  /** 场景 → 共享选择器的条目（可搜场景名 / 文件名 / 故障键） */
+  const scenarioItems = useMemo(
+    () =>
+      scenarios.map((s) => ({
+        id: s.file,
+        title: s.name,
+        subtitle: s.file,
+        meta: `${s.steps} 步 · ${s.fault_keys.length} 个故障`,
+        search: s.fault_keys,
+        desc: `${s.name}（${s.file}）· ${s.steps} 步 · ${s.fault_keys.length} 个故障`,
+      })),
+    [scenarios],
+  );
+
   return (
     <div className="mx-auto w-full max-w-[1800px] space-y-4">
       <Panel
@@ -842,11 +705,16 @@ export function FaultLabPage() {
         bodyClass="p-3"
       >
         <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-          <ScenarioPicker
-            scenarios={scenarios}
+          <SearchPicker
+            items={scenarioItems}
             value={sel}
-            onPick={setSel}
+            onChange={setSel}
             disabled={phase === "loading" || scenarios.length === 0}
+            prefix="场景"
+            placeholder="选择一个真实故障场景"
+            dialogLabel="选择要演示的场景"
+            filterLabel="筛选场景"
+            filterPlaceholder="筛选：场景名 / 文件名 / 故障键（如 door、overspeed）"
           />
           <button className="btn justify-center shrink-0" onClick={() => load(sel)} disabled={phase === "loading" || !sel}>
             {phase === "loading" ? "加载中…" : "▶ 演示此场景"}

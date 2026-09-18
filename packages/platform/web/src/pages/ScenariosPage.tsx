@@ -8,6 +8,7 @@ import {
   type ScenarioInfo,
 } from "../api";
 import { Panel, Tag, EmptyState, SkeletonRows, Callout, Tabs, StatCard } from "../components/ui";
+import { SearchPicker } from "../components/SearchPicker";
 
 /**
  * 手动编排（自定义故障场景）—— 契约已由队长确认（be-contracts t1，POST /api/run/custom）：
@@ -294,146 +295,6 @@ const defaultRows = (): Row[] => [
   { id: nextId(), at: "20", action: "recover", fault: "overspeed", node: "vcu", level: "", expect: "", impact: "", err: "" },
 ];
 
-/* ===== 场景选择器：一百多个长文本选项 → 可搜索下拉 =====
- * 为什么不用原生 <select>：选项上百、名字长，原生下拉只能靠滚动找人，也没法按故障键搜；
- * 更要紧的是它显示不出"共多少个场景"这类决策信息。这里沿用 ModelPicker 的浮层做法：
- * panel-float + 输入筛选 + 点外/Esc 关闭 + aria-expanded，选项本身是键盘可达的按钮。
- * 摆放纪律：浮层必须落在**没有 overflow-hidden 的定位父级**里，否则会被裁一半——
- * 根节点是 relative，且只在「内置场景」分支使用（该分支没有 overflow-hidden 容器）。 */
-function ScenarioPicker({
-  scenarios,
-  value,
-  onChange,
-  disabled,
-}: {
-  scenarios: ScenarioInfo[];
-  value: string;
-  onChange: (file: string) => void;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  const cur = scenarios.find((s) => s.file === value);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const kw = q.trim().toLowerCase();
-  const list = useMemo(
-    () =>
-      kw
-        ? scenarios.filter(
-            (s) =>
-              s.name.toLowerCase().includes(kw) ||
-              s.file.toLowerCase().includes(kw) ||
-              s.fault_keys.some((f) => f.toLowerCase().includes(kw)),
-          )
-        : scenarios,
-    [scenarios, kw],
-  );
-
-  const pick = (file: string) => {
-    onChange(file);
-    setOpen(false);
-    setQ("");
-  };
-
-  return (
-    <div className="relative min-w-0 flex-1" ref={boxRef}>
-      <button
-        type="button"
-        className="btn-ghost w-full justify-between text-left"
-        onClick={() => setOpen((v) => !v)}
-        disabled={disabled}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        title={cur ? `${cur.name}（${cur.file}）` : "选择一个内置场景"}
-      >
-        <span className={`truncate ${cur ? "text-ink" : "text-ink-faint"}`}>
-          {cur ? cur.name : scenarios.length ? "选择一个场景" : "场景加载中…"}
-        </span>
-        <span className="ml-2 flex shrink-0 items-center gap-1.5 text-[11px] text-ink-faint">
-          <span className="num">共 {scenarios.length} 个</span>
-          <span aria-hidden>▾</span>
-        </span>
-      </button>
-
-      {open && (
-        <div
-          className="panel-float absolute left-0 right-0 z-[var(--z-popover)] mt-1.5 overflow-hidden p-0 step-in"
-          role="dialog"
-          aria-label="选择要运行的场景"
-        >
-          <div className="border-b border-line-soft p-2">
-            <input
-              autoFocus
-              className="input py-1 text-[12px]"
-              placeholder="筛选：场景名 / 文件名 / 故障键（如 door、overspeed）"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && list.length > 0) pick(list[0].file);
-              }}
-              aria-label="筛选场景"
-            />
-          </div>
-          <div className="max-h-[320px] overflow-y-auto" role="listbox" aria-label="场景列表">
-            {list.length === 0 && (
-              <div className="px-3 py-3 text-[11.5px] text-ink-faint">没有匹配「{q}」的场景，换个词试试。</div>
-            )}
-            {list.map((s) => {
-              const active = s.file === value;
-              return (
-                <button
-                  key={s.file}
-                  type="button"
-                  role="option"
-                  aria-selected={active}
-                  onClick={() => pick(s.file)}
-                  title={s.desc || `${s.name}（${s.file}）`}
-                  className={`block w-full px-3 py-1.5 text-left transition-colors hover:bg-surface-2 ${
-                    active ? "bg-info/5" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`shrink-0 text-[11px] ${active ? "text-info" : "text-ink-faint"}`}>
-                      {active ? "●" : "○"}
-                    </span>
-                    <span className={`min-w-0 flex-1 truncate text-[12.5px] ${active ? "text-info" : "text-ink"}`}>
-                      {s.name}
-                    </span>
-                    <span className="num shrink-0 text-[10.5px] text-ink-faint">{s.steps} 步</span>
-                  </div>
-                  <div className="kbd-mono mt-0.5 truncate pl-4 text-[10.5px] text-ink-faint">{s.file}</div>
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex items-center gap-2 border-t border-line-soft px-3 py-1.5 text-[10.5px] text-ink-faint">
-            <span>
-              显示 <span className="num">{list.length}</span> / 共 <span className="num">{scenarios.length}</span> 个场景
-            </span>
-            <span className="ml-auto">回车选中第一条 · Esc 关闭</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function ScenariosPage() {
   const [scenarios, setScenarios] = useState<ScenarioInfo[]>([]);
@@ -949,6 +810,20 @@ export function ScenariosPage() {
   );
   const ctrl = "input !py-1.5 !px-2 text-[12px]";
 
+  /** 场景 → 共享选择器的条目（可搜场景名 / 文件名 / 故障键） */
+  const scenarioItems = useMemo(
+    () =>
+      scenarios.map((s) => ({
+        id: s.file,
+        title: s.name,
+        subtitle: s.file,
+        meta: `${s.steps} 步`,
+        search: s.fault_keys,
+        desc: s.desc || `${s.name}（${s.file}）· ${s.steps} 步`,
+      })),
+    [scenarios],
+  );
+
   return (
     <div className="mx-auto w-full max-w-[1800px] space-y-4">
       {/* 顶部：数量来源说明 + 模式切换 + 执行区 */}
@@ -990,11 +865,16 @@ export function ScenariosPage() {
         {mode === "builtin" ? (
           <>
             <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-              <ScenarioPicker
-                scenarios={scenarios}
+              <SearchPicker
+                items={scenarioItems}
                 value={sel}
                 onChange={setSel}
                 disabled={phase === "running"}
+                prefix="场景"
+                placeholder="选择一个场景"
+                dialogLabel="选择要运行的场景"
+                filterLabel="筛选场景"
+                filterPlaceholder="筛选：场景名 / 文件名 / 故障键（如 door、overspeed）"
               />
               <button
                 className="btn justify-center whitespace-nowrap"
@@ -1324,6 +1204,26 @@ export function ScenariosPage() {
       {phase === "error" && (
         <div className="panel border-bad/40 bg-bad/10 px-4 py-2.5 text-sm text-bad">
           {err === "engine_missing" ? "⚠ 需要先启用 TCMS 引擎（见上方说明）" : `⚠ 执行失败：${err}`}
+        </div>
+      )}
+
+      {/* 还没跑过：空着会让人以为"页面没做完"。用一行说清运行后会出现什么，
+          同时把"这次会跑什么"已经在上面的构成预览里交代过了，这里不重复。 */}
+      {phase === "idle" && mode === "builtin" && (
+        <div className="panel px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+            <span className="text-ink-faint">运行后这里会出现：</span>
+            {[
+              ["引擎断言", "逐条 期望 → 实际"],
+              ["整体结论", "PASS / FAIL"],
+              ["运行标识", "run id + 归档路径"],
+            ].map(([t, d]) => (
+              <span key={t} className="inline-flex items-baseline gap-1.5">
+                <span className="text-ink-dim">{t}</span>
+                <span className="text-ink-faint">{d}</span>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
