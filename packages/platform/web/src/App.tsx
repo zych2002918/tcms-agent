@@ -107,8 +107,10 @@ export default function App() {
               end={n.to === "/"}
               title={collapsed ? `${n.label} — ${n.hint}` : n.hint}
               className={({ isActive }) =>
-                `flex items-center gap-2.5 mx-1.5 px-2.5 py-2 rounded-lg text-[13px] transition-colors whitespace-nowrap ${
-                  isActive ? "bg-info/15 text-info font-medium" : "text-ink-dim hover:text-ink hover:bg-surface-2/70"
+                `flex items-center gap-2.5 mx-1.5 px-2.5 py-[7px] rounded-[var(--radius-md)] text-[13px] transition-colors whitespace-nowrap ${
+                  isActive
+                    ? "bg-info/10 text-info font-medium"
+                    : "text-ink-dim hover:text-ink hover:bg-surface-2"
                 }`
               }
             >
@@ -183,9 +185,9 @@ export default function App() {
         )}
 
         {/* topbar */}
-        <header className="flex items-baseline gap-3 px-6 pt-5 pb-1 shrink-0">
-          <h1 className="text-[17px] font-semibold text-ink">{meta.t}</h1>
-          <span className="text-xs text-ink-faint hidden sm:inline truncate">{meta.s}</span>
+        <header className="flex items-baseline gap-3 px-5 lg:px-7 pt-5 pb-1 shrink-0">
+          <h1 className="text-[18px] font-semibold text-ink tracking-[-0.015em]">{meta.t}</h1>
+          <span className="text-[12px] text-ink-faint hidden sm:inline truncate">{meta.s}</span>
           <button
             className="theme-toggle ml-auto"
             onClick={() => {
@@ -200,7 +202,7 @@ export default function App() {
             {theme === "dark" ? "☀ 白天" : "☾ 黑夜"}
           </button>
         </header>
-        <div className="flex-1 overflow-y-auto px-6 pb-8 pt-3">
+        <div className="flex-1 overflow-y-auto px-5 lg:px-7 pb-10 pt-3">
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/assets" element={<AssetsPage />} />

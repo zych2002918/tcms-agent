@@ -47,6 +47,23 @@ class Arm:
         return True, ""
 
 
+def model_arms(model: str, base_url: str | None = None) -> list[Arm]:
+    """把"某个具体模型"变成一个可跑的对照臂（`llm@<model>`）。
+
+    为什么需要：用户会问"换成轻量模型、或者别家的模型，效果还在不在"。
+    这个问题**不该靠断言回答**——把模型做成一等公民的臂，
+    `eval run --model X` 与 `eval gate` 就能给出真实对照，
+    而不是"应该没问题吧"。
+
+    只给一个臂（而不是默认那 5 个）：换模型时的对照对象是**同任务集下的另一个模型**，
+    跑一堆离线臂除了烧时间没有信息量。名字里带模型名，报告里也就自带口径。
+    """
+    ov: dict[str, Any] = {"offline": False, "model": model}
+    if base_url:
+        ov["base_url"] = base_url
+    return [Arm(f"llm@{model}", ov, requires_llm=True)]
+
+
 def default_arms() -> list[Arm]:
     """默认的对照臂。
 
@@ -203,4 +220,4 @@ def render_reports(reports: dict[str, EvalReport], skipped: list[str] | None = N
     return "\n".join(lines)
 
 
-__all__ = ["Arm", "default_arms", "render_reports", "run_arm", "run_arms"]
+__all__ = ["Arm", "default_arms", "model_arms", "render_reports", "run_arm", "run_arms"]

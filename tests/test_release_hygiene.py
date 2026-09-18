@@ -184,6 +184,33 @@ def test_novice_doc_has_no_markdown_markers() -> None:
     assert offenders == [], f"面向新手的纯文本里出现 markdown 星号：{offenders[:3]}"
 
 
+def test_frontend_jsx_has_no_inline_markdown_markers() -> None:
+    """前端 JSX 文本里也不能出现 markdown 星号——用户看到的是字面的 `**`。
+
+    与上面那条同一类问题，只是换了个地方：`**这样**` 写在 JSX 文本里不会加粗，
+    而是原样显示。中文界面里那几个星号极其显眼，属于"开发者自己看得懂、
+    用户看得见"的瑕疵。注释里的星号无害（不会渲染），因此先剥注释再判。
+
+    由来：本轮改造中我确实在页面文案里写过 `换模型只影响**这一次**`，
+    截图自评时才看见——于是把它变成机器判据，而不是"下次记得"。
+    """
+    import re
+
+    block_comment = re.compile(r"/\*.*?\*/", re.S)
+    inline_marker = re.compile(r"\*\*[^*\n]{1,40}\*\*")
+    offenders: list[str] = []
+    for f in _walk("packages/platform/web/src/**/*.tsx"):
+        if ".test." in f.name:
+            continue
+        body = block_comment.sub("", f.read_text(encoding="utf-8"))
+        for i, ln in enumerate(body.splitlines(), 1):
+            if ln.lstrip().startswith("//"):
+                continue
+            if inline_marker.search(ln):
+                offenders.append(f"{f.relative_to(ROOT)}:{i}: {ln.strip()[:80]}")
+    assert offenders == [], f"JSX 里会把 markdown 星号原样显示给用户：{offenders[:3]}"
+
+
 def test_documented_adr_count_matches_decisions_file() -> None:
     """文档里写死的"X 条 ADR"必须等于 decisions.md 的实际条数。
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json as _json
 import queue as _queue
 import threading as _threading
+import time as _time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -198,9 +199,16 @@ class PathRequest(BaseModel):
 
 
 class AgentRunRequest(BaseModel):
-    """Agent 任务执行请求（模块级：FastAPI 前向引用约束）。"""
+    """Agent 任务执行请求（模块级：FastAPI 前向引用约束）。
+
+    `model` / `base_url` 是**本次运行**的模型覆盖（前端模型选择器用）：
+    留空则走统一解析链（环境变量 → 本机设置 → 默认），与设置页保持一致。
+    覆盖只影响这一次请求，不写回设置——"试一个模型"不该悄悄改掉用户的默认。
+    """
 
     task_id: str | None = None  # None = 全跑
+    model: str | None = None  # 本次运行使用的模型（None = 跟随设置）
+    base_url: str | None = None  # 本次运行使用的端点（None = 跟随设置）
 
 
 def _sse(obj: dict) -> str:
@@ -238,9 +246,13 @@ class AgentFreeRequest(BaseModel):
     """自由 Agent 目标请求：一句自然语言 → 自动解析为可执行任务。
 
     模块级（FastAPI 前向引用约束，同 RunScenarioRequest）。
+
+    `model` / `base_url` 语义同 AgentRunRequest：只覆盖本次运行。
     """
 
     goal: str  # 自然语言目标（如「验证车门故障不能发车」）
+    model: str | None = None  # 本次运行使用的模型（None = 跟随设置）
+    base_url: str | None = None  # 本次运行使用的端点（None = 跟随设置）
 
 
 class DiagnoseRequest(BaseModel):
@@ -363,6 +375,8 @@ class LlmModelsRequest(BaseModel):
 
     base_url: str | None = None
     api_key: str | None = None
+    #: 仅 `/api/llm/ping` 使用：自检"我选的这个模型到底能不能用"。
+    model: str | None = None
 
 
 def create_app(asset_model: AssetModel | None = None, upstream: str | Path | None = None) -> FastAPI:
@@ -456,10 +470,37 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
     def _current_backend_mode() -> str:
         return "llm" if llm_available() else "mock"
 
-    def _make_harness() -> AgentHarness:
+    def _llm_identity(model: str | None = None, base_url: str | None = None) -> dict:
+        """本次运行**实际**会用的后端与模型（如实标注，不猜、不美化）。
+
+        为什么要有它：用户会换模型（轻量模型 / 不同厂商），而"这次到底谁在决策"
+        必须能在界面上如实回答——否则同一份报告在不同模型下看起来一样，
+        等于把"换模型"变成一次不可审计的实验。走与后端同一解析链，不另写一套。
+        """
+        if not llm_available():
+            return {
+                "backend": "mock",
+                "model": None,
+                "base_url": None,
+                "note": "未配置 API key → 离线 Mock 决策（可完整跑通，但不是 LLM 决策）",
+            }
+        from ..agent.llm_backend import resolve_llm_config  # noqa: PLC0415
+
+        base, mdl = resolve_llm_config(base_url, model)
+        return {
+            "backend": "llm",
+            "model": mdl,
+            "base_url": base,
+            "override": bool(model or base_url),  # 是"跟随设置"还是"本次手动指定"
+        }
+
+    def _make_harness(model: str | None = None, base_url: str | None = None) -> AgentHarness:
         if _current_backend_mode() == "llm":
             return AgentHarness(
-                asset_model, retriever, _app_upstream, backend=LLMAgentBackend()
+                asset_model,
+                retriever,
+                _app_upstream,
+                backend=LLMAgentBackend(base_url=base_url, model=model),
             )
         return AgentHarness(
             asset_model, retriever, _app_upstream, backend=MockAgentBackend()
@@ -606,6 +647,23 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
             return {"ok": True, "models": models, "error": None}
         except Exception as e:  # noqa: BLE001 - 探测失败 → 诚实文案（引导页提示可改手动输入）
             return {"ok": False, "error": str(e), "models": []}
+
+    @app.post("/api/llm/ping")
+    def llm_ping(req: LlmModelsRequest) -> dict:
+        """连通性自检：**真发一次最小请求**，把真实结果与耗时回给前端。
+
+        与 `/api/llm/models` 的分工：那个回答"你这账号有哪些模型"，
+        这个回答"我现在选的这个模型**真的能用**吗"。
+
+        为什么必须有：`llm_available()` 只说明配了 key。本机实测过一种很坏的情况——
+        key 配了、模型名也写了，但环境代理配置坏掉（`NO_PROXY` 里的 `[::1]` 让 httpx
+        在建 URL 阶段就抛错），于是每一次请求都失败、平台一直**静默走规则臂**，
+        而界面上仍写着"LLM 已配置"。用户没有任何办法发现这件事，
+        除非有人把白盒摊开给他看。这个端点就是让用户自己能问出这句话。
+        """
+        from ..agent.llm_backend import ping_model
+
+        return ping_model(base_url=req.base_url, api_key=req.api_key or None)
 
     # ---- 知识底座（P2）----
 
@@ -1111,10 +1169,15 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
             if not tasks:
                 raise HTTPException(404, f"任务不存在: {req.task_id}")
         # 每次现取后端（设置页改 key/provider 后无需重启即生效）
-        return _make_harness().run_tasks(tasks)
+        ident = _llm_identity(req.model, req.base_url)
+        return {**_make_harness(req.model, req.base_url).run_tasks(tasks), "llm": ident}
 
     @app.get("/api/agent/run/stream")
-    def agent_run_stream(task_id: str | None = None) -> StreamingResponse:
+    def agent_run_stream(
+        task_id: str | None = None,
+        model: str | None = None,
+        base_url: str | None = None,
+    ) -> StreamingResponse:
         """Agent 任务的**实时白盒流**（SSE）。
 
         与 `POST /api/agent/run` 的本质差别：后者要等任务跑完才一次性返回轨迹，
@@ -1124,10 +1187,13 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
         断言逐条明细。这正是"白盒"与"进度动画"的区别。
 
         协议（每行一个 SSE `data:`，JSON）：
-            {"type":"start","tasks":[...],"backend":"..."}
+            {"type":"start","tasks":[...],"llm":{backend,model,base_url}}
             {"type":"trace","task_id":"...","entry":{step,detail,t,payload}}
             {"type":"done","task_id":"...","score":{...},"achieved":bool}
             {"type":"end"}  或  {"type":"error","error":"..."}
+
+        `llm` 是**本次运行实际使用的**后端与模型（可被 `?model=` / `?base_url=` 覆盖）：
+        界面上要能如实回答"这次是谁在决策"，换模型才是可审计的实验而非玄学。
         """
         tasks = default_tasks(asset_model)
         if task_id:
@@ -1135,7 +1201,8 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
             if not tasks:
                 raise HTTPException(404, f"任务不存在: {task_id}")
 
-        harness = _make_harness()
+        harness = _make_harness(model, base_url)
+        ident = _llm_identity(model, base_url)
         q: _queue.Queue = _queue.Queue()
         _END = object()
 
@@ -1162,7 +1229,13 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
                     )
                 # 末尾给出与 POST /api/agent/run **同构**的完整报告：
                 # 前端据此直接渲染结果，无需把任务再跑一遍（省一次真执行 + 一次模型调用）
-                q.put({"type": "result", "report": harness.summarize_runs(runs)})
+                # `llm` 一并带上——两条端点各拼一份响应必然漂移，这条正是既有测试抓到的。
+                q.put(
+                    {
+                        "type": "result",
+                        "report": {**harness.summarize_runs(runs), "llm": ident},
+                    }
+                )
             except Exception as e:  # noqa: BLE001 - 异常必须传下去，不能静默
                 q.put({"type": "error", "error": f"{type(e).__name__}: {e}"})
             finally:
@@ -1171,7 +1244,15 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
         _threading.Thread(target=_worker, daemon=True).start()
 
         def _gen():
-            yield _sse({"type": "start", "tasks": [t.task_id for t in tasks], "count": len(tasks)})
+            yield _sse(
+                {
+                    "type": "start",
+                    "kind": "task",
+                    "tasks": [t.task_id for t in tasks],
+                    "count": len(tasks),
+                    "llm": ident,
+                }
+            )
             while True:
                 try:
                     item = q.get(timeout=180)
@@ -1208,6 +1289,29 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
         if sc_def is None:
             raise HTTPException(404, f"场景不存在: {scenario_file}")
         return scenario_composition(sc_def, asset_model, entry_fault)
+
+    def _free_report(goal: str, parsed: object, task: object, resp: dict, ident: dict) -> dict:
+        """自由目标的响应组装（`POST /api/agent/free` 与 SSE 流**共用**）。
+
+        两条链各自拼一份响应必然漂移（本项目已踩过这个坑），所以只有这一个地方
+        决定"自由目标的报告长什么样"；流式端点末尾推的就是它，
+        前端因此可以只写一套渲染逻辑。
+        """
+        return {
+            "goal": goal,
+            "parsed": {
+                "fault": parsed.fault,
+                "fault_name": parsed.fault_name,
+                "expected": parsed.expected,
+                "expected_zh": parsed.expected_zh,
+                "confidence": parsed.confidence,
+                "resolver": parsed.resolver,
+                "matched_on": parsed.matched_on,
+            },
+            "matched_task_id": task.task_id,  # T-FREE-1（自由任务由解析动态生成）
+            "llm": ident,
+            **resp,
+        }
 
     @app.post("/api/agent/free")
     def agent_free(req: AgentFreeRequest) -> dict:
@@ -1354,21 +1458,143 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
                         resp["followup_question"] = "没锚定到唯一故障，但知识库找到这些可能相关的真实故障——点选继续查证。"
             return resp
         task = parsed.to_task(req.goal, seq=1)
-        resp = _make_harness().run_tasks([task])
-        return {
-            "goal": req.goal,
-            "parsed": {
-                "fault": parsed.fault,
-                "fault_name": parsed.fault_name,
-                "expected": parsed.expected,
-                "expected_zh": parsed.expected_zh,
-                "confidence": parsed.confidence,
-                "resolver": parsed.resolver,
-                "matched_on": parsed.matched_on,
+        harness = _make_harness(req.model, req.base_url)
+        return _free_report(
+            req.goal,
+            parsed,
+            task,
+            harness.run_tasks([task]),
+            _llm_identity(req.model, req.base_url),
+        )
+
+    @app.get("/api/agent/free/stream")
+    def agent_free_stream(
+        goal: str,
+        model: str | None = None,
+        base_url: str | None = None,
+    ) -> StreamingResponse:
+        """自由目标的**实时白盒流**（SSE）——把"等待动画"换成真实步骤。
+
+        为什么需要它：`/api/agent/run/stream` 只覆盖了「任务列表」那条路径，
+        而用户天天用的是**自由目标**（一句话 → 解析 → 真实执行）。
+        那条路径此前是普通 POST：运行期间界面只能显示"请求处理中…"，
+        于是出现"系统白盒了，用户看到的还是等待动画"。这里把它接进同一条白盒。
+
+        协议（与 `/api/agent/run/stream` 同构，前端复用同一个组件与渲染逻辑）：
+            {"type":"start","kind":"free","goal":...,"llm":{...}}
+            {"type":"trace","entry":{step,detail,t,payload}}
+            {"type":"result","report":{...}}   与 `POST /api/agent/free` **同构**
+            {"type":"end"} 或 {"type":"error","error":"..."}
+
+        两条纪律：
+        - **未锚定故障不是错误**：同样走 `result`，由前端渲染候选故障引导——
+          诚实地说"没锚定到"，而不是继续转圈；
+        - 时间轴统一到"用户提交这一刻"，解析与执行连续计时，不中途重启。
+        """
+        from ..agent.freeform import NoFaultMatch, parse_free_goal
+        from ..agent.llm_backend import llm_available as _llm_ok
+
+        ident = _llm_identity(model, base_url)
+        q: _queue.Queue = _queue.Queue()
+        _END = object()
+
+        def _worker() -> None:
+            t0 = _time.time()
+
+            def _log(step: str, detail: str, payload: dict | None = None) -> None:
+                entry: dict = {
+                    "step": step,
+                    "detail": detail,
+                    "t": round(_time.time() - t0, 3),
+                }
+                if payload:
+                    entry["payload"] = payload
+                q.put({"type": "trace", "entry": entry})
+
+            def _relay(entry: dict) -> None:
+                e = dict(entry)
+                e["t"] = round(_time.time() - t0, 3)  # 与解析阶段同一条时间轴
+                q.put({"type": "trace", "entry": e})
+
+            try:
+                _log(
+                    "parse",
+                    f"解析目标：「{goal}」（{'规则 + LLM 仲裁' if _llm_ok() else '规则'}）",
+                    {"stage": "目标解析", "goal": goal},
+                )
+                try:
+                    parsed = parse_free_goal(asset_model, goal, seq=1, use_llm=_llm_ok())
+                except NoFaultMatch as e:
+                    _log(
+                        "parse",
+                        f"规则未锚定到真实故障：{e}",
+                        {"stage": "目标解析", "no_match": True, "detail": str(e)},
+                    )
+                    # 澄清链（现象反查 / 宽泛问法 / KB 候选）复用 POST 的同一条实现：
+                    # 复制一份必然漂移，"能跑但两处不一样"比慢一点糟得多。
+                    q.put(
+                        {
+                            "type": "result",
+                            "report": agent_free(
+                                AgentFreeRequest(goal=goal, model=model, base_url=base_url)
+                            ),
+                        }
+                    )
+                else:
+                    _log(
+                        "parse",
+                        f"命中故障 {parsed.fault}（{parsed.fault_name}）"
+                        f"；期望处置 {parsed.expected}；置信度 {parsed.confidence}",
+                        {
+                            "stage": "目标解析",
+                            "fault": parsed.fault,
+                            "fault_name": parsed.fault_name,
+                            "expected": parsed.expected,
+                            "confidence": parsed.confidence,
+                            "resolver": parsed.resolver,
+                            "matched_on": parsed.matched_on,
+                        },
+                    )
+                    task = parsed.to_task(goal, seq=1)
+                    harness = _make_harness(model, base_url)
+                    run = harness.run_task(task, on_log=_relay)
+                    q.put(
+                        {
+                            "type": "result",
+                            "report": _free_report(
+                                goal, parsed, task, harness.summarize_runs([run]), ident
+                            ),
+                        }
+                    )
+            except Exception as e:  # noqa: BLE001 - 异常必须传下去，不能静默
+                q.put({"type": "error", "error": f"{type(e).__name__}: {e}"})
+            finally:
+                q.put(_END)
+
+        _threading.Thread(target=_worker, daemon=True).start()
+
+        def _gen():
+            yield _sse({"type": "start", "kind": "free", "goal": goal, "llm": ident})
+            while True:
+                try:
+                    item = q.get(timeout=180)
+                except _queue.Empty:
+                    yield _sse({"type": "error", "error": "运行超时（180s 无新步骤）"})
+                    break
+                if item is _END:
+                    break
+                yield _sse(item)
+            yield _sse({"type": "end"})
+
+        return StreamingResponse(
+            _gen(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
             },
-            "matched_task_id": task.task_id,  # T-FREE-1（自由任务由解析动态生成）
-            **resp,
-        }
+        )
 
     @app.post("/api/agent/toolassist")
     def agent_toolassist(req: ToolAssistRequest) -> dict:
@@ -1795,7 +2021,7 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
     else:
         _web_dist = Path(__file__).resolve().parents[3] / "web" / "dist"
     if _web_dist.is_dir():
-        from fastapi.responses import FileResponse
+        from fastapi.responses import FileResponse, HTMLResponse
         from fastapi.staticfiles import StaticFiles
 
         # 静态资源（/assets/...）
@@ -1826,7 +2052,36 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
             f = _web_dist / full_path
             if full_path and f.is_file():
                 return FileResponse(f)
-            return FileResponse(_web_dist / "index.html")
+            return _index_response()
+
+        def _index_response():
+            """把**服务端已知的主题**写进首帧 HTML，消掉"闪一下再跳主题"。
+
+            为什么需要：index.html 里那段防闪脚本只能读 localStorage（浏览器本地），
+            而用户真正选定的主题存在**服务端设置**里。换个浏览器、清过缓存、
+            或服务端设置与本机 localStorage 不一致时，页面会先按系统主题画一帧，
+            再跳到用户主题——深色↔浅色之间那一下非常刺眼，而且正好发生在
+            "第一次打开"这个最需要可信感的时刻。
+
+            做法：读一次设置里的 theme，注入 `<html class="theme-x" data-theme="x">`；
+            前端脚本看到 data-theme 就直接沿用，不再自己猜。设置读失败就不注入
+            （退回原来的行为，不因为一个主题把页面搞崩）。
+            """
+            html = (_web_dist / "index.html").read_text(encoding="utf-8")
+            theme = ""
+            try:
+                from ..core import settings as _settings  # noqa: PLC0415
+
+                theme = str(_settings.get("theme") or "").strip()
+            except Exception:  # noqa: BLE001 - 读设置失败不阻塞页面（退回无注入）
+                theme = ""
+            if theme in ("dark", "light"):
+                html = html.replace(
+                    '<html lang="zh-CN"',
+                    f'<html lang="zh-CN" class="theme-{theme}" data-theme="{theme}"',
+                    1,
+                )
+            return HTMLResponse(html)
 
     return app
 

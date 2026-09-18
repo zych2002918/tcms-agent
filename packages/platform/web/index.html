@@ -4,19 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TCMS × AI 测试平台</title>
-    <!-- 主题防闪：首帧同步读取 localStorage（无值则跟随系统 prefers-color-scheme） -->
+    <!-- 主题防闪：优先用**服务端注入**的 data-theme（用户真正选定的主题），
+         其次读 localStorage（本机上次的选择），最后才跟随系统。
+         顺序是刻意的：服务端才是权威——换个浏览器时 localStorage 是空的，
+         若先按系统主题画一帧再跳到用户主题，深↔浅那一下很刺眼。 -->
     <script>
       (function () {
+        var el = document.documentElement;
         try {
-          var t = localStorage.getItem("tcms-theme");
+          var t = el.dataset.theme; // 服务端注入（可能不存在）
+          if (t !== "light" && t !== "dark") {
+            t = localStorage.getItem("tcms-theme");
+          }
           if (t !== "light" && t !== "dark") {
             t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
           }
-          document.documentElement.classList.add("theme-" + t);
-          document.documentElement.dataset.theme = t;
+          el.classList.remove("theme-dark", "theme-light");
+          el.classList.add("theme-" + t);
+          el.dataset.theme = t;
         } catch (e) {
-          document.documentElement.classList.add("theme-dark");
-          document.documentElement.dataset.theme = "dark";
+          el.classList.add("theme-dark");
+          el.dataset.theme = "dark";
         }
       })();
     </script>

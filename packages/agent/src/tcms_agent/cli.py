@@ -107,6 +107,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         max_level=max_level,
         memory_enabled=not args.no_memory,
         upstream=Path(args.upstream) if args.upstream else None,
+        model=getattr(args, "model", None),
+        base_url=getattr(args, "base_url", None),
         db_path=Path(args.db) if args.db else AgentConfig().db_path,
         memory_dir=Path(args.memory) if args.memory else AgentConfig().memory_dir,
         sandbox_dir=Path(args.sandbox) if args.sandbox else AgentConfig().sandbox_dir,
@@ -129,6 +131,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(res.report)
     print()
     print(f"thread_id = {res.thread_id}   model = {res.model_kind}")
+    # 如实报出**具体模型名**：只写 llm/offline-rule 无法回答"我这次到底用的哪个模型"，
+    # 而用户换模型时最需要的恰好是这句话。
+    try:
+        from .models import resolve_llm_settings  # noqa: PLC0415
+
+        _base, _mdl = resolve_llm_settings(cfg)
+        print(f"本次模型：{_mdl}（{_base}）")
+    except Exception:  # noqa: BLE001 - 平台不可用时不阻塞
+        pass
     print(f"工具审计：{json.dumps(res.audit, ensure_ascii=False)}")
     if res.approvals:
         print(f"人工审批：{json.dumps(res.approvals, ensure_ascii=False)}")
@@ -239,6 +250,20 @@ def cmd_eval_tasks(args: argparse.Namespace) -> int:
 
 def cmd_eval_run(args: argparse.Namespace) -> int:
     from .eval import default_arms, render_reports, run_arms
+    from .eval.harness import model_arms
+
+    # `--model X` = 把"某个具体模型"当成一个臂来对照（换模型效果是否保持）。
+    if getattr(args, "model", None):
+        arms = model_arms(args.model, getattr(args, "base_url", None))
+        print(f"按指定模型跑对照臂：{arms[0].name}（任务集不变，用于与其它模型横向比）")
+        wd = Path(args.workdir) if args.workdir else None
+        reports, skipped = run_arms(arms, workdir=wd, keep=bool(args.keep))
+        print(render_reports(reports, skipped))
+        if args.out:
+            payload = {n: r.to_dict() for n, r in reports.items()}
+            Path(args.out).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"\n报告已写出：{args.out}")
+        return 0
 
     all_arms = {a.name: a for a in default_arms()}
     if args.arms:
@@ -364,6 +389,10 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("run", help="跑一个目标")
     r.add_argument("goal", help="自然语言目标，如「验证车门故障必须触发降级处置」")
     r.add_argument("--llm", action="store_true", help="使用真 LLM（需 key，否则自动降级）")
+    r.add_argument("--model", help="本次使用的模型（缺省跟随本机设置；配合 --llm）")
+    r.add_argument(
+        "--base-url", dest="base_url", help="本次使用的 OpenAI 兼容端点（缺省跟随本机设置）"
+    )
     r.add_argument("--max-steps", type=int, default=12, help="最大决策步数（默认 12）")
     r.add_argument("--thread", help="指定 thread_id（默认自动生成）")
     r.add_argument("--db", help="轨迹数据库路径")
@@ -422,6 +451,11 @@ def build_parser() -> argparse.ArgumentParser:
     er.add_argument("--workdir", help="评测工作目录（每臂独立记忆）")
     er.add_argument("--keep", action="store_true", help="保留工作目录产物")
     er.add_argument("--out", help="把报告写成 JSON（供 gate 比对）")
+    er.add_argument(
+        "--model",
+        help="只跑这个模型的对照臂（llm@<模型>）：换模型后效果是否保持，用它横向比",
+    )
+    er.add_argument("--base-url", dest="base_url", help="配合 --model 使用的端点")
     er.set_defaults(func=cmd_eval_run)
 
     eg = esub.add_parser("gate", help="回归门禁：候选 vs 基线")

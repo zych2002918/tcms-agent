@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.11+-2dd4a0)](#快速开始)
-[![tests](https://img.shields.io/badge/tests-1586%20passed-2dd4a0)](#测试与门禁)
+[![tests](https://img.shields.io/badge/tests-1612%20passed-2dd4a0)](#测试与门禁)
 [![License](https://img.shields.io/badge/license-MIT-8ca0c0)](#license)
 
 ---
@@ -113,6 +113,23 @@ uv run tcms-agent eval tasks|run|gate             # 评测 / A-B / 回归门禁
 uv run tcms-agent nolib --verify                  # 框架 vs 手写对照
 ```
 
+### 平台界面（Web）：运行期间就是白盒
+
+`start.bat` 打开的工作台上，**运行中就能看到真实步骤**，不是进度动画：
+
+- **自由目标**（一句话 → 解析 → 真实执行）也接了实时流：解析结论、真实查询串、
+  完整候选集与选中理由、该场景**实际注入了哪些故障**、断言逐条 expect→actual；
+- 每步可展开核对**结构化载荷**，整条轨迹可一键导出 JSON；
+- 头部如实标注**谁在决策**（模型名 / 是否本次手动指定 / 是否离线规则臂）；
+- **模型可换且可验**：模型选择器支持拉取真实模型清单、筛选、手动输入，
+  选择只作用于**本次运行**（不改设置）；「测试连接」真发一次最小请求，
+  原样回显错误——因为**配了 key ≠ 能用**（本机实测过一次：环境代理配置坏掉，
+  平台每次调用都失败却一直静默走规则臂）。
+
+实测（8 个内置任务，真实运行）：`deepseek-v4-pro-0813` 8074ms → `qwen-turbo` **3090ms**，
+达成率与得分**完全一致**（8/8、90 分）——因为结论由引擎断言与引用校验兜住，
+模型只负责选场景与给理由。
+
 ---
 
 ## 打包分发（给新电脑用）
@@ -154,10 +171,10 @@ uv run python scripts/build_release.py --no-uv    # 最小包（不含 uv）
 | 成员 | 命令（成员目录内） | 门禁 |
 |---|---|---|
 | engine | `pytest tests -q` | 覆盖率 `fail_under=97`（960 collected） |
-| platform | `pytest -q` | ruff + pytest + vitest（282 passed + 1 skipped） |
+| platform | `pytest -q` | ruff + pytest + vitest（302 passed + 1 skipped） |
 | testgen | `pytest tests --cov=tcms_ai_testgen` | 覆盖率 `fail_under=90`（165 passed） |
-| **agent** | `pytest -q` | 含**评测回归门禁**：规则臂 ≥10/11 且零幻觉（165 passed + 2 skipped） |
-| 全仓 | `uv run pytest`（仓库根） | 一把梭：**1586 passed + 4 skipped** |
+| **agent** | `pytest -q` | 含**评测回归门禁**：规则臂 ≥10/11 且零幻觉（170 passed + 2 skipped） |
+| 全仓 | `uv run pytest`（仓库根） | 一把梭：**1612 passed + 4 skipped** |
 
 > 4 条 skip 全部是**条件性**的：真语义向量通道 ×2、真实 CAN 硬件 ×1、平台语义通道 ×1。
 > 根 `conftest.py` 有一道护栏：monorepo 下找不到上游引擎时**大声中止**，
@@ -172,7 +189,7 @@ uv run python scripts/build_release.py --no-uv    # 最小包（不含 uv）
 | 文档 | 内容 |
 |---|---|
 | `docs/ARCHITECTURE.md` | 架构说明（现状，非愿景）：图拓扑、四级权限、子进程执行、审批拆分、四层记忆、RAG、评测、nolib 对照 |
-| `docs/decisions.md` | 22 条 ADR：每条含背景 → 决策 → 理由 → 代价，以及**踩过的坑** |
+| `docs/decisions.md` | 24 条 ADR：每条含背景 → 决策 → 理由 → 代价，以及**踩过的坑** |
 | `packages/agent/README.md` | Agent 使用说明 |
 
 **这个项目的性格**：文档里写的每个数字都能在代码或测试里指到；

@@ -575,11 +575,14 @@ def test_llm_models_success(client, monkeypatch, tmp_path):
     from tcms_ai_platform.agent import llm_backend as _lb
 
     monkeypatch.setattr(
-        _lb.httpx,
-        "get",
-        lambda url, headers=None, timeout=None: _FakeResp(
-            200,
-            {"data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner", "owned_by": "deepseek"}]},
+        _lb,
+        "_request",
+        lambda method, url, **kw: (
+            _FakeResp(
+                200,
+                {"data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner", "owned_by": "deepseek"}]},
+            ),
+            "",
         ),
     )
     r = client.post("/api/llm/models", json={})
@@ -636,10 +639,12 @@ def test_llm_models_explicit_override(client, monkeypatch, tmp_path):
     from tcms_ai_platform.core import settings as _settings
 
     captured: dict = {}
+    # 打桩点跟着实现走：请求现在统一经 `_request`（它负责"坏代理绕过重试"），
+    # 因此这里替换的是 `_request`，而不是底层 httpx.get。
     monkeypatch.setattr(
-        _lb.httpx,
-        "get",
-        lambda url, headers=None, timeout=None: _capture(url, headers, captured),
+        _lb,
+        "_request",
+        lambda method, url, **kw: (_capture(url, kw.get("headers"), captured), ""),
     )
     r = client.post(
         "/api/llm/models",

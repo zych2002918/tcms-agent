@@ -17,10 +17,22 @@ BENCH = REPO / "scripts" / "benchmark.py"
 
 
 def _run_bench(*args: str) -> subprocess.CompletedProcess:
+    """跑 bench 脚本并取回输出。
+
+    **显式按 UTF-8 解码**，不要用 `text=True` 的默认行为：那会按系统区域设置
+    （简体 Windows 上是 GBK）解码子进程输出，而子进程只要被要求输出 UTF-8
+    （`PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1`，CI 与不少开发机都这么设）
+    就会在读取线程里抛 `UnicodeDecodeError`，`stdout` 变成 None，
+    测试以一句与真实原因无关的 `TypeError` 失败。
+
+    这类"只在某种环境下红"的测试比没有测试更糟——它会让人去查错方向。
+    """
     return subprocess.run(
         [sys.executable, str(BENCH), *args],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=120,
         cwd=REPO,
     )

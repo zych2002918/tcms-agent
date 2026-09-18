@@ -215,11 +215,25 @@ export interface ConstRow {
   desc: string;
 }
 
-// ---- Agent 实时白盒流（GET /api/agent/run/stream，SSE）----
+// ---- Agent 实时白盒流（SSE）----
 //
-// 与 agentRun 的区别：agentRun 要等跑完才拿到轨迹，运行期间前端只能放
-// 轮换文案；这个流每产生一条**真实**轨迹就推一条，于是"思考中…"可以换成
-// 真实步骤（真实查询串、候选集与选择理由、注入了哪些故障、断言明细）。
+// 两条路径**共用同一套事件协议**（start → trace* → result → end），前端因此复用
+// 同一个组件与同一条渲染逻辑：
+//   GET /api/agent/run/stream    任务列表路径
+//   GET /api/agent/free/stream   自由目标路径（用户天天用的那条，此前只有等待动画）
+//
+// 与 agentRun/agentFree 的区别：那两个要等跑完才拿到轨迹，运行期间界面只能放
+// 一段文案；流式端点每产生一条**真实**轨迹就推一条。
+
+/** 本次运行**实际**使用的后端与模型（后端如实回填，不是前端猜的） */
+export interface AgentLlmIdentity {
+  backend: "llm" | "mock";
+  model: string | null;
+  base_url: string | null;
+  /** true = 本次手动指定模型（覆盖设置）；缺省/false = 跟随设置 */
+  override?: boolean;
+  note?: string;
+}
 
 /** 一条真实轨迹（与后端 TaskRun.trace 同构） */
 export interface AgentStreamTraceEntry {
@@ -230,8 +244,15 @@ export interface AgentStreamTraceEntry {
 }
 
 export type AgentStreamEvent =
-  | { type: "start"; tasks: string[]; count: number }
-  | { type: "trace"; task_id: string; entry: AgentStreamTraceEntry }
+  | {
+      type: "start";
+      kind?: "task" | "free";
+      goal?: string;
+      tasks?: string[];
+      count?: number;
+      llm?: AgentLlmIdentity;
+    }
+  | { type: "trace"; task_id?: string; entry: AgentStreamTraceEntry }
   | {
       type: "done";
       task_id: string;
@@ -240,29 +261,38 @@ export type AgentStreamEvent =
       score: Record<string, unknown>;
       trace_len: number;
     }
-  /** 流末尾的完整报告，与 POST /api/agent/run 的响应**同构** */
+  /** 流末尾的完整报告，与 POST 端点响应**同构** */
   | { type: "result"; report: Record<string, unknown> }
   | { type: "error"; error: string }
   | { type: "end" };
 
+/** 本次运行的模型覆盖（留空 = 跟随设置里的默认模型） */
+export interface RunModelOpts {
+  model?: string | null;
+  base_url?: string | null;
+}
+
+function _modelParams(o?: RunModelOpts): Record<string, string> {
+  const p: Record<string, string> = {};
+  if (o?.model) p.model = o.model;
+  if (o?.base_url) p.base_url = o.base_url;
+  return p;
+}
+
 /**
- * 打开 Agent 实时白盒流。返回一个 abort 函数。
+ * 打开一条 SSE 流并逐事件回调。两条路径共用，避免复制粘贴出两套解析。
  *
  * 用 fetch + ReadableStream 而非 EventSource：一是可以带 AbortSignal 主动取消，
  * 二是 EventSource 在流异常结束时会自动重连（对一次性任务反而是错的）。
  */
-export function streamAgentRun(
-  taskId: string | undefined,
+function _openSse(
+  path: string,
   onEvent: (ev: AgentStreamEvent) => void,
   signal?: AbortSignal,
 ): void {
-  const qs = taskId ? `?task_id=${encodeURIComponent(taskId)}` : "";
   void (async () => {
     try {
-      const r = await fetch(`/api/agent/run/stream${qs}`, {
-        headers: { Accept: "text/event-stream" },
-        signal,
-      });
+      const r = await fetch(path, { headers: { Accept: "text/event-stream" }, signal });
       if (!r.ok || !r.body) throw new Error(`${r.status} ${r.statusText}`);
       const reader = r.body.getReader();
       const dec = new TextDecoder();
@@ -292,6 +322,30 @@ export function streamAgentRun(
       onEvent({ type: "error", error: String((e as Error)?.message ?? e) });
     }
   })();
+}
+
+/** 任务列表路径的实时白盒流 */
+export function streamAgentRun(
+  taskId: string | undefined,
+  onEvent: (ev: AgentStreamEvent) => void,
+  signal?: AbortSignal,
+  opts?: RunModelOpts,
+): void {
+  const p = new URLSearchParams(_modelParams(opts));
+  if (taskId) p.set("task_id", taskId);
+  const q = p.toString();
+  _openSse(`/api/agent/run/stream${q ? `?${q}` : ""}`, onEvent, signal);
+}
+
+/** 自由目标路径的实时白盒流（一句话 → 解析 → 真实执行，全程可看） */
+export function streamAgentFree(
+  goal: string,
+  onEvent: (ev: AgentStreamEvent) => void,
+  signal?: AbortSignal,
+  opts?: RunModelOpts,
+): void {
+  const p = new URLSearchParams({ goal, ..._modelParams(opts) });
+  _openSse(`/api/agent/free/stream?${p.toString()}`, onEvent, signal);
 }
 
 /** 场景构成说明（GET /api/scenarios/{file}/composition） */
@@ -380,8 +434,11 @@ export const api = {
     req<FaultLabResp>("/faultlab/demo-steps", { method: "POST", body: JSON.stringify(body) }),
   agentTasks: () =>
     req<{ task_id: string; title: string; goal: string; target_fault: string; expected_action: string }[]>("/agent/tasks"),
-  agentRun: (taskId?: string) =>
-    req<AgentRunResp>("/agent/run", { method: "POST", body: JSON.stringify({ task_id: taskId ?? null }) }),
+  agentRun: (taskId?: string, opts?: RunModelOpts) =>
+    req<AgentRunResp>("/agent/run", {
+      method: "POST",
+      body: JSON.stringify({ task_id: taskId ?? null, ..._modelParams(opts) }),
+    }),
   /** 场景构成：这个场景注入了哪些故障、彼此什么关系（回答"为什么有三个故障"） */
   scenarioComposition: (file: string, entryFault?: string) =>
     req<ScenarioComposition>(
@@ -389,8 +446,11 @@ export const api = {
         entryFault ? `?entry_fault=${encodeURIComponent(entryFault)}` : ""
       }`,
     ),
-  agentFree: (goal: string) =>
-    req<AgentFreeResp>("/agent/free", { method: "POST", body: JSON.stringify({ goal }) }),
+  agentFree: (goal: string, opts?: RunModelOpts) =>
+    req<AgentFreeResp>("/agent/free", {
+      method: "POST",
+      body: JSON.stringify({ goal, ..._modelParams(opts) }),
+    }),
   agentCompose: (message: string) =>
     req<AgentComposeResp>("/agent/compose", { method: "POST", body: JSON.stringify({ message }) }),
   /** 时序连锁原子化：先A后B随后C最后D → 逐原子故障错峰注入 + 真实执行。
@@ -421,6 +481,17 @@ export const api = {
       "/llm/models",
       { method: "POST", body: JSON.stringify(body) }
     ),
+  /** 连通性自检：真发一次最小请求，回答"我选的这个模型**真的能用**吗"。
+   *  与 llmModels 的分工：那个问"有哪些模型"，这个问"这个模型现在通不通"。 */
+  llmPing: (body: { model?: string; base_url?: string; api_key?: string } = {}) =>
+    req<{
+      ok: boolean;
+      model: string;
+      base_url: string;
+      latency_ms: number | null;
+      error: string | null;
+      note: string;
+    }>("/llm/ping", { method: "POST", body: JSON.stringify(body) }),
 };
 
 /** 症状多跳诊断响应（/api/agent/diagnose） */

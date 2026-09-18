@@ -1,90 +1,121 @@
 @import "tailwindcss";
 
-/* ===== TCMS × AI 设计 token（双主题：dark 默认 · light 覆盖）=====
-   html.theme-dark / 无标记 → 驾驶台夜视底；html.theme-light → 明亮驾驶舱。
-   语义色在亮/暗两套取值不同（保证对比度），用法不变：text-info / bg-ok/10 … */
+/* =============================================================================
+   TCMS × AI 设计系统（现代 SaaS 语言：Linear / Vercel 取向）
+
+   取向说明（为什么长这样）：
+   - **浅色是主场景**（现场投屏 / 长时间读表），深色是同构的第二主题，
+     不是"把浅色反相"：两套各自取值，保证对比度与层级都成立；
+   - **层级靠排版与 1px 边框，不靠投影**：投影只用于浮层（下拉/弹窗），
+     卡片一律 hairline 边框 + 极浅底色差 —— 数据密集界面里投影只会变脏；
+   - **一个强调色**（indigo），语义色（ok/warn/bad/vio）只在表示状态时出现，
+     不做装饰色；hover/active/focus 一律**提高**对比而不是降低；
+   - **动效克制且只动 transform/opacity**：100–300ms，统一缓动；
+     禁止 transition: all，遵守 prefers-reduced-motion。
+
+   兼容约定：**token 名与组件类名保持原样**（--bg/--ink/--info…、.panel/.btn/.input…），
+   只换取值与质感。这样 7 个既有页面无需逐页改写即可整体换语言，
+   新页面再用新增的刻度和类。
+   ============================================================================= */
 
 :root,
 html.theme-dark {
-  /* 夜视驾驶台底 */
-  --bg: #070b16;
-  --surface: #0d1424;
-  --surface-2: #131c33;
-  --surface-3: #1a2540;
-  --line: #233152;
-  --line-soft: #1a2540;
-  --input: #0a1120;
-  --ink: #e8eef9;
-  --ink-dim: #8ca0c0;
-  --ink-faint: #5d6f8f;
-  --on-info: #04121f;
-  --scrim: rgba(7, 11, 22, 0.55);
-  color-scheme: dark;
-  /* 信号语义色（暗底霓虹） */
-  --ok: #2dd4a0;
-  --warn: #f5b84c;
-  --bad: #f4645a;
-  --info: #4ca6ff;
-  --vio: #8b7cf6;
-  /* 图谱实体类型色（暗底霓虹） */
-  --kind-message: #4ca6ff;
-  --kind-signal: #8b7cf6;
+  /* —— 深色：近黑中性阶（不用纯黑，留出层次）—— */
+  --bg: #08090a;
+  --surface: #0e0f11;
+  --surface-2: #151719;
+  --surface-3: #1c1f22;
+  --line: #26292d;
+  --line-soft: #1a1d20;
+  --input: #101113;
+  --ink: #f2f3f5;
+  --ink-dim: #9ba1a9;
+  --ink-faint: #6c737c;
+  --on-info: #ffffff;
+  --scrim: rgba(8, 9, 10, 0.66);
+
+  /* 浮层投影（深色下靠描边 + 更深的投影，不靠发光） */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
+
+  /* 信号语义色（暗底提亮，保证在近黑上仍可读） */
+  --ok: #3ecf8e;
+  --warn: #f5b544;
+  --bad: #f87171;
+  --info: #8b93ff;
+  --vio: #b39dff;
+  --info-soft: rgba(139, 147, 255, 0.14);
+
+  /* 图谱实体类型色 */
+  --kind-message: #8b93ff;
+  --kind-signal: #b39dff;
   --kind-device: #f472b6;
-  --kind-fault: #f4645a;
-  --kind-scenario: #f5b84c;
-  --kind-requirement: #2dd4a0;
+  --kind-fault: #f87171;
+  --kind-scenario: #f5b544;
+  --kind-requirement: #3ecf8e;
   --kind-function: #22d3ee;
-  --kind-run: #8ca0c0;
+  --kind-run: #9ba1a9;
   --kind-mode: #f472b6;
   --kind-state: #f59e0b;
-  --kind-interlock: #f4645a;
-  --kind-threshold: #f5b84c;
-  --kind-mechanism: #a78bfa;
-  --kind-standard: #60a5fa;
+  --kind-interlock: #f87171;
+  --kind-threshold: #f5b544;
+  --kind-mechanism: #b39dff;
+  --kind-standard: #7cb0ff;
   --kind-hazard: #ef4444;
-  --kind-concept: #34d399;
-  --kind-system: #5f8fbf;
+  --kind-concept: #4ade80;
+  --kind-system: #7f97b3;
+
+  color-scheme: dark;
 }
 
 html.theme-light {
-  /* 明亮驾驶舱（冷灰纸白 + 深海军墨） */
-  --bg: #e9eef7;
+  /* —— 浅色：冷白纸面 + 中性墨（不是"反相"，是重新取值）—— */
+  --bg: #f7f8f9;
   --surface: #ffffff;
-  --surface-2: #eef3fb;
-  --surface-3: #e2eaf6;
-  --line: #c7d4e8;
-  --line-soft: #dce5f2;
-  --input: #f7fafd;
-  --ink: #0d1b30;
-  --ink-dim: #45566f;
-  --ink-faint: #7a8ba5;
+  --surface-2: #f4f5f7;
+  --surface-3: #eceef1;
+  --line: #e4e6ea;
+  --line-soft: #eef0f2;
+  --input: #ffffff;
+  --ink: #0f1115;
+  --ink-dim: #5b6472;
+  --ink-faint: #8b93a1;
   --on-info: #ffffff;
-  --scrim: rgba(233, 238, 247, 0.55);
-  color-scheme: light;
-  /* 信号语义色（亮底加深，保对比度） */
-  --ok: #0e9f6e;
-  --warn: #d97706;
+  --scrim: rgba(15, 17, 21, 0.35);
+
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.1), 0 2px 6px rgba(16, 24, 40, 0.06);
+  --shadow-lg: 0 16px 48px rgba(16, 24, 40, 0.14);
+
+  --ok: #0d9f6e;
+  --warn: #c2740a;
   --bad: #dc2626;
-  --info: #1d6fe0;
-  --vio: #6647e0;
-  /* 图谱实体类型色（亮底加深，保对比度） */
-  --kind-message: #1d6fe0;
-  --kind-signal: #6647e0;
+  --info: #4f46e5;
+  --vio: #7c3aed;
+  --info-soft: rgba(79, 70, 229, 0.1);
+
+  --kind-message: #4f46e5;
+  --kind-signal: #7c3aed;
   --kind-device: #c2418d;
   --kind-fault: #dc2626;
-  --kind-scenario: #d97706;
-  --kind-requirement: #0e9f6e;
+  --kind-scenario: #c2740a;
+  --kind-requirement: #0d9f6e;
   --kind-function: #0e7490;
   --kind-run: #64748b;
   --kind-mode: #c2418d;
   --kind-state: #c2541a;
   --kind-interlock: #dc2626;
-  --kind-threshold: #d97706;
+  --kind-threshold: #c2740a;
   --kind-mechanism: #7c3aed;
   --kind-standard: #2563a8;
   --kind-hazard: #b91c1c;
   --kind-concept: #15803d;
   --kind-system: #4a76a8;
+
+  color-scheme: light;
 }
 
 /* Tailwind 色板映射（inline：类名里的 /opacity 修饰符走 color-mix，可随变量联动） */
@@ -107,8 +138,16 @@ html.theme-light {
 }
 
 @theme {
-  --font-sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
+  /* 字体：中文优先回退链（拉丁字形好看但缺 CJK，回退必须显式写全） */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+
+  /* 圆角刻度：嵌套时 child ≤ parent（否则视觉上会"鼓包"） */
+  --radius-sm: 5px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
 }
 
 html,
@@ -122,70 +161,139 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.62; /* 中文正文比拉丁文需要更松的行高 */
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-/* ===== 基础组件类（Tailwind @apply 复用，避免重复长串）===== */
+/* ===== 组件层（Tailwind @apply 复用；类名与旧版一致，取值重做） ===== */
 @layer components {
   .panel {
-    @apply bg-surface border border-line rounded-xl;
+    @apply bg-surface border border-line rounded-[var(--radius-lg)];
+    box-shadow: var(--shadow-xs);
   }
   .panel-hover {
-    @apply hover:border-info/40 transition-colors;
+    @apply hover:border-ink-faint/35 transition-colors;
   }
+  /* 浮层（下拉/弹窗）：只有它们用中等投影，卡片不用 */
+  .panel-float {
+    @apply bg-surface border border-line rounded-[var(--radius-lg)];
+    box-shadow: var(--shadow-md);
+  }
+
   .btn {
-    @apply inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium
-      bg-info text-[color:var(--on-info)] hover:brightness-110 active:brightness-95
-      disabled:opacity-40 disabled:cursor-not-allowed transition-all select-none;
+    @apply inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-[7px]
+      text-[13px] font-medium bg-info text-[color:var(--on-info)]
+      hover:brightness-[1.08] active:brightness-95
+      disabled:cursor-not-allowed select-none;
+    transition: filter 0.15s var(--ease-out), transform 0.1s var(--ease-out);
+    box-shadow: var(--shadow-xs);
+  }
+  /* 禁用态用"中性化"而不是"整体降透明度"：
+     半透明的彩色按钮看起来像渲染坏了，读起来也费力；中性底 + 中性文字更清楚。
+     注意要盖住 .btn 的 color（白字），否则浅底白字等于看不见。 */
+  .btn:disabled {
+    background: var(--surface-3);
+    color: var(--ink-dim);
+    box-shadow: none;
   }
   .btn-ghost {
-    @apply inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium
-      bg-transparent text-ink-dim border border-line hover:text-ink hover:border-ink-dim/50
-      disabled:opacity-40 disabled:cursor-not-allowed transition-all select-none;
+    @apply inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-[7px]
+      text-[13px] font-medium bg-surface text-ink-dim border border-line
+      hover:text-ink hover:bg-surface-2 hover:border-ink-faint/40
+      disabled:opacity-40 disabled:cursor-not-allowed select-none;
+    transition: color 0.15s var(--ease-out), background-color 0.15s var(--ease-out),
+      border-color 0.15s var(--ease-out);
   }
   .btn-soft {
-    @apply inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium
-      bg-surface-3/70 text-ink-dim border border-transparent hover:text-ink hover:border-line
-      disabled:opacity-40 disabled:cursor-not-allowed transition-all select-none;
+    @apply inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1 text-xs font-medium
+      bg-surface-2 text-ink-dim border border-transparent
+      hover:text-ink hover:bg-surface-3
+      disabled:opacity-40 disabled:cursor-not-allowed select-none;
+    transition: color 0.15s var(--ease-out), background-color 0.15s var(--ease-out);
   }
   .btn-sm {
-    @apply px-2.5 py-1.5 text-xs;
+    @apply px-2.5 py-1 text-xs;
   }
+  /* 图标按钮（顶栏/工具条）：命中区 ≥ 28px，视觉 28 但可点区域更大 */
+  .btn-icon {
+    @apply inline-flex items-center justify-center h-7 w-7 rounded-[var(--radius-sm)]
+      text-ink-faint hover:text-ink hover:bg-surface-2 select-none;
+    transition: color 0.15s var(--ease-out), background-color 0.15s var(--ease-out);
+  }
+
   .input {
-    @apply bg-input border border-line rounded-lg px-3 py-2 text-sm text-ink
-      placeholder:text-ink-faint outline-none focus:border-info/60 focus:ring-1 focus:ring-info/30
-      transition-all w-full;
+    @apply bg-input border border-line rounded-[var(--radius-md)] px-3 py-[7px]
+      text-[13px] text-ink placeholder:text-ink-faint outline-none w-full;
+    transition: border-color 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
+  }
+  .input:focus {
+    border-color: color-mix(in oklab, var(--info) 55%, var(--line));
+    box-shadow: 0 0 0 3px var(--info-soft);
   }
   .select {
-    @apply bg-input border border-line rounded-lg px-3 py-2 text-sm text-ink
-      outline-none focus:border-info/60 transition-all;
+    @apply bg-input border border-line rounded-[var(--radius-md)] px-2.5 py-[6px]
+      text-[13px] text-ink outline-none;
+    transition: border-color 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
   }
+  .select:focus {
+    border-color: color-mix(in oklab, var(--info) 55%, var(--line));
+    box-shadow: 0 0 0 3px var(--info-soft);
+  }
+
+  /* 标签：小圆角矩形（不是胶囊）—— 数据表里胶囊会显得松散且占宽 */
   .tag {
-    @apply inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4 whitespace-nowrap;
+    @apply inline-flex items-center gap-1 rounded-[var(--radius-sm)] border px-1.5 py-[1px]
+      text-[11px] font-medium leading-[16px] whitespace-nowrap;
   }
+  .kbd {
+    @apply inline-flex items-center rounded-[4px] border border-line bg-surface-2 px-1.5
+      font-mono text-[11px] text-ink-dim;
+  }
+
   .th {
-    @apply text-left px-3 py-2 text-[11px] font-semibold text-ink-dim uppercase tracking-wide border-b border-line-soft;
+    @apply text-left px-3 py-1.5 text-[11px] font-semibold text-ink-faint
+      border-b border-line whitespace-nowrap;
+    letter-spacing: 0.02em;
   }
   .td {
-    @apply px-3 py-2 text-sm border-b border-line-soft/60 align-middle;
+    @apply px-3 py-1.5 text-[13px] border-b border-line-soft align-middle;
   }
   .tr-hover {
-    @apply hover:bg-surface-2/50 transition-colors;
+    @apply hover:bg-surface-2/70 transition-colors;
   }
   .kbd-mono {
     @apply font-mono text-[12px] text-ink-dim;
+    font-variant-ligatures: none;
   }
   .section-title {
-    @apply text-[13px] font-semibold text-ink-dim;
+    @apply text-[12px] font-semibold text-ink-dim;
+    letter-spacing: 0.01em;
   }
   .stat-num {
-    @apply text-[26px] font-bold tabular-nums tracking-tight;
+    @apply text-[26px] font-semibold tabular-nums;
+    letter-spacing: -0.02em; /* 大字号收紧字距（小字号不加） */
   }
   /* 图表内嵌深色块（如仪表曲线背景）：亮色下退为浅蓝灰，暗色下为输入底色 */
   .chart-bg {
     background: var(--input);
   }
+  /* 数据一律等宽对齐，避免刷新时数字跳动 */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  /* 细分隔线（区块内部分隔，比 border 更轻） */
+  .hairline {
+    @apply border-t border-line-soft;
+  }
+}
+
+/* ===== 动效基元（统一缓动；只动 transform/opacity） ===== */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* 表格容器：窄屏横向滚动不错位 */
@@ -196,25 +304,26 @@ body {
   @apply w-full border-collapse min-w-[560px];
 }
 
-/* 数字等宽（避免跳动） */
-.num {
-  font-variant-numeric: tabular-nums;
-}
-
-/* 滚动条跟随主题 */
+/* 滚动条跟随主题（细、低对比，不抢视线） */
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 *::-webkit-scrollbar-thumb {
-  background: var(--line);
-  border-radius: 4px;
+  background: color-mix(in oklab, var(--ink-faint) 35%, transparent);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--ink-faint) 60%, transparent);
+  background-clip: padding-box;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* 动作反馈动效（克制的） */
+/* 步骤入场：只做 3px 位移 + 透明度（不做缩放，缩放在表格里会抖） */
 @keyframes step-in {
   from {
     opacity: 0;
@@ -226,10 +335,10 @@ body {
   }
 }
 .step-in {
-  animation: step-in 0.25s ease-out both;
+  animation: step-in 0.22s var(--ease-out) both;
 }
 
-/* 引导弹窗：遮罩淡入 + 卡片上浮/轻弹（首次启动引导） */
+/* 引导弹窗：遮罩淡入 + 卡片上浮 */
 @keyframes modal-fade {
   from {
     opacity: 0;
@@ -262,13 +371,13 @@ body {
   }
 }
 .modal-overlay {
-  animation: modal-fade 0.22s ease-out both;
+  animation: modal-fade 0.22s var(--ease-out) both;
 }
 .modal-card {
-  animation: modal-pop 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: modal-pop 0.34s var(--ease-out) both;
 }
 .modal-card-in {
-  animation: modal-card-in 0.3s ease-out both;
+  animation: modal-card-in 0.3s var(--ease-out) both;
 }
 
 @keyframes pulse-dot {
@@ -284,10 +393,45 @@ body {
   animation: pulse-dot 1.1s ease-in-out infinite;
 }
 
-/* 键盘焦点可见（可访问性） */
+/* 顶栏渐变发丝线（区别于内容分隔线：更强一点，作为"窗口标题栏"的边界） */
+.topline {
+  position: relative;
+}
+.topline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in oklab, var(--line) 100%, transparent) 12%,
+    var(--line) 50%,
+    color-mix(in oklab, var(--line) 100%, transparent) 88%,
+    transparent
+  );
+}
+
+/* 原生表单控件跟随主题与强调色（不打磨的话复选框/下拉是最容易露怯的地方） */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--info);
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  cursor: pointer;
+}
+select {
+  cursor: pointer;
+}
+
+/* 键盘焦点可见（可访问性）：统一环，且只在键盘导航时出现 */
 :focus-visible {
-  outline: 2px solid var(--info);
+  outline: 2px solid color-mix(in oklab, var(--info) 70%, transparent);
   outline-offset: 1px;
+  border-radius: var(--radius-sm);
 }
 
 /* ===== FaultLab 演示动效（克制、语义化）===== */
@@ -363,22 +507,53 @@ body {
   height: 16px;
   border-radius: 50%;
   background: var(--info);
-  border: 2px solid var(--bg);
+  border: 2px solid var(--surface);
   cursor: pointer;
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--info) 25%, transparent);
+  box-shadow: 0 0 0 3px var(--info-soft);
 }
 .faultlab-range::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
   background: var(--info);
-  border: 2px solid var(--bg);
+  border: 2px solid var(--surface);
   cursor: pointer;
 }
 
 /* 主题切换按钮（App 顶栏） */
 .theme-toggle {
-  @apply inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium
-    bg-surface-2/70 border border-line text-ink-dim hover:text-ink hover:border-ink-dim/50 transition-all select-none cursor-pointer;
+  @apply inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5
+    text-xs font-medium bg-surface border border-line text-ink-dim
+    hover:text-ink hover:bg-surface-2 hover:border-ink-faint/40
+    select-none cursor-pointer;
+  transition: color 0.15s var(--ease-out), background-color 0.15s var(--ease-out),
+    border-color 0.15s var(--ease-out);
 }
 
+/* 骨架屏：镜像最终内容的形状（防 CLS），用极浅底色 + 缓动，不用闪烁 */
+@keyframes shimmer {
+  0% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+.skeleton {
+  @apply rounded-[var(--radius-sm)] bg-surface-3;
+  animation: shimmer 1.6s var(--ease-in-out) infinite;
+}
+
+/* ===== 无障碍：尊重"减少动态效果"（系统级偏好）===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

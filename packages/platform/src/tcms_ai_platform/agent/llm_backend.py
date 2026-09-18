@@ -29,6 +29,48 @@ TIMEOUT_S = 25
 MAX_RETRY = 1
 
 
+def _is_env_proxy_error(e: BaseException) -> bool:
+    """判断异常是否来自"环境代理配置本身不可用"。
+
+    真实案例（本机实测）：`NO_PROXY=localhost,127.0.0.1,::1,[::1]` 里的 `[::1]`
+    会让 httpx 在**建 URL 阶段**就抛 `InvalidURL: Invalid port: ':1]'`——
+    于是每一次请求都失败，上层诚实降级成"LLM 不可用"，
+    用户看到的是一次莫名其妙的规则臂运行（模型明明配了、key 也在）。
+    这不是本程序能修的环境问题，但**不该让它把功能整体废掉**。
+    """
+    if isinstance(e, httpx.InvalidURL):
+        return True
+    s = f"{type(e).__name__}: {e}"
+    return "InvalidURL" in s or "Invalid port" in s
+
+
+def _request(
+    method: str,
+    url: str,
+    *,
+    json: dict | None = None,
+    headers: dict | None = None,
+    timeout: float = TIMEOUT_S,
+) -> tuple[httpx.Response | None, str]:
+    """发一次 HTTP 请求；环境代理配置坏掉时**绕过代理重试一次**。
+
+    返回 `(response, note)`：`note` 非空表示"为了跑通做过什么"——
+    这种事必须能一路传到界面上（否则用户只会看到"LLM 不可用"，无从下手）。
+    `response` 为 None 表示彻底失败（异常已吞掉，由调用方如实降级）。
+    """
+    try:
+        return httpx.request(method, url, json=json, headers=headers, timeout=timeout), ""
+    except Exception as e:  # noqa: BLE001
+        if not _is_env_proxy_error(e):
+            return None, f"{type(e).__name__}: {e}"
+        note = f"环境代理配置不可用（{e}），已绕过代理重试"
+        try:
+            with httpx.Client(trust_env=False, timeout=timeout) as c:
+                return c.request(method, url, json=json, headers=headers), note
+        except Exception as e2:  # noqa: BLE001
+            return None, f"{note}；绕过代理后仍失败：{type(e2).__name__}: {e2}"
+
+
 def _api_key() -> str | None:
     """Key 解析优先级：环境变量 → 本地 settings(~/.tcms-ai-platform/settings.json,
     前端引导页写入) → DSH 凭据文件(~/.dsh/.credentials.yaml refs.ALIYUN_API_KEY)。
@@ -102,7 +144,9 @@ def fetch_models(
         raise RuntimeError("未配置 API key：无法拉取模型列表")
     url = base.rstrip("/") + "/models"
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    r = httpx.get(url, headers=headers, timeout=timeout)
+    r, note = _request("GET", url, headers=headers, timeout=timeout)
+    if r is None:
+        raise RuntimeError(f"模型列表请求失败：{note}")
     if r.status_code != 200:
         raise RuntimeError(f"模型列表请求失败 HTTP {r.status_code}: {r.text[:200]}")
     data = r.json()
@@ -144,6 +188,58 @@ def _sort_models(models: list[dict]) -> list[dict]:
     non_chat = [m for m in models if _is_embedding(m)]
     chat.sort(key=_is_reasoner, reverse=True)  # 稳定：推理类前移，组内保序
     return chat + non_chat
+
+
+def ping_model(
+    base_url: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+    timeout: float = TIMEOUT_S,
+) -> dict:
+    """连通性自检：真发一次最小对话请求，把**真实**结果回给调用方。
+
+    为什么要有它：`llm_available()` 只回答"有没有配 key"，不回答"这个模型真的能用吗"。
+    两者差别很大——本机就踩过：key 配了、模型名也写了，但环境代理配置坏掉，
+    每次请求在建 URL 阶段就失败，于是平台**一直静默走规则臂**，
+    而界面上仍显示"LLM 已配置"。用户没有任何办法发现这件事。
+
+    返回 {ok, model, base_url, latency_ms, error, note}：
+    - `error` 是**服务端原样的错误**（含 HTTP 状态与响应片段），不美化；
+    - `note` 说明"为了跑通做过什么"（例如绕过坏代理）。
+    """
+    base, mdl = resolve_llm_config(base_url, model)
+    key = api_key or _api_key()
+    if not key:
+        return {
+            "ok": False,
+            "model": mdl,
+            "base_url": base,
+            "latency_ms": None,
+            "error": "未配置 API key（环境变量 / 本机设置 / DSH 凭据文件都没有）",
+            "note": "",
+        }
+    url = base.rstrip("/") + "/chat/completions"
+    payload = {
+        "model": mdl,
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 8,
+    }
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    t0 = time.time()
+    r, note = _request("POST", url, json=payload, headers=headers, timeout=timeout)
+    ms = int((time.time() - t0) * 1000)
+    if r is None:
+        return {"ok": False, "model": mdl, "base_url": base, "latency_ms": ms, "error": note, "note": note}
+    if r.status_code != 200:
+        return {
+            "ok": False,
+            "model": mdl,
+            "base_url": base,
+            "latency_ms": ms,
+            "error": f"HTTP {r.status_code}: {r.text[:300]}",
+            "note": note,
+        }
+    return {"ok": True, "model": mdl, "base_url": base, "latency_ms": ms, "error": None, "note": note}
 
 
 def _embedding_model_id() -> str:
@@ -210,6 +306,10 @@ class LLMAgentBackend(AgentBackend):
         self.model = model or os.environ.get("LLM_MODEL") or _s_model or DEFAULT_MODEL
         self.fallback = fallback or MockAgentBackend()
         self.used_llm = False  # 本次是否真的用了 LLM（供 trace/自证）
+        #: 最近一次请求的"环境说明"（如：绕过坏代理）。空串表示一切正常。
+        #: 它会被拼进决策策略里，因此会出现在白盒轨迹与界面上——
+        #: 用户不该为了搞清"为什么走了规则臂"去翻服务端日志。
+        self.last_note = ""
 
     # ---- 工具 ----
 
@@ -230,15 +330,18 @@ class LLMAgentBackend(AgentBackend):
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         last_err: Exception | None = None
         for _ in range(MAX_RETRY + 1):
-            try:
-                r = httpx.post(url, json=payload, headers=headers, timeout=TIMEOUT_S)
-                if r.status_code == 200:
-                    data = r.json()
-                    return data["choices"][0]["message"]["content"]
-                last_err = RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
-            except Exception as e:  # noqa: BLE001
-                last_err = e
-                time.sleep(0.5)
+            r, note = _request("POST", url, json=payload, headers=headers)
+            if note:
+                self.last_note = note  # 一路传到轨迹/界面上，别让用户猜
+                print(f"[llm-backend] {note}")
+            if r is None:
+                last_err = RuntimeError(note)
+                continue
+            if r.status_code == 200:
+                data = r.json()
+                return data["choices"][0]["message"]["content"]
+            last_err = RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
+            time.sleep(0.5)
         if last_err:
             print(f"[llm-backend] chat failed, fallback to mock: {last_err}")
         return None
@@ -274,27 +377,33 @@ class LLMAgentBackend(AgentBackend):
             "max_tokens": 900,
         }
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-        try:
-            r = httpx.post(url, json=payload, headers=headers, timeout=TIMEOUT_S)
-            if r.status_code != 200:
-                print(f"[llm-backend] chat_tools HTTP {r.status_code}: {r.text[:200]}")
-                return None, []
-            msg = r.json()["choices"][0]["message"] or {}
-            content = msg.get("content")
-            calls: list[dict] = []
-            for tc in msg.get("tool_calls") or []:
-                fn = tc.get("function") or {}
-                calls.append(
-                    {
-                        "id": tc.get("id") or "",
-                        "name": fn.get("name") or "",
-                        "arguments": fn.get("arguments") or "{}",
-                    }
-                )
-            return (str(content) if content is not None else None), calls
-        except Exception as e:  # noqa: BLE001 - 失败=诚实降级（上层落规则）
-            print(f"[llm-backend] chat_tools failed: {e}")
+        r, note = _request("POST", url, json=payload, headers=headers)
+        if note:
+            self.last_note = note
+            print(f"[llm-backend] {note}")
+        if r is None or r.status_code != 200:
+            print(
+                f"[llm-backend] chat_tools "
+                f"{'请求失败' if r is None else f'HTTP {r.status_code}'}: {note or (r.text[:200] if r else '')}"
+            )
             return None, []
+        try:
+            msg = r.json()["choices"][0]["message"] or {}
+        except Exception as e:  # noqa: BLE001 - 非 JSON 响应=诚实降级
+            print(f"[llm-backend] chat_tools 响应解析失败: {e}")
+            return None, []
+        content = msg.get("content")
+        calls: list[dict] = []
+        for tc in msg.get("tool_calls") or []:
+            fn = tc.get("function") or {}
+            calls.append(
+                {
+                    "id": tc.get("id") or "",
+                    "name": fn.get("name") or "",
+                    "arguments": fn.get("arguments") or "{}",
+                }
+            )
+        return (str(content) if content is not None else None), calls
 
     @staticmethod
     def _parse_scenario_choice(text: str, scenarios: list[dict]) -> str | None:
@@ -370,10 +479,11 @@ class LLMAgentBackend(AgentBackend):
             strategy = obj.get("strategy", "LLM 决策")
         except Exception:  # noqa: BLE001
             pass
+        suffix = f"（{self.last_note}）" if self.last_note else ""
         return Plan(
             task_id=task.task_id,
             fault=task.target_fault,
             expected_action=task.expected_action,
             chosen_scenario=chosen,
-            strategy=f"[LLM {self.model}] {strategy}",
+            strategy=f"[LLM {self.model}] {strategy}{suffix}",
         )

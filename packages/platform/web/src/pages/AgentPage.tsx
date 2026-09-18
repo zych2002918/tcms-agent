@@ -3,13 +3,17 @@ import { Link } from "react-router-dom";
 import {
   api,
   streamAgentRun,
+  streamAgentFree,
   type AgentRunResp,
   type AgentComposeResp,
   type AgentFreeResp,
+  type AgentLlmIdentity,
   type AgentStreamTraceEntry,
 } from "../api";
 import { Panel, Tag, EmptyState, SkeletonRows } from "../components/ui";
 import { LiveWhiteBox } from "../components/LiveWhiteBox";
+import { ModelPicker } from "../components/ModelPicker";
+import { type ModelChoice, choiceToParams, loadModelChoice, saveModelChoice } from "../lib/modelChoice";
 
 type AgentRun = AgentRunResp["runs"][number];
 
@@ -206,6 +210,15 @@ export function AgentPage() {
   //: 自由目标/组合/诊断三条路径走的是普通 POST，不开流，不能借用白盒的措辞。
   const [liveActive, setLiveActive] = useState(false);
   const [liveErr, setLiveErr] = useState("");
+  //: 本次运行用哪个模型（跟随设置 / 手动指定）。只作用于本次，**不写回设置**——
+  //: "试一个模型"不该悄悄改掉用户的默认配置。
+  const [modelChoice, setModelChoice] = useState<ModelChoice>(() => loadModelChoice());
+  //: 后端回填的"谁在决策"（模型 / 后端）。前端不猜、不美化。
+  const [llmIdent, setLlmIdent] = useState<AgentLlmIdentity | null>(null);
+  //: 本次白盒对应的目标（用来对照"我让它干什么"与"它实际干了什么"）
+  const [liveGoal, setLiveGoal] = useState("");
+  //: 设置里的默认模型（把"跟随设置"显示成人话）
+  const [defaultModel, setDefaultModel] = useState("");
   const streamAbort = useRef<AbortController | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   /** 场景文件名 → 中文名（“场景名=简短释义”展示用；拿不到就回落文件主干） */
@@ -214,6 +227,7 @@ export function AgentPage() {
   useEffect(() => {
     api.agentTasks().then((t) => { setTasks(t); if (t.length) setSel(t[0].task_id); }).catch(() => undefined);
     api.systemStatus().then(setSys).catch(() => undefined);
+    api.settingsGet().then((s) => setDefaultModel(s.llm?.model || "")).catch(() => undefined);
     api.scenarios()
       .then((list) => setScenName(Object.fromEntries(list.map((s) => [s.file, s.name]))))
       .catch(() => undefined);
@@ -259,6 +273,13 @@ export function AgentPage() {
     setLive([]);
     setLiveErr("");
     setLiveActive(false);
+    setLlmIdent(null);
+  };
+
+  /** 换模型 → 只记在浏览器本地，并**只作用于本次运行**（不下发到设置） */
+  const handleModelChange = (c: ModelChoice) => {
+    setModelChoice(c);
+    saveModelChoice(c);
   };
 
   const run = async (taskId?: string) => {
@@ -270,6 +291,7 @@ export function AgentPage() {
       return;
     }
     begin();
+    setLiveGoal(tasks.find((t) => t.task_id === id)?.title ?? id);
 
     // 走**实时白盒流**：每来一条真实轨迹就渲染一条，运行期间就能看见
     // Agent 查了什么、在哪些候选里选了什么、真实执行注入了哪些故障。
@@ -282,7 +304,9 @@ export function AgentPage() {
     streamAgentRun(
       id,
       (ev) => {
-        if (ev.type === "trace") {
+        if (ev.type === "start") {
+          setLlmIdent(ev.llm ?? null);
+        } else if (ev.type === "trace") {
           setLive((prev) => [...prev, ev.entry]);
         } else if (ev.type === "result") {
           gotResult = true;
@@ -297,38 +321,53 @@ export function AgentPage() {
         }
       },
       ac.signal,
+      choiceToParams(modelChoice),
     );
   };
 
-  const runFreeGoal = async (g: string) => {
+  const runFreeGoal = (g: string) => {
     const goalText = (g ?? "").trim();
     if (!goalText || phase === "running") return;
-    setGoal(goalText); // 同步输入框，方便用户看到“去查证”的是哪句
+    setGoal(goalText); // 同步输入框，方便用户看到"去查证"的是哪句
     if (sys && !sys.engine.ok) {
       setErr("engine_missing");
       return;
     }
     begin();
-    try {
-      // 契约：命中 → 200 恒带 parsed；规则未命中 → 200 no_match + suggested_faults（RAG 候选）
-      const r = await api.agentFree(goalText);
-      setFreeResp(r);
-      if (r.no_match) {
-        setGoalHint(r.detail ?? "");
-      } else {
-        scheduleReveal(r.runs);
-      }
-      setPhase("done");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // 后端意外 422/400（异常路径）→ 中文空态引导；其余 → 错误条
-      if (/^422:|^400:/.test(msg)) {
-        setGoalHint(msg.replace(/^4\d\d:\s*/, ""));
-      } else {
-        setErr(msg);
-      }
-      setPhase("done");
-    }
+    setLiveGoal(goalText);
+
+    // 自由目标同样走白盒流：解析（规则 / LLM 仲裁）与真实执行**同一条时间轴**。
+    // 这是用户天天用的入口——它以前是普通 POST，界面上只有"请求处理中…"，
+    // 也就是"系统白盒了，用户看到的还是等待动画"的出处。
+    streamAbort.current?.abort();
+    const ac = new AbortController();
+    streamAbort.current = ac;
+    setLiveActive(true);
+    let gotResult = false;
+    streamAgentFree(
+      goalText,
+      (ev) => {
+        if (ev.type === "start") {
+          setLlmIdent(ev.llm ?? null);
+        } else if (ev.type === "trace") {
+          setLive((prev) => [...prev, ev.entry]);
+        } else if (ev.type === "result") {
+          gotResult = true;
+          const rep = ev.report as unknown as AgentFreeResp;
+          setFreeResp(rep);
+          // 未锚定不是错误：它同样是一条**结果**，由下面的候选面板接手引导
+          if (rep.no_match) setGoalHint(rep.detail ?? "");
+          else scheduleReveal(rep.runs ?? []);
+          setPhase("done");
+        } else if (ev.type === "error") {
+          setLiveErr(ev.error);
+        } else if (ev.type === "end") {
+          if (!gotResult) setPhase("done");
+        }
+      },
+      ac.signal,
+      choiceToParams(modelChoice),
+    );
   };
 
   const runFree = () => runFreeGoal(goal);
@@ -411,39 +450,73 @@ export function AgentPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1720px] space-y-4">
-      {/* 自由目标（像 DSH 一样：给 Agent 一句话，它先理解再查证） */}
-      <Panel title="用大白话，直接给 Agent 一个目标" bodyClass="p-3">
+    // 两栏工作台：左边下命令（目标 / 模型 / 任务），右边是舞台（白盒 / 结论 / 证据）。
+    // 为什么不是一长条卡片堆：用户的心智是"我下命令 → 它干活给我看"，
+    // 一列排下来会让"输入"和"它到底干了什么"离得很远，白盒也就被淹没了。
+    <div className="mx-auto grid w-full max-w-[1720px] gap-4 lg:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] xl:grid-cols-[minmax(400px,460px)_minmax(0,1fr)] lg:items-start">
+      <div className="space-y-4 min-w-0">
+      {/* 自由目标（像 DSH 一样：给 Agent 一句话，它先理解再查证）。
+          按下按钮那一刻，白盒就开始 —— 解析、检索、决策、真执行都摊在下面。 */}
+      <Panel
+        title="用大白话给一个目标"
+        right={
+          <span className="text-[11px] text-ink-faint hidden xl:inline whitespace-nowrap">
+            先说清"理解成了什么"，再查证
+          </span>
+        }
+        bodyClass="p-3"
+      >
         <textarea
           className="input resize-none"
           rows={2}
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
-          placeholder="用大白话描述你想验证的：如「车门故障了还能发车吗？」「超速后系统该怎么办」「验证紧急制动失败必须停车」"
+          onKeyDown={(e) => {
+            // Ctrl/⌘+Enter 直接跑：少一次鼠标往返
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void runFree();
+          }}
+          placeholder="一句话描述你想验证的，如「车门故障了还能发车吗？」（Ctrl/⌘+Enter 直接跑）"
           aria-label="自由目标输入"
           disabled={phase === "running"}
         />
         <div className="mt-2 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center flex-wrap">
           <button
-            className="btn justify-center sm:w-auto"
+            className="btn justify-center flex-1 whitespace-nowrap"
             onClick={() => void runFree()}
             disabled={phase === "running" || !goal.trim() || engineBlocked}
-            title={engineBlocked ? "需先启用 TCMS 引擎" : "让 Agent 先去理解你的目标，再检索证据、真实执行"}
+            title={engineBlocked ? "需先启用 TCMS 引擎" : "让 Agent 先去理解你的目标，再检索证据、真实执行（Ctrl/⌘+Enter）"}
           >
             {phase === "running" ? "执行中…" : "✦ 让 Agent 去查证"}
           </button>
           <button
-            className="btn-ghost justify-center sm:w-auto"
+            className="btn-ghost justify-center whitespace-nowrap"
             onClick={() => void runCompose()}
             disabled={composing || !goal.trim() || engineBlocked}
             title={engineBlocked ? "需先启用 TCMS 引擎" : "让 Agent 把这句话理解成「多个故障的组合场景」并真实执行"}
           >
-            {composing ? "组合中…" : "⧉ 组合成场景并执行"}
+            {composing ? "组合中…" : "⧉ 组合"}
           </button>
-          <span className="text-[11px] text-ink-faint leading-4">
-            查证 = 单故障验证；组合 = 一句话编排多故障时序（如「先车门故障再叠加超速最后恢复」）→ 原子资产组合 → 真实执行。
-          </span>
         </div>
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] text-ink-faint whitespace-nowrap">本次运行使用</span>
+          <ModelPicker
+            value={modelChoice}
+            onChange={handleModelChange}
+            followLabel={defaultModel || "设置里的默认模型"}
+            keyConfigured={!!sys?.llm_key}
+            disabled={phase === "running"}
+          />
+        </div>
+        <details className="mt-1.5 group">
+          <summary className="text-[11px] text-ink-faint cursor-pointer select-none hover:text-ink-dim">
+            查证 与 组合 有什么区别？换模型会影响什么？
+          </summary>
+          <div className="mt-1 text-[11px] text-ink-faint leading-5">
+            查证 = 单故障验证；组合 = 一句话编排多故障时序（如「先车门故障再叠加超速最后恢复」）→
+            原子资产组合 → 真实执行。换模型只作用于<b className="text-ink-dim font-medium">这一次</b>运行，
+            不改设置里的默认值；报告里会如实标注本次实际使用的模型。
+          </div>
+        </details>
       </Panel>
 
       {/* 症状/无码故障多跳诊断（不走引擎执行：检索症状资产 → 图谱因果链 → 建议；诚实标注） */}
@@ -617,11 +690,11 @@ export function AgentPage() {
               </option>
             ))}
           </select>
-          <button className="btn justify-center" onClick={() => run()} disabled={phase === "running" || !sel || engineBlocked} title={engineBlocked ? "需先启用 TCMS 引擎" : undefined}>
-            {phase === "running" ? "执行中…" : "▶ 执行此任务"}
+          <button className="btn justify-center whitespace-nowrap flex-1" onClick={() => run()} disabled={phase === "running" || !sel || engineBlocked} title={engineBlocked ? "需先启用 TCMS 引擎" : "在真实引擎上执行这个任务"}>
+            {phase === "running" ? "执行中…" : "▶ 执行"}
           </button>
-          <button className="btn-ghost justify-center" onClick={() => run(tasks[0]?.task_id)} disabled={phase === "running" || tasks.length === 0 || engineBlocked}>
-            运行全部
+          <button className="btn-ghost justify-center whitespace-nowrap" onClick={() => run(tasks[0]?.task_id)} disabled={phase === "running" || tasks.length === 0 || engineBlocked} title="依次跑全部内置任务">
+            全部
           </button>
         </div>
         {current && (
@@ -635,7 +708,10 @@ export function AgentPage() {
           也可以直接在上方输入你自己的目标，Agent 会先理解再查证——两者走的是同一条执行流水线。
         </div>
       </Panel>
+      </div>
 
+      {/* 右栏：舞台。Agent 在这里干活，也在这里自证（白盒 / 结论 / 证据链）。 */}
+      <div className="space-y-4 min-w-0">
       {/* 引擎缺失引导 */}
       {sys && !sys.engine.ok && (
         <div className="panel border-warn/30 bg-warn/5 p-4">
@@ -664,34 +740,29 @@ export function AgentPage() {
         <div className="panel border-bad/30 bg-bad/5 px-4 py-2.5 text-sm text-bad">⚠ {err}</div>
       )}
 
-      {/* 运行中 / 运行完毕：**实时白盒**（真实步骤流，可展开核对载荷）。
-          仅在流**真的**开着或已有真实轨迹时渲染 —— 自由目标/组合/诊断走普通 POST，
-          不借用白盒的措辞（那会变成另一种假状态）。 */}
-      {(liveActive || live.length > 0) && !freeResp && !composeResp && !goalHint && (
-        <LiveWhiteBox entries={live} running={phase === "running"} error={liveErr} />
-      )}
+      {/* 实时白盒：**运行期间的主视觉**（这也是用户唯一能看见"它到底在干什么"的地方）。
+          运行中一定显示；跑完且结果面板已接手时收起，避免同一份轨迹显示两遍；
+          未锚定（no_match）没有结果面板，白盒继续留着——它正是"我试了什么"的证据。 */}
+      {(liveActive || live.length > 0) &&
+        (phase === "running" || (!result && !freeResp?.runs?.length && !composeResp)) && (
+          <LiveWhiteBox
+            entries={live}
+            running={phase === "running"}
+            error={liveErr}
+            llm={llmIdent}
+            goalText={liveGoal}
+          />
+        )}
 
-      {/* 白盒流刚建立、还没有第一条真实步骤：如实说"在等"，不编造进行到哪一步 */}
-      {liveActive && phase === "running" && live.length === 0 && !liveErr && (
-        <div className="panel px-4 py-3 flex items-center gap-3 step-in">
-          <span className="flex h-2.5 w-2.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-info pulse-dot" />
-          </span>
-          <div className="text-xs text-ink-faint">
-            已连上白盒流，等待后端第一条真实步骤…（不显示编造的进度）
-          </div>
-        </div>
-      )}
-
-      {/* 其余路径（自由目标 / 组合 / 诊断）走普通 POST，没有逐步轨迹可看：
-          给一个**不声称内部步骤**的等待提示。 */}
+      {/* 组合 / 诊断这两条路径内部是确定性规则计算，目前不提供逐步轨迹：
+          如实说明，不借用白盒的措辞（那会变成另一种假状态）。 */}
       {phase === "running" && !liveActive && !result && !freeResp && !composeResp && !goalHint && !diagBusy && (
         <div className="panel px-4 py-3 flex items-center gap-3 step-in">
           <span className="flex h-2.5 w-2.5">
             <span className="h-2.5 w-2.5 rounded-full bg-info pulse-dot" />
           </span>
           <div className="text-xs text-ink-faint">
-            请求处理中…（这条路径不提供逐步轨迹，完成后一次性给出结果）
+            请求处理中…（这条路径是确定性规则计算，不提供逐步轨迹，完成后一次性给出结果）
           </div>
           <div className="ml-auto w-40">
             <SkeletonRows rows={1} cols={2} />
@@ -710,7 +781,7 @@ export function AgentPage() {
                 ? freeResp.situation
                   ? " —— 但可以顺着现象反查出这些真实故障，点选即可让 Agent 去查证："
                   : " —— 但 AI 检索到了几个可能相关的真实故障，点选即可让 Agent 去查证："
-                : " —— 注意「期望词」要**和故障对象一起**说才有效：只写「不能发车」这类现象词系统锚不到故障；写成「车门故障 不能发车」即可。"
+                : " —— 注意「期望词」要和故障对象一起说才有效：只写「不能发车」这类现象词系统锚不到故障；写成「车门故障 不能发车」即可。"
             }`}
           />
           {/* 现象反查的来由：让用户明白为什么这些候选与他说的现象有关 */}
@@ -1131,14 +1202,92 @@ export function AgentPage() {
       )}
 
       {phase === "idle" && !(sys && !sys.engine.ok) && (
-        <Panel>
-          <EmptyState
-            icon="✦"
-            title="Agent 会像测试工程师一样完成任务"
-            desc="选一个任务（如「验证紧急制动执行失败必须触发 emergency_brake」），或直接在上方输入你自己的目标。它会先理解成故障+期望处置，再检索知识、选场景、真实执行，并把每一步做了什么实时列出来。"
-          />
-        </Panel>
+        <section className="panel px-5 py-5">
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line bg-surface-2 text-[15px] text-ink-faint">
+              ◎
+            </span>
+            <div className="min-w-0">
+              <div className="text-[14px] font-semibold text-ink">工作台就绪 · 白盒待命</div>
+              <div className="text-[12px] text-ink-faint">
+                在左边给一句话或选个任务；这里会实时显示它<b className="text-ink-dim font-medium">真实</b>做了什么
+              </div>
+            </div>
+          </div>
+
+          <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+            {[
+              ["⌖", "目标解析", "这句话锚定到哪个真实故障、置信度多少、依据是什么"],
+              ["⌕", "知识底座检索", "真实查询串 + 逐条命中（文档号 / 分数 / 通道 / 出处）"],
+              ["▶", "真实执行", "在 tcms 引擎上跑，摊开该场景实际注入了哪些故障"],
+              ["✓", "断言核对", "expect → actual 逐条给你看，通过与否不含糊"],
+            ].map(([icon, title, desc]) => (
+              <li
+                key={title}
+                className="flex items-start gap-2.5 rounded-[var(--radius-md)] border border-line-soft bg-surface-2/50 px-3 py-2.5"
+              >
+                <span className="text-ink-faint text-[13px] shrink-0 mt-0.5">{icon}</span>
+                <div className="min-w-0">
+                  <div className="text-[12.5px] text-ink">{title}</div>
+                  <div className="text-[11px] text-ink-faint leading-4 mt-0.5">{desc}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-4 pt-3.5 border-t border-line-soft">
+            <div className="text-[11px] text-ink-faint mb-2">
+              试试这些（点一下填进左边输入框，再按「让 Agent 去查证」）
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                "车门故障了还能发车吗",
+                "超速后系统该怎么办",
+                "验证紧急制动失败必须停车",
+                "仪表盘闪烁但无故障码",
+              ].map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  className="btn-soft"
+                  onClick={() => {
+                    setGoal(ex);
+                    setDiagQ(ex);
+                  }}
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3.5 border-t border-line-soft grid gap-2 sm:grid-cols-3 text-[11px]">
+            <div>
+              <div className="text-ink-faint">TCMS 引擎</div>
+              <div className="text-ink-dim mt-0.5">
+                {sys?.engine.ok ? `v${sys.engine.version ?? "?"} · 就绪` : "未启用"}
+              </div>
+            </div>
+            <div>
+              <div className="text-ink-faint">本次决策后端</div>
+              <div className="text-ink-dim mt-0.5 truncate">
+                {sys?.llm_key
+                  ? modelChoice.mode === "pick"
+                    ? `${modelChoice.id}（本次指定）`
+                    : defaultModel || "设置里的默认模型"
+                  : "离线规则臂（未配 key）"}
+              </div>
+            </div>
+            <div>
+              <div className="text-ink-faint">内置任务</div>
+              <div className="text-ink-dim mt-0.5 truncate">
+                {tasks.length ? `${tasks.length} 个可执行任务` : "加载中…"}
+              </div>
+            </div>
+          </div>
+        </section>
       )}
+    </div>
     </div>
   );
 }
