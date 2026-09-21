@@ -38,6 +38,12 @@ node_modules/
 # 它们由打包脚本在生成「新电脑点击即用」压缩包时放入，见 scripts/build_release.py
 _offline/
 
+# ---- 本地归档（过期压缩包等）----
+# 工作区纪律：清理先归档、不直接删；但归档物不该进 git（旧发布包 20+ MB，留着只会误用）。
+# 命名约定 _archive_<日期>/，本次把界面已过期的 tcms-agent-v0.1.0-20260917.zip
+# 归档为 _archive_20260920/….zip.stale
+_archive_*/
+
 # ---- 编辑器 / 系统 ----
 .vscode/
 .idea/
