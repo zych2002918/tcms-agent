@@ -43,6 +43,8 @@ upstream = ["tcms-can-test"]
 [project.scripts]
 tcms-platform = "tcms_ai_platform.server.app:main"
 tcms-platform-doctor = "tcms_ai_platform.cli:doctor"
+tcms-mcp = "tcms_ai_platform.agent.mcp_server:main"
+tcms-mcp-http = "tcms_ai_platform.agent.mcp_server:http_main"
 
 [tool.uv.sources]
 tcms-can-test = { workspace = true }

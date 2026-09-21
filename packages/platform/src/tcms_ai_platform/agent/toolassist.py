@@ -203,14 +203,18 @@ def _run_tool(name: str, args: dict, m, g, hr) -> dict:
         }
     if name == "list_scenarios":
         fault_key = str(args.get("fault_key") or "").strip() or None
-        out = []
-        for s in m.scenarios.values():
-            if fault_key and fault_key not in s.fault_keys:
-                continue
-            out.append({"file": s.file, "name": s.name})
-            if len(out) >= 40:
-                break
-        return {"fault_key": fault_key, "scenarios": out, "count": len(out)}
+        matching = [s for s in m.scenarios.values() if not fault_key or fault_key in s.fault_keys]
+        limit = 40
+        out = [{"file": s.file, "name": s.name} for s in matching[:limit]]
+        # 绝不静默截断：截断时必须自曝 total/truncated，并给出下一页游标
+        return {
+            "fault_key": fault_key,
+            "scenarios": out,
+            "count": len(out),
+            "total": len(matching),
+            "truncated": len(matching) > len(out),
+            "next_cursor": str(len(out)) if len(matching) > len(out) else None,
+        }
     return {"error": f"未注册工具: {name}"}
 
 

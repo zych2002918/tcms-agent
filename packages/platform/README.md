@@ -79,7 +79,8 @@ Agent(Harness · 8 类真实任务 / 自由目标 / 症状多跳诊断)
   ```bash
   python -m tcms_ai_platform.agent.mcp_server
   ```
-  （暴露 5+1 工具：检索/资产枚举/症状诊断/节点/场景；`run_scenario` 需引擎接线，否则返回诚实错误）
+  （暴露 **6 个工具**：检索 / 资产枚举 / 症状诊断 / 节点 / 场景列表 ＋ `run_scenario`（**R2 真实执行，默认已接引擎**）；安装后可用 `tcms-mcp` 启动）
+  差距与后续分片（resources/prompts、HTTP、协商）见 [`docs/MCP_HARDENING.md`](docs/MCP_HARDENING.md)。
 
 ### 🎬 FaultLab 故障动画 & 🎛️ 场景编排
 - 真实场景逐帧播放：故障注入→检测→处置→恢复，每事件可溯源到 场景/故障字典/引擎断言/示意模型 四级来源；
@@ -166,6 +167,7 @@ tcms-ai-platform/
 ### 📚 文档索引
 | 文档 | 内容 |
 |---|---|
+| `docs/MCP_HARDENING.md` | **MCP 补强工单**：取证式差距清单 + 4 个分片（Slice 1 已完工：run_scenario 接真实引擎） |
 | `docs/HARDENING_BACKLOG.md` | 拷问视角补强工单（11/11 完成 + 记录） |
 | `docs/TECH_DEPTH_AUDIT.md` | **Agent 技术参与深度逐词自白**（长对话/记忆/工具/MCP/RAG/图谱/评测…）—— 面试/复盘用 |
 | `docs/P0-1_TERMINOLOGY_AUDIT.md` | 术语口径审计（措辞不超卖） |

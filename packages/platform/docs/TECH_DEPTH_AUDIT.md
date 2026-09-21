@@ -50,7 +50,7 @@
 | 8 类内置任务 + FaultLab 场景库 + advisor 建议 | 等于把"能做什么"显式声明并锚定真实故障，漂移即失败 |
 | 症状诊断 / KB 检索 / 场景执行 | 全部是 HTTP 端点 = 现成的"工具面" |
 | ✅ **受约束 function-calling（P1-a，2026-09 已实现）** | `agent/toolassist.py`：kb_search / symptom_diagnose / kb_node / list_scenarios 四个**只读真实工具**，OpenAI 兼容 tools+tool_calls，≤3 轮循环；参数经 JSON 校验、未开放工具一律拦截、执行失败诚实回填、回复自证 used_tools；`POST /api/agent/toolassist`；6 条测试（假 LLM 编排/拦截/坏参/无 key 降级/纯工具真数据/HTTP 契约）。**无 key/失败 → llm_generated=false 确定性引导，绝不假装调用过工具** |
-| 缺 | MCP 暴露（P1-b 进行中）；真正"自主执行"（run_scenario 级写工具）仍由 harness 守门（设计如此：执行不改由 LLM 直接触发） |
+| 缺 | MCP 暴露（P1-b 已落地：6 工具 / stdio；Slice 1 已把 run_scenario 接真实引擎）；真正"自主执行"（run_scenario 级写工具）仍由 harness 守门（设计如此：执行不改由 LLM 直接触发） |
 
 ## 5. MCP —— ✅ 已落地（P1-b，2026-09，零第三方依赖）
 - `agent/mcp_server.py`：stdio JSON-RPC 最小实现（initialize / notifications/initialized / ping /
