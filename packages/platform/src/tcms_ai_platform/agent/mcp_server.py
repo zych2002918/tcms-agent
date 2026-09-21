@@ -16,9 +16,16 @@ Desktop / 自定义 harness）都能指挥它查证 TCMS 知识、**真实执行
   `notifications/progress`。
 - **取消**：收到 `notifications/cancelled` 后，该请求不再回包（规范：MUST NOT respond）；
   ⚠️ 诚实边界——引擎执行本身不可中断，取消只对**尚未开始**的请求生效（见 docs）。
-- **传输**：stdio（逐行 JSON-RPC）+ **最小 Streamable HTTP**（POST 一个 JSON-RPC 消息，
-  返回一个 JSON 响应；可选 Bearer token）。⚠️ 未实现 SSE 流式与会话恢复。
-- 仍未实现：`elicitation`（服务端向用户索取信息）、`Tasks` 扩展、`subscribe`。
+- **传输**：stdio（逐行 JSON-RPC）+ **Streamable HTTP**：`POST /mcp` 返回 JSON，
+  或带 `Accept: text/event-stream` 时返回 **SSE 流**（进度等通知逐帧先行、响应帧收尾）；
+  `initialize` 下发 **`Mcp-Session-Id`**（后续请求带上，未知会话 404，`DELETE /mcp` 终止）；
+  可选 `Authorization: Bearer <token>`。⚠️ 未做 OAuth 与断线重放（单机自托管定位）。
+- **资源订阅**：`resources/subscribe` / `resources/unsubscribe`；底层文件 mtime 变化时发
+  `notifications/resources/updated`（stdio/HTTP 模式下由守护线程驱动，纯函数 `watch_tick` 可单测）。
+- **elicitation（人工审批）**：`run_scenario` 带 `require_approval=true` 时，服务端用
+  `elicitation/create` **反向请求客户端**由人类批准；未声明能力的客户端/不支持的传输 → 明确报错，
+  用户拒绝 → **绝不执行**（与 ADR-007「审批放独立节点」同源）。
+- 仍未实现：`Tasks` 扩展（异步长任务）—— 见 `docs/MCP_HARDENING.md` Slice 4。
 - 不引入第三方库；stdio 消息 = 每行一个 JSON（UTF-8，写后 flush）。
 
 运行：python -m tcms_ai_platform.agent.mcp_server            # stdio（或 `tcms-mcp`）
@@ -30,6 +37,7 @@ from __future__ import annotations
 
 import json
 import sys
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -63,7 +71,14 @@ RUN_SCENARIO_SCHEMA = {
     ),
     "inputSchema": {
         "type": "object",
-        "properties": {"scenario_file": {"type": "string", "description": "场景文件名，如 overspeed_derate.yaml（先 list_scenarios 确认存在）"}},
+        "properties": {
+            "scenario_file": {"type": "string", "description": "场景文件名，如 overspeed_derate.yaml（先 list_scenarios 确认存在）"},
+            "require_approval": {
+                "type": "boolean",
+                "description": "true=执行前先用 MCP elicitation 向人类请求批准（有副作用的真实执行建议开启）；"
+                "客户端未声明 elicitation 能力或传输不支持时不会假装问过，而是明确报错。",
+            },
+        },
         "required": ["scenario_file"],
     },
     "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
@@ -165,7 +180,7 @@ def build_context(upstream: str | Path | None = None, with_runner: bool = True, 
     runner = make_runner(m, scenario_dir) if with_runner else None
     return SimpleNamespace(
         m=m, g=g, hr=HybridRetriever(vs, g), runner=runner, scenario_dir=scenario_dir,
-        notify=notify, cancelled=set(),
+        notify=notify, cancelled=set(), subscriptions={}, request=None, client_capabilities=set(),
     )
 
 
@@ -286,6 +301,87 @@ def read_resource(m, uri: str) -> tuple[str, str]:
 
 
 # ---------------------------------------------------------------------------
+# 资源订阅（resources/subscribe）—— 底层文件 mtime 变化 → resources/updated
+# ---------------------------------------------------------------------------
+
+
+def resource_file(ctx: SimpleNamespace, uri: str) -> Path | None:
+    """返回该资源对应的**磁盘真源**文件；无法定位则 None（→ 诚实拒绝订阅）。
+
+    - `tcms://scenario/{file}` → 场景 YAML 本体
+    - `tcms://fault/{key}` / `tcms://index` → `<upstream>/tcms/faults.yaml`
+    - `tcms://requirement/{req_id}` → `<upstream>/tests/rtm.csv`
+    - `tcms://function/{fid}` → None（curated 资产，无单一磁盘真源）
+    """
+    uri = str(uri or "").strip()
+    if not uri.startswith("tcms://"):
+        return None
+    kind, _, ident = uri[len("tcms://"):].partition("/")
+    root = Path(str(getattr(ctx.m, "source_upstream", "") or ""))
+    if kind == "scenario":
+        p = Path(str(getattr(ctx, "scenario_dir", ""))) / ident
+    elif kind in ("fault", "index"):
+        p = root / "tcms" / "faults.yaml"
+    elif kind == "requirement":
+        p = root / "tests" / "rtm.csv"
+    else:
+        return None  # function 等 curated 资产：无单一磁盘真源
+    return p if p.is_file() else None
+
+
+def set_subscription(ctx: SimpleNamespace, uri: str, on: bool):
+    """订阅/退订；返回 (result, error_message)。校验 URI 存在且可定位底层文件。"""
+    known = {r["uri"] for r in resource_catalog(ctx.m)}
+    if uri not in known:
+        return None, f"未知资源: {uri}（先用 resources/list 取可用 URI）"
+    path = resource_file(ctx, uri)
+    if path is None:
+        return None, f"该资源不支持订阅（底层文件不可定位）: {uri}"
+    subs = getattr(ctx, "subscriptions", None)
+    if subs is None:
+        subs = ctx.subscriptions = {}
+    if on:
+        subs[uri] = path.stat().st_mtime
+    else:
+        subs.pop(uri, None)
+    return {}, None
+
+
+def watch_tick(ctx: SimpleNamespace) -> list[str]:
+    """比对已订阅资源的 mtime，返回发生变化的 uri 列表（纯函数，便于单测）。"""
+    subs = getattr(ctx, "subscriptions", None) or {}
+    changed: list[str] = []
+    for uri, seen in list(subs.items()):
+        path = resource_file(ctx, uri)
+        if path is None:
+            continue
+        mtime = path.stat().st_mtime
+        if mtime != seen:
+            subs[uri] = mtime
+            changed.append(uri)
+    return changed
+
+
+def start_watcher(ctx: SimpleNamespace, interval: float = 2.0):
+    """守护线程：定期 watch_tick 并在变更时发 notifications/resources/updated。"""
+    import threading
+    import time as _time
+
+    def loop() -> None:
+        while True:
+            _time.sleep(interval)
+            try:
+                for uri in watch_tick(ctx):
+                    _emit(ctx, "notifications/resources/updated", {"uri": uri})
+            except Exception:  # noqa: BLE001 - 守护线程绝不该把进程带崩
+                pass
+
+    t = threading.Thread(target=loop, daemon=True, name="mcp-resource-watch")
+    t.start()
+    return t
+
+
+# ---------------------------------------------------------------------------
 # 提示（prompts）—— 参数化任务模板，全部只用本 server 真实暴露的工具
 # ---------------------------------------------------------------------------
 
@@ -380,6 +476,53 @@ def _text_err(message: str) -> dict:
     return {"isError": True, "content": [{"type": "text", "text": message}]}
 
 
+def request_approval(ctx: SimpleNamespace, scenario_file: str):
+    """通过 MCP elicitation 向人类请求执行审批 → (decision, error_message)。
+
+    decision ∈ {accept, decline, cancel}；任何"问不到人"的情况都返回 error，
+    **绝不默认放行**（审批不是装饰）。
+    """
+    requester = getattr(ctx, "request", None)
+    if not callable(requester):
+        return None, (
+            "当前传输不支持 elicitation（服务端→客户端反向请求）：stdio 的 `tcms-mcp` 支持；"
+            "HTTP 模式暂不支持。若确要走无审批路径，请显式传 require_approval=false —— "
+            "但那是你自己的审批纪律决定，不由我替你默认。"
+        )
+    declared = set(getattr(ctx, "client_capabilities", None) or set())
+    if "elicitation" not in declared:
+        return None, "客户端未在 initialize 声明 elicitation 能力，无法发起审批（不假装问过）。"
+    msg = {
+        "jsonrpc": "2.0",
+        "id": f"elicit-{uuid.uuid4().hex[:8]}",
+        "method": "elicitation/create",
+        "params": {
+            "message": f"是否允许在真实 TCMS 引擎上执行场景 {scenario_file}？",
+            "requestedSchema": {
+                "type": "object",
+                "properties": {
+                    "approve": {"type": "boolean", "description": "true=允许执行；false=拒绝"},
+                    "note": {"type": "string", "description": "可选备注（会原样回传）"},
+                },
+                "required": ["approve"],
+            },
+        },
+    }
+    try:
+        resp = requester(msg)
+    except Exception as e:  # noqa: BLE001
+        return None, f"审批请求失败（已捕获）: {type(e).__name__}: {e}"
+    if not isinstance(resp, dict):
+        return None, "审批响应格式非法（应为 JSON-RPC 响应对象）"
+    if "error" in resp:
+        return None, f"审批请求被客户端拒绝: {resp.get('error')}"
+    result = resp.get("result") or {}
+    action = str(result.get("action") or "").lower()
+    if action not in ("accept", "decline", "cancel"):
+        return None, f"审批响应缺少合法 action（收到 {action!r}）"
+    return action, None
+
+
 def _tools_list() -> list[dict]:
     return _READ_TOOLS + [dict(RUN_SCENARIO_SCHEMA)]
 
@@ -387,7 +530,7 @@ def _tools_list() -> list[dict]:
 def _capabilities() -> dict:
     return {
         "tools": {"listChanged": False},
-        "resources": {"subscribe": False, "listChanged": False},
+        "resources": {"subscribe": True, "listChanged": False},
         "prompts": {"listChanged": False},
     }
 
@@ -409,6 +552,14 @@ def _call_run_scenario(arguments: dict, ctx: SimpleNamespace, token=None) -> dic
     file = str((arguments or {}).get("scenario_file") or "").strip()
     if not file:
         return _text_err("run_scenario 需要非空 scenario_file")
+    if bool((arguments or {}).get("require_approval")):
+        decision, err = request_approval(ctx, file)
+        if err:
+            return _text_err(err)
+        if decision != "accept":
+            return _text_err(
+                f"用户未批准执行 {file}（elicitation 结果：{decision}）——**未在真实引擎上执行任何动作**。"
+            )
     if token is not None:
         _emit(ctx, "notifications/progress", {"progressToken": token, "progress": 0, "total": 2, "message": f"准备执行 {file}"})
     try:
@@ -481,6 +632,8 @@ def dispatch(msg: dict, ctx: SimpleNamespace) -> dict | None:
     if rid in getattr(ctx, "cancelled", ()):  # 已取消：规范要求不回包
         return None
     if method == "initialize":
+        # 客户端能力（如 elicitation）必须记住：没声明就不能反向请求，更不能假装问过
+        ctx.client_capabilities = set((params.get("capabilities") or {}).keys())
         requested = str(params.get("protocolVersion") or "")
         agreed = requested if requested in SUPPORTED_PROTOCOLS else PROTOCOL
         return _ok(rid, {
@@ -502,11 +655,24 @@ def dispatch(msg: dict, ctx: SimpleNamespace) -> dict | None:
         if name not in known:
             return _err(rid, -32602, f"未知工具: {name}")
         token = ((params or {}).get("_meta") or {}).get("progressToken")
-        return _ok(rid, _call_tool(name, arguments, ctx, token=token))
+        result = _call_tool(name, arguments, ctx, token=token)
+        # 执行期间客户端发了 cancelled → 不回包（规范：MUST NOT respond）。
+        # 引擎调用本身是原子的、不可中断，但"结果不返回"是能做到也必须做到的那一半。
+        if rid in getattr(ctx, "cancelled", ()):
+            return None
+        return _ok(rid, result)
     if method == "resources/list":
         return _ok(rid, _list_resources(params, ctx))
     if method == "resources/read":
         result, err = _read_resource(params, ctx)
+        if err:
+            return _err(rid, -32602, err)
+        return _ok(rid, result)
+    if method in ("resources/subscribe", "resources/unsubscribe"):
+        uri = str((params or {}).get("uri") or "").strip()
+        if not uri:
+            return _err(rid, -32602, f"{method} 需要 uri")
+        result, err = set_subscription(ctx, uri, on=(method == "resources/subscribe"))
         if err:
             return _err(rid, -32602, err)
         return _ok(rid, result)
@@ -549,6 +715,30 @@ def serve_stdio(ctx: SimpleNamespace, stdin=None, stdout=None) -> int:
 
     if getattr(ctx, "notify", None) is None:
         ctx.notify = notify
+    def requester(msg: dict) -> dict:
+        """服务端→客户端请求：写出去，然后就地读它的响应（期间到达的其它消息照常处理）。"""
+        notify(msg)
+        rid = msg.get("id")
+        for raw_line in stdin:
+            raw_line = raw_line.strip()
+            if not raw_line:
+                continue
+            try:
+                obj = json.loads(raw_line)
+            except Exception:  # noqa: BLE001
+                continue
+            if not isinstance(obj, dict):
+                continue
+            if "method" not in obj and obj.get("id") == rid:
+                return obj  # 就是我们要的响应
+            other = dispatch(obj, ctx)  # 其它请求照常应答，别让客户端空等
+            if other is not None:
+                notify(other)
+        raise TimeoutError("等待客户端审批时 stdin 已关闭")
+
+    if getattr(ctx, "request", None) is None:
+        ctx.request = requester
+    start_watcher(ctx)  # 订阅了资源才会真正产生通知
     for line in stdin:
         line = line.strip()
         if not line:
@@ -587,46 +777,157 @@ def http_jsonrpc(body: bytes, ctx: SimpleNamespace, auth_header: str | None = No
     return (202, None) if resp is None else (200, resp)
 
 
+JSON_HEADERS = {"Content-Type": "application/json; charset=utf-8"}
+SSE_HEADERS = {"Content-Type": "text/event-stream; charset=utf-8"}
+
+
+def _sse_frame(obj: dict) -> str:
+    """一条 SSE 帧（MCP 的 Streamable HTTP 用 `event: message` + 单行 data）。"""
+    return "event: message\ndata: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+
+def _ctx_with_notify(ctx: SimpleNamespace, sink) -> SimpleNamespace:
+    """派生一个共享同一模型/订阅状态、但通知写到 sink 的上下文。
+
+    这样并发请求之间互不串台（HTTP 是多线程的），也不必给 dispatch 加参数。
+    """
+    clone = SimpleNamespace(**vars(ctx))
+    clone.notify = sink
+    return clone
+
+
+def http_handle(
+    method: str,
+    path: str,
+    headers: dict | None,
+    body: bytes,
+    ctx: SimpleNamespace,
+    token: str | None = None,
+    sessions: set | None = None,
+) -> tuple[int, dict, bytes]:
+    """纯函数 HTTP 层 → (status, headers, body)。socket 层只做转发。
+
+    - `initialize` 下发 `Mcp-Session-Id`；带未知会话的请求 → 404；`DELETE` 终止会话。
+    - `Accept: text/event-stream` → SSE：先逐帧发通知（如 progress），最后发响应帧。
+    - 通知类请求（无 id）→ 202 空体。
+    """
+    h = {str(k).lower(): v for k, v in (headers or {}).items()}
+    if method == "GET":
+        return 405, dict(JSON_HEADERS), json.dumps(
+            {"jsonrpc": "2.0", "id": None, "error": {"code": -32601, "message": "本实现不支持 GET 拉流；请 POST /mcp，并在 Accept 里带 text/event-stream"}},
+            ensure_ascii=False).encode("utf-8")
+    if method == "DELETE":
+        sid = str(h.get("mcp-session-id") or "")
+        if sid and sessions is not None and sid not in sessions:
+            return 404, dict(JSON_HEADERS), json.dumps(
+                {"jsonrpc": "2.0", "id": None, "error": {"code": -32001, "message": f"未知会话: {sid}"}},
+                ensure_ascii=False).encode("utf-8")
+        if sid and sessions is not None:
+            sessions.discard(sid)
+        return 204, {}, b""
+    if method != "POST":
+        return 405, dict(JSON_HEADERS), json.dumps(
+            {"jsonrpc": "2.0", "id": None, "error": {"code": -32601, "message": f"不支持的方法: {method}"}},
+            ensure_ascii=False).encode("utf-8")
+    if str(path or "").rstrip("/") not in ("", "/mcp"):
+        return 404, dict(JSON_HEADERS), json.dumps(
+            {"jsonrpc": "2.0", "id": None, "error": {"code": -32601, "message": f"未知路径: {path}（用 POST /mcp）"}},
+            ensure_ascii=False).encode("utf-8")
+    if token and str(h.get("authorization") or "").strip() != f"Bearer {token}":
+        return 401, dict(JSON_HEADERS), json.dumps(
+            {"jsonrpc": "2.0", "id": None, "error": {"code": -32001, "message": "未授权：需要 Authorization: Bearer <token>"}},
+            ensure_ascii=False).encode("utf-8")
+    sid = str(h.get("mcp-session-id") or "")
+    if sid and sessions is not None and sid not in sessions:
+        return 404, dict(JSON_HEADERS), json.dumps(
+            {"jsonrpc": "2.0", "id": None, "error": {"code": -32001, "message": f"未知会话: {sid}；请重新 initialize"}},
+            ensure_ascii=False).encode("utf-8")
+    try:
+        msg = json.loads(body.decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        return 400, dict(JSON_HEADERS), json.dumps(
+            {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}},
+            ensure_ascii=False).encode("utf-8")
+    if not isinstance(msg, dict):
+        return 400, dict(JSON_HEADERS), json.dumps(
+            {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "请求必须是单个 JSON-RPC 对象"}},
+            ensure_ascii=False).encode("utf-8")
+
+    resp_headers = dict(JSON_HEADERS)
+    if msg.get("method") == "initialize" and sessions is not None:
+        new_sid = uuid.uuid4().hex
+        sessions.add(new_sid)
+        resp_headers["Mcp-Session-Id"] = new_sid
+
+    wants_sse = "text/event-stream" in str(h.get("accept") or "")
+    events: list[dict] = []
+    call_ctx = _ctx_with_notify(ctx, events.append) if wants_sse else ctx
+    resp = dispatch(msg, call_ctx)
+
+    if resp is None and not events:  # 纯通知且无副作用事件
+        return 202, resp_headers, b""
+    if not wants_sse:
+        if resp is None:
+            return 202, resp_headers, b""
+        return 200, resp_headers, json.dumps(resp, ensure_ascii=False).encode("utf-8")
+
+    sse_headers = dict(resp_headers)
+    sse_headers.update(SSE_HEADERS)
+    chunks = [_sse_frame(ev) for ev in events]
+    if resp is not None:
+        chunks.append(_sse_frame(resp))
+    return 200, sse_headers, "".join(chunks).encode("utf-8")
+
+
 def serve_http(ctx: SimpleNamespace, host: str = "127.0.0.1", port: int = 8765, token: str | None = None) -> None:
-    """启动最小 HTTP 服务（stdlib http.server；单线程顺序处理）。"""
+    """启动 Streamable HTTP 服务（stdlib http.server；每请求一线程，会话表共享）。"""
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    sessions: set[str] = set()
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
-        def _send(self, status: int, payload) -> None:  # noqa: ANN001
-            data = b"" if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        def _respond(self, status: int, headers: dict, payload: bytes) -> None:  # noqa: ANN001
             self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
+            self.send_header("Content-Length", str(len(payload or b"")))
             self.end_headers()
-            if data:
-                self.wfile.write(data)
+            if payload:
+                self.wfile.write(payload)
 
-        def do_POST(self) -> None:  # noqa: N802
-            if self.path.rstrip("/") not in ("", "/mcp"):
-                self._send(404, {"jsonrpc": "2.0", "id": None, "error": {"code": -32601, "message": f"未知路径: {self.path}（用 POST /mcp）"}})
-                return
+        def _handle(self, method: str) -> None:  # noqa: ANN001
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length) if length else b""
-            status, payload = http_jsonrpc(body, ctx, self.headers.get("Authorization"), token)
-            self._send(status, payload)
+            status, headers, payload = http_handle(
+                method, self.path, dict(self.headers.items()), body, ctx, token, sessions
+            )
+            self._respond(status, headers, payload)
+
+        def do_POST(self) -> None:  # noqa: N802
+            self._handle("POST")
 
         def do_GET(self) -> None:  # noqa: N802
-            self._send(405, {"jsonrpc": "2.0", "id": None, "error": {"code": -32601, "message": "本实现不支持 GET/SSE；请用 POST /mcp"}})
+            self._handle("GET")
+
+        def do_DELETE(self) -> None:  # noqa: N802
+            self._handle("DELETE")
 
         def log_message(self, fmt: str, *args) -> None:  # noqa: ANN002
             sys.stderr.write("[mcp-http] " + (fmt % args) + "\n")
 
+    start_watcher(ctx)
     srv = ThreadingHTTPServer((host, port), Handler)
-    sys.stderr.write(f"[mcp-http] listening on http://{host}:{port}/mcp (token={'yes' if token else 'no'})\n")
+    sys.stderr.write(
+        f"[mcp-http] listening on http://{host}:{port}/mcp (token={'yes' if token else 'no'}, SSE=on)\n"
+    )
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         srv.server_close()
-
 
 # ---------------------------------------------------------------------------
 # 入口

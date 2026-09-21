@@ -3,6 +3,8 @@
 - FakeChat 只负责"决定调哪个工具"，工具执行一律落到真实知识底座（m/g/hr）。
 - 红线断言：未开放工具不执行、非法 JSON 拒绝执行、无 key 绝不假装调过工具、
   回复自证 used_tools。
+- 枚举工具口径（2026-09-21 统一）：count=本页条数 · total=匹配总数 ·
+  truncated=是否还有下一页 · next_cursor=续取游标 —— **绝不静默截断**。
 """
 
 from __future__ import annotations
@@ -140,12 +142,64 @@ def test_kb_filter_assets_real_filters():
 
     m, g, hr = _kb()
     r = run_tool_safe("kb_filter_assets", {"kind": "fault", "action": "warning", "limit": 5}, m, g, hr)
-    assert r["count"] >= 1 and all(it["action"] == "warning" for it in r["items"])
+    assert r["total"] >= 1 and all(it["action"] == "warning" for it in r["items"])
     r2 = run_tool_safe("kb_filter_assets", {"kind": "fault", "action": "shutdown"}, m, g, hr)
     assert all(it["action"] == "shutdown" for it in r2["items"])
     r3 = run_tool_safe("kb_filter_assets", {"kind": "scenario", "keyword": "制动"}, m, g, hr)
-    assert r3["count"] >= 1 and all("制动" in it["name"] or "制动" in it["file"] for it in r3["items"])
+    assert r3["total"] >= 1 and all("制动" in it["name"] or "制动" in it["file"] for it in r3["items"])
     assert run_tool_safe("kb_filter_assets", {"kind": "bogus"}, m, g, hr).get("error")
+
+
+@NEEDS_UPSTREAM
+def test_kb_filter_assets_discloses_truncation_and_pages():
+    """截断自曝 + 真能翻页：count=本页 · total=总数 · next_cursor 续取不重叠。"""
+    from tcms_ai_platform.agent.toolassist import run_tool_safe
+
+    m, g, hr = _kb()
+    total_faults = len(m.faults_by_key)
+    assert total_faults > 3
+    r = run_tool_safe("kb_filter_assets", {"kind": "fault", "limit": 3}, m, g, hr)
+    assert r["count"] == 3 and len(r["items"]) == 3
+    assert r["total"] == total_faults, "total 必须是匹配总数，不是本页条数"
+    assert r["truncated"] is True and r["next_cursor"] == "3"
+
+    r2 = run_tool_safe("kb_filter_assets", {"kind": "fault", "limit": 3, "cursor": r["next_cursor"]}, m, g, hr)
+    keys1 = {it["key"] for it in r["items"]}
+    keys2 = {it["key"] for it in r2["items"]}
+    assert keys1.isdisjoint(keys2), "翻页不得重复"
+    assert r2["count"] == 3 and r2["next_cursor"] == "6"
+
+    # 非法 cursor 退化为首页（不抛错）
+    bad = run_tool_safe("kb_filter_assets", {"kind": "fault", "limit": 3, "cursor": "abc"}, m, g, hr)
+    assert {it["key"] for it in bad["items"]} == keys1
+
+    # 场景分支同样自曝
+    rs = run_tool_safe("kb_filter_assets", {"kind": "scenario", "limit": 5}, m, g, hr)
+    assert rs["count"] == 5 and rs["total"] == len(m.scenarios) and rs["truncated"] is True
+
+
+@NEEDS_UPSTREAM
+def test_list_scenarios_discloses_truncation_and_pages():
+    """list_scenarios 与 kb_filter_assets 同一口径；翻完所有页必须覆盖全部真实场景。"""
+    from tcms_ai_platform.agent.toolassist import run_tool_safe
+
+    m, g, hr = _kb()
+    r = run_tool_safe("list_scenarios", {}, m, g, hr)
+    assert r["total"] == len(m.scenarios)
+    assert r["count"] == len(r["scenarios"]) == 40
+    assert r["truncated"] is True and r["next_cursor"] == "40"
+
+    seen = {s["file"] for s in r["scenarios"]}
+    cursor, pages = r["next_cursor"], 1
+    while cursor:
+        rp = run_tool_safe("list_scenarios", {"cursor": cursor}, m, g, hr)
+        files = {s["file"] for s in rp["scenarios"]}
+        assert seen.isdisjoint(files), "翻页不得重复"
+        seen |= files
+        cursor = rp["next_cursor"]
+        pages += 1
+        assert pages < 10, "分页未收敛"
+    assert len(seen) == r["total"], "翻完所有页应覆盖全部场景（绝不静默截断）"
 
 
 @NEEDS_UPSTREAM

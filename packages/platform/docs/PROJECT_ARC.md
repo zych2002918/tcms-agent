@@ -137,7 +137,7 @@
 ---
 
 
-> **Iteration A/B/C 症状多跳诊断（v0.5.0，2026-09，工作树未提交）**：12 症状资产 +
+> **Iteration A/B/C 症状多跳诊断（v0.5.0，2026-09，当时在工作树，现已提交）**：12 症状资产 +
 > 54 条因果边（indicates 41 / causes 13；real_mechanism 41 / derived 13）注入图谱；
 > 服务态 **655 节点 / 1176 边 / 644 向量文档**（基础图仍 519/748/508）；多跳遍历 ≤3 跳
 > （症状→嫌疑故障→causes 反查根因，逐跳 basis/note）+ `POST /api/agent/diagnose`；

@@ -3,9 +3,26 @@
 
 版本单一真源在 `src/tcms_ai_platform/_version.py`；本文件记录用户可见变更。
 
+## 0.6.0 (2026-09)
+
+- **MCP server 补成生产级（Slice 1–3 全完工）** —— 工单与取证见 [`docs/MCP_HARDENING.md`](docs/MCP_HARDENING.md)：
+  - **Slice 1 真实执行**：`run_scenario` 默认接真实引擎（复用 `/api/run/scenario` 同构路径 `sc.run_yaml`）；
+    失败四类各自成文（未接线 / 场景不存在 / 磁盘缺文件 / 引擎不可用）；6 个工具补 `annotations`；新增 `tcms-mcp` 入口。
+  - **Slice 2 两个原语 + 截断自曝**：`resources/list`（`nextCursor` 分页，371 条资源）+ `resources/read`
+    （`tcms://index|fault|scenario|requirement|function`）；`prompts/list` + `prompts/get`（4 个任务模板）；
+    capabilities 声明三原语；枚举类工具统一口径 **count=本页 / total=匹配总数 / truncated / next_cursor**（绝不静默截断）。
+  - **Slice 3 协商 / 传输 / 订阅 / 审批**：`initialize` 真协商（不支持则回自身版本）；**Streamable HTTP**
+    （`POST /mcp` 返回 JSON，`Accept: text/event-stream` 返回 **SSE 流**；**`Mcp-Session-Id`** 会话管理 + `DELETE` 终止；
+    Bearer token；新增 `tcms-mcp-http` 入口）；`notifications/progress`；协作式 `cancellation`（含**执行期间取消不回包**）；
+    `resources/subscribe` + `notifications/resources/updated`（底层文件 mtime 驱动）；**elicitation 人工审批**
+    （`run_scenario` 带 `require_approval=true` → 反向请求人类批准；未声明能力或不支持的传输**明确报错**，拒绝则**绝不执行**）。
+  - 门禁：MCP 契约测试 **7 → 42 条**；平台 **340 passed + 1 skipped**；`ruff check` clean。
+- **文档口径对齐**：0.5.0 批次此前在文档中标注「未提交」，实际均已提交（历史提交），本轮统一更正；
+  README 的 badge 与门禁数字由 282 / 303 更正为当前实测值。
+
 ## 0.5.0 (2026-09)
 
-- **症状多跳诊断迭代（Iteration A/B/C，工作树未提交）**：
+- **症状多跳诊断迭代（Iteration A/B/C，当时在工作树，现已提交）**：
   - A 症状资产 `src/tcms_ai_platform/domain/data/symptoms.yaml`：**12 条**（仪表盘闪烁/HMI 无显示/灯具闪烁/客室灯组频闪/大屏花屏/时钟跳变/网络时断时续/SOC 跳变/速度瞬时归零/开门到位灯闪/报警音误响/制动灯异常），hints 全部锚定上游 202 真实故障键与 13 系统域（annotation real 7 / mixed 5）。
   - B 可审计因果表 `domain/data/causal_edges.yaml`：**54 条边**（symptom -indicates-> fault 41 / fault -causes-> fault 13；real_mechanism 41 / derived 13 逐条标注）；图谱 `causal_chain` ≤3 跳有向遍历，逐跳带 basis/note。
   - C 症状诊断规划器 `agent/diagnoser.py` + `POST /api/agent/diagnose`：无码症状 → kb 检索症状资产 → 图谱候选链 → 诊断步骤建议（置信度/验证动作/场景复现/证据溯源）；无命中或证据不足 → 明确“不确定/需补充”，绝不编造故障码（derived 候选显式标注仅示意）。

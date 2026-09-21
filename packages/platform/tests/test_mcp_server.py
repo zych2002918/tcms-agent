@@ -31,10 +31,13 @@ from tcms_ai_platform.agent.mcp_server import (  # noqa: E402
     SUPPORTED_PROTOCOLS,
     build_context,
     dispatch,
+    http_handle,
     http_jsonrpc,
     make_runner,
     resource_catalog,
+    resource_file,
     serve_stdio,
+    watch_tick,
 )
 
 
@@ -342,3 +345,218 @@ def test_stdio_end_to_end():
     assert resp[4]["result"]["isError"] is True and "场景不存在" in resp[4]["result"]["content"][0]["text"]
     assert resp[5]["result"]["resources"] and resp[5]["result"].get("nextCursor")
     assert {p["name"] for p in resp[6]["result"]["prompts"]} == set(PROMPTS)
+
+
+# ---------------------------------------------------------------------------
+# 资源订阅（resources/subscribe + resources/updated）
+# ---------------------------------------------------------------------------
+
+
+def test_resources_subscribe_capability_is_true():
+    caps = dispatch({"id": 85, "method": "initialize", "params": {}}, _bare_ctx())["result"]["capabilities"]
+    assert caps["resources"]["subscribe"] is True, "已实现订阅就必须如实声明"
+
+
+@NEEDS_UPSTREAM
+def test_subscribe_requires_known_uri():
+    ctx = build_context(UPSTREAM)
+    r = dispatch({"id": 80, "method": "resources/subscribe", "params": {"uri": "tcms://fault/nope"}}, ctx)
+    assert r["error"]["code"] == -32602 and "未知资源" in r["error"]["message"]
+    r2 = dispatch({"id": 81, "method": "resources/unsubscribe", "params": {}}, ctx)
+    assert r2["error"]["code"] == -32602 and "需要 uri" in r2["error"]["message"]
+
+
+@NEEDS_UPSTREAM
+def test_subscribe_function_uri_is_honestly_rejected():
+    """function 是 curated 资产、无单一磁盘真源 → 诚实拒绝订阅而不是假装订阅。"""
+    ctx = build_context(UPSTREAM)
+    fid = sorted(ctx.m.functions)[0]
+    r = dispatch({"id": 82, "method": "resources/subscribe", "params": {"uri": f"tcms://function/{fid}"}}, ctx)
+    assert r["error"]["code"] == -32602 and "不支持订阅" in r["error"]["message"]
+    assert not ctx.subscriptions
+
+
+@NEEDS_UPSTREAM
+def test_subscribe_watch_tick_and_unsubscribe():
+    """订阅 → mtime 变化触发一次 → 不重复 → 退订后不再跟踪。"""
+    import os
+
+    ctx = build_context(UPSTREAM)
+    scenario_file = sorted(ctx.m.scenarios)[0]
+    uri = f"tcms://scenario/{scenario_file}"
+    assert dispatch({"id": 83, "method": "resources/subscribe", "params": {"uri": uri}}, ctx)["result"] == {}
+    assert uri in ctx.subscriptions
+    assert watch_tick(ctx) == [], "未变更时不应产生通知"
+
+    path = resource_file(ctx, uri)
+    assert path is not None and path.is_file(), "场景资源必须能定位到磁盘真源"
+    st = path.stat()
+    os.utime(path, (st.st_atime, st.st_mtime + 10))  # 只改 mtime，不改内容
+    assert watch_tick(ctx) == [uri]
+    assert watch_tick(ctx) == [], "同一变更只通知一次"
+
+    assert dispatch({"id": 84, "method": "resources/unsubscribe", "params": {"uri": uri}}, ctx)["result"] == {}
+    assert uri not in ctx.subscriptions
+    os.utime(path, (st.st_atime, st.st_mtime + 20))
+    assert watch_tick(ctx) == [], "退订后不应再跟踪"
+
+
+@NEEDS_UPSTREAM
+def test_subscribe_fault_and_requirement_map_to_real_files():
+    """fault/index → faults.yaml；requirement → rtm.csv（真源定位规则要如实）。"""
+    ctx = build_context(UPSTREAM)
+    fault_key = sorted(ctx.m.faults_by_key)[0]
+    req_id = sorted(ctx.m.requirements)[0]
+    f_fault = resource_file(ctx, f"tcms://fault/{fault_key}")
+    f_index = resource_file(ctx, "tcms://index")
+    f_req = resource_file(ctx, f"tcms://requirement/{req_id}")
+    assert f_fault and f_fault.is_file() and f_fault.name == "faults.yaml"
+    assert f_index == f_fault, "索引是派生资源，订阅它等价于订阅资产字典"
+    assert f_req and f_req.is_file() and f_req.name == "rtm.csv"
+
+
+# ---------------------------------------------------------------------------
+# Streamable HTTP：会话管理 + SSE 流式
+# ---------------------------------------------------------------------------
+
+
+def _http(method, body_obj=None, headers=None, ctx=None, token=None, sessions=None, path="/mcp"):
+    """驱动纯函数 HTTP 层（无需真起端口）。"""
+    body = b"" if body_obj is None else json.dumps(body_obj).encode("utf-8")
+    return http_handle(method, path, headers or {}, body, ctx or _bare_ctx(), token, sessions)
+
+
+def test_http_session_lifecycle():
+    sessions = set()
+    status, headers, _ = _http("POST", {"id": 1, "method": "initialize", "params": {}}, sessions=sessions)
+    assert status == 200
+    sid = headers.get("Mcp-Session-Id")
+    assert sid and sid in sessions, "initialize 必须下发会话 id 并登记"
+
+    ok = _http("POST", {"id": 2, "method": "ping", "params": {}}, headers={"Mcp-Session-Id": sid}, sessions=sessions)
+    assert ok[0] == 200
+    bad = _http("POST", {"id": 3, "method": "ping", "params": {}}, headers={"Mcp-Session-Id": "bogus"}, sessions=sessions)
+    assert bad[0] == 404 and "未知会话" in bad[2].decode("utf-8")
+
+    assert _http("DELETE", headers={"Mcp-Session-Id": sid}, sessions=sessions)[0] == 204
+    assert sid not in sessions
+    assert _http("DELETE", headers={"Mcp-Session-Id": sid}, sessions=sessions)[0] == 404, "重复终止应 404"
+
+
+def test_http_sse_stream_carries_progress_then_response():
+    """SSE：通知帧先行、响应帧收尾 —— 流式不是装饰，进度真的在流里。"""
+    ctx = _bare_ctx(runner=lambda f: {"all_passed": True, "assertions": []})
+    msg = {
+        "jsonrpc": "2.0", "id": 9, "method": "tools/call",
+        "params": {"name": "run_scenario", "arguments": {"scenario_file": "x.yaml"}, "_meta": {"progressToken": "t1"}},
+    }
+    status, headers, body = _http("POST", msg, headers={"Accept": "text/event-stream"}, ctx=ctx)
+    assert status == 200 and headers["Content-Type"].startswith("text/event-stream")
+    text = body.decode("utf-8")
+    assert "event: message" in text
+    objs = [json.loads(ln[len("data: "):]) for ln in text.splitlines() if ln.startswith("data: ")]
+    assert [o.get("method") for o in objs[:-1]] == ["notifications/progress", "notifications/progress"]
+    assert objs[-1]["id"] == 9 and objs[-1]["result"]["isError"] is False
+
+
+def test_http_json_path_has_no_sse_when_not_requested():
+    ctx = _bare_ctx(runner=lambda f: {"all_passed": True})
+    status, headers, body = _http("POST", {"id": 4, "method": "ping", "params": {}}, ctx=ctx)
+    assert status == 200 and headers["Content-Type"].startswith("application/json")
+    assert json.loads(body.decode("utf-8"))["result"] == {}
+
+
+def test_http_method_and_path_errors():
+    assert _http("GET")[0] == 405, "GET 拉流不支持，必须明确 405"
+    assert _http("PUT")[0] == 405
+    assert _http("POST", {"id": 1, "method": "ping", "params": {}}, path="/nope")[0] == 404
+
+
+def test_http_auth_applies_to_sse_path_too():
+    body = {"id": 5, "method": "ping", "params": {}}
+    assert _http("POST", body, headers={"Accept": "text/event-stream"}, token="SECRET")[0] == 401
+    assert _http("POST", body, headers={"Accept": "text/event-stream", "Authorization": "Bearer SECRET"}, token="SECRET")[0] == 200
+
+
+# ---------------------------------------------------------------------------
+# elicitation：人工审批（run_scenario require_approval）
+# ---------------------------------------------------------------------------
+
+
+def _ctx_with_requester(decision="accept", runner=None, declared=True, request=None):
+    ctx = _bare_ctx(runner=runner or (lambda f: {"all_passed": True, "assertions": []}))
+    ctx.client_capabilities = {"elicitation"} if declared else set()
+    ctx.request = request or (
+        lambda msg: {"jsonrpc": "2.0", "id": msg["id"], "result": {"action": decision, "content": {"approve": decision == "accept"}}}
+    )
+    return ctx
+
+
+def _approval_call(rid=90):
+    return {"id": rid, "method": "tools/call",
+            "params": {"name": "run_scenario", "arguments": {"scenario_file": "x.yaml", "require_approval": True}}}
+
+
+def test_approval_accept_executes():
+    called = []
+    ctx = _ctx_with_requester("accept", runner=lambda f: called.append(f) or {"all_passed": True})
+    res = dispatch(_approval_call(), ctx)["result"]
+    assert res["isError"] is False and called == ["x.yaml"]
+
+
+def test_approval_decline_never_executes():
+    called = []
+    ctx = _ctx_with_requester("decline", runner=lambda f: called.append(f) or {"all_passed": True})
+    res = dispatch(_approval_call(91), ctx)["result"]
+    assert res["isError"] is True and called == [], "用户拒绝后绝不能在真实引擎上执行"
+    assert "未批准" in res["content"][0]["text"]
+
+
+def test_approval_without_channel_is_honest_error():
+    """无反向请求通道（HTTP / dispatch-only）→ 明确报错，绝不默认放行。"""
+    res = dispatch(_approval_call(92), _bare_ctx(runner=lambda f: {}))["result"]
+    assert res["isError"] is True and "不支持 elicitation" in res["content"][0]["text"]
+
+
+def test_approval_requires_declared_client_capability():
+    ctx = _ctx_with_requester("accept", declared=False)
+    res = dispatch(_approval_call(93), ctx)["result"]
+    assert res["isError"] is True and "未在 initialize 声明" in res["content"][0]["text"]
+
+
+def test_approval_without_flag_skips_elicitation():
+    asked = []
+    ctx = _ctx_with_requester("decline", request=lambda msg: asked.append(msg) or {"result": {"action": "decline"}})
+    res = dispatch({"id": 94, "method": "tools/call",
+                    "params": {"name": "run_scenario", "arguments": {"scenario_file": "x.yaml"}}}, ctx)["result"]
+    assert res["isError"] is False and asked == [], "没要求审批就不该打扰人类"
+
+
+def test_approval_malformed_response_is_error_not_pass():
+    ctx = _ctx_with_requester(request=lambda msg: {"result": {"action": "maybe"}})
+    res = dispatch(_approval_call(95), ctx)["result"]
+    assert res["isError"] is True and "合法 action" in res["content"][0]["text"]
+
+
+def test_initialize_records_client_capabilities():
+    ctx = _bare_ctx()
+    dispatch({"id": 1, "method": "initialize", "params": {"capabilities": {"elicitation": {}, "roots": {}}}}, ctx)
+    assert ctx.client_capabilities == {"elicitation", "roots"}
+
+
+# ---------------------------------------------------------------------------
+# 进行中的取消语义
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_during_execution_suppresses_response():
+    """执行途中收到 cancelled → 不回包；引擎调用原子不可中断，但结果不返回。"""
+    ctx = _bare_ctx()
+
+    def runner(_f):
+        ctx.cancelled.add(96)  # 模拟执行期间客户端发来 cancelled
+        return {"all_passed": True}
+
+    ctx.runner = runner
+    assert dispatch({"id": 96, "method": "tools/call",
+                     "params": {"name": "run_scenario", "arguments": {"scenario_file": "x.yaml"}}}, ctx) is None

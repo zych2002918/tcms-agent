@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-2dd4a0)](#快速开始)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Web_UI-4ca6ff)](#)
 [![React](https://img.shields.io/badge/React-18+-8b7cf6)](#)
-[![pytest](https://img.shields.io/badge/pytest-282%20passed-2dd4a0)](#测试--门禁)
+[![pytest](https://img.shields.io/badge/pytest-340%20passed-2dd4a0)](#测试--门禁)
 [![CI](https://github.com/zych2002918/tcms-ai-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/zych2002918/tcms-ai-platform/actions)
 [![license](https://img.shields.io/badge/license-MIT-8ca0c0)](#license)
 
@@ -75,12 +75,13 @@ Agent(Harness · 8 类真实任务 / 自由目标 / 症状多跳诊断)
 
 ### 🧰 让"外部 Agent"也能指挥 TCMS
 - **受约束 function-calling**（配 key）：LLM 可在真实只读工具面内自主查证 —— `kb_search` / `kb_filter_assets` / `symptom_diagnose` / `kb_node` / `list_scenarios`；参数经校验、未开放工具拦截、回复自证 used_tools（`POST /api/agent/toolassist`）；
-- **最小 MCP server**（零第三方依赖，stdio）：任意 MCP 客户端可直接指挥平台查证：
+- **MCP server**（零第三方依赖）：stdio 或 **Streamable HTTP**（`POST /mcp`，可选 SSE 流 + `Mcp-Session-Id` 会话）：
   ```bash
   python -m tcms_ai_platform.agent.mcp_server
   ```
-  （暴露 **6 个工具**：检索 / 资产枚举 / 症状诊断 / 节点 / 场景列表 ＋ `run_scenario`（**R2 真实执行，默认已接引擎**）；安装后可用 `tcms-mcp` 启动）
-  差距与后续分片（resources/prompts、HTTP、协商）见 [`docs/MCP_HARDENING.md`](docs/MCP_HARDENING.md)。
+  （暴露 **6 个工具**：检索 / 资产枚举 / 症状诊断 / 节点 / 场景列表 ＋ `run_scenario`（**R2 真实执行，默认已接引擎**、可选 `require_approval` 走 elicitation 人工审批）；
+  resources / prompts 两原语齐备；安装后可用 `tcms-mcp`（stdio）或 `tcms-mcp-http --port 8765 --token <t>` 启动）
+  分片状态、取证与诚实边界见 [`docs/MCP_HARDENING.md`](docs/MCP_HARDENING.md)（Slice 1/2/3 已完工）。
 
 ### 🎬 FaultLab 故障动画 & 🎛️ 场景编排
 - 真实场景逐帧播放：故障注入→检测→处置→恢复，每事件可溯源到 场景/故障字典/引擎断言/示意模型 四级来源；
@@ -127,14 +128,14 @@ bash start.sh
 
 | 门禁 | 结果 | 说明 |
 |---|---|---|
-| `pytest -q` | **303 passed + 1 skipped** | 检索 14 golden、诊断 8 golden、30 条对抗集、图谱通道契约、上游路径护栏、多轮/澄清/MCP/function-calling 契约… |
+| `pytest -q` | **340 passed + 1 skipped** | 检索 14 golden、诊断 8 golden、30 条对抗集、图谱通道契约、上游路径护栏、多轮/澄清/MCP/function-calling 契约… |
 | `ruff check src tests` | clean | |
 | `pnpm vitest run` | 16/16 | 播放器状态机/3D 布局纯逻辑 |
 | `node e2e/graph-interact.mjs` | 5/5 | 图谱单击详情/双击跳转/返回/3D 交互（真浏览器） |
 | GitHub Actions | ✅ 绿 | push/PR：pytest+ruff → vitest（monorepo 内直接使用 packages/engine） |
 
 ```bash
-python -m pytest tests -q                 # 303 passed + 1 skipped
+python -m pytest tests -q                 # 340 passed + 1 skipped
 python -m ruff check src tests            # All checks passed
 cd web && pnpm test                       # vitest 16/16
 ```
@@ -167,7 +168,7 @@ tcms-ai-platform/
 ### 📚 文档索引
 | 文档 | 内容 |
 |---|---|
-| `docs/MCP_HARDENING.md` | **MCP 补强工单**：取证式差距清单 + 4 个分片（Slice 1 已完工：run_scenario 接真实引擎） |
+| `docs/MCP_HARDENING.md` | **MCP 补强工单**：取证式差距清单 + 分片状态（Slice 1/2/3 完工：真实执行 · resources+prompts · 协商/HTTP/订阅/审批） |
 | `docs/HARDENING_BACKLOG.md` | 拷问视角补强工单（11/11 完成 + 记录） |
 | `docs/TECH_DEPTH_AUDIT.md` | **Agent 技术参与深度逐词自白**（长对话/记忆/工具/MCP/RAG/图谱/评测…）—— 面试/复盘用 |
 | `docs/P0-1_TERMINOLOGY_AUDIT.md` | 术语口径审计（措辞不超卖） |

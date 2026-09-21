@@ -35,7 +35,8 @@ TOOL_SCHEMAS: list[dict] = [
                     "level": {"type": "string", "description": "故障等级过滤（仅 fault）：critical/major/minor/info"},
                     "action": {"type": "string", "description": "处置过滤（仅 fault）：warning/derate/shutdown/emergency_brake/none"},
                     "keyword": {"type": "string", "description": "名称/描述关键字（可选）"},
-                    "limit": {"type": "integer", "description": "返回条数上限（默认 10）"},
+                    "limit": {"type": "integer", "description": "返回条数上限（默认 10，最大 50）"},
+                    "cursor": {"type": "string", "description": "续取游标：把上次返回的 next_cursor 原样传入即可翻页（分页用，勿手编）"},
                 },
                 "required": ["kind"],
             },
@@ -84,7 +85,10 @@ TOOL_SCHEMAS: list[dict] = [
             "description": "列出现成可执行的复现场景（可只列覆盖某故障的）。要找现成场景复现时用它。",
             "parameters": {
                 "type": "object",
-                "properties": {"fault_key": {"type": "string", "description": "可选故障键过滤，如 overspeed"}},
+                "properties": {
+                    "fault_key": {"type": "string", "description": "可选故障键过滤，如 overspeed"},
+                    "cursor": {"type": "string", "description": "续取游标：把上次返回的 next_cursor 原样传入即可翻页"},
+                },
             },
         },
     },
@@ -102,9 +106,30 @@ def _fmt(text: str, n: int = 200) -> str:
     return str(text).replace("\n", " ")[:n]
 
 
-def _filter_assets(m, kind: str, level: str = "", action: str = "", keyword: str = "", limit: int = 10) -> dict:
+def _filter_assets(m, kind: str, level: str = "", action: str = "", keyword: str = "", limit: int = 10, cursor: str = "") -> dict:
     """按条件枚举真实资产（fault/scenario）。level/action 仅对 fault 生效。"""
     limit = max(1, min(int(limit or 10), 50))
+    try:
+        offset = max(0, int(str(cursor or "").strip())) if str(cursor or "").strip() else 0
+    except (TypeError, ValueError):
+        offset = 0
+
+    def _page(matched: list[dict], extra: dict) -> dict:
+        """统一分页口径：count=本页 · total=匹配总数 · truncated=是否还有下一页。
+
+        **绝不静默截断** —— 有下一页就给出 next_cursor。
+        """
+        page = matched[offset:offset + limit]
+        nxt = offset + limit
+        more = nxt < len(matched)
+        return {
+            **extra,
+            "count": len(page),
+            "total": len(matched),
+            "truncated": more,
+            "next_cursor": str(nxt) if more else None,
+            "items": page,
+        }
     kw = (keyword or "").strip().lower()
     lv = (level or "").strip().lower()
     ac = (action or "").strip().lower()
@@ -119,7 +144,7 @@ def _filter_assets(m, kind: str, level: str = "", action: str = "", keyword: str
             if kw and kw not in blob:
                 continue
             out.append({"key": f.key, "name": f.name, "level": f.level, "action": f.action})
-        return {"kind": "fault", "level": lv or None, "action": ac or None, "keyword": keyword or None, "count": len(out), "items": out[:limit]}
+        return _page(out, {"kind": "fault", "level": lv or None, "action": ac or None, "keyword": keyword or None})
     if kind == "scenario":
         if lv or ac:
             return {"error": "scenario 没有 level/action 字段；请对 fault 使用 level/action，或用 keyword 过滤场景名"}
@@ -129,7 +154,7 @@ def _filter_assets(m, kind: str, level: str = "", action: str = "", keyword: str
             if kw and kw not in blob:
                 continue
             out.append({"file": s.file, "name": s.name, "fault_keys": sorted(s.fault_keys)[:5]})
-        return {"kind": "scenario", "keyword": keyword or None, "count": len(out), "items": out[:limit]}
+        return _page(out, {"kind": "scenario", "keyword": keyword or None})
     return {"error": f"kind 只能是 fault/scenario，收到: {kind}"}
 
 
@@ -144,6 +169,7 @@ def _run_tool(name: str, args: dict, m, g, hr) -> dict:
             action=str(args.get("action") or ""),
             keyword=str(args.get("keyword") or ""),
             limit=int(args.get("limit") or 10),
+            cursor=str(args.get("cursor") or ""),
         )
     if name == "kb_search":
         query = str(args.get("query") or "").strip()
@@ -205,15 +231,21 @@ def _run_tool(name: str, args: dict, m, g, hr) -> dict:
         fault_key = str(args.get("fault_key") or "").strip() or None
         matching = [s for s in m.scenarios.values() if not fault_key or fault_key in s.fault_keys]
         limit = 40
-        out = [{"file": s.file, "name": s.name} for s in matching[:limit]]
+        try:
+            offset = max(0, int(str(args.get("cursor") or "").strip())) if str(args.get("cursor") or "").strip() else 0
+        except (TypeError, ValueError):
+            offset = 0
+        page = matching[offset:offset + limit]
+        out = [{"file": s.file, "name": s.name} for s in page]
         # 绝不静默截断：截断时必须自曝 total/truncated，并给出下一页游标
+        more = offset + limit < len(matching)
         return {
             "fault_key": fault_key,
             "scenarios": out,
             "count": len(out),
             "total": len(matching),
-            "truncated": len(matching) > len(out),
-            "next_cursor": str(len(out)) if len(matching) > len(out) else None,
+            "truncated": more,
+            "next_cursor": str(offset + limit) if more else None,
         }
     return {"error": f"未注册工具: {name}"}
 
