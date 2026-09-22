@@ -164,7 +164,11 @@
 | fault_chain | test_fault_chain.py | 6 | 端到端故障链（burst → WCRT → 看门狗 → EBM） |
 | **RTM 追溯** | **test_rtm.py** | **6** | **rtm.csv 完整性：SR 全覆盖/无重复/状态合法（元测试）** |
 | fuzz.py | test_fuzz.py | 5 | 模糊测试 |
-| **examples/** | **test_examples.py** | **2** | **.asc 样例可解析 + replay_demo 剧情断言可复现** |
+| **CLI 入口** | **test_cli.py** | **13** | **平台化命令每个分支可测（--doctor/--level/-k/退出码）** |
+| **环境自检** | **test_diagnose.py** | **13** | **自检行结构与关键项（依赖/版本/数据资产/总线/HIL）** |
+| **元数据契约** | **test_metadata.py** | **8** | **版本单一真源 + 打包数据资产可寻址** |
+| **性能基准** | **test_benchmark.py** | **4** | **scripts/benchmark.py 可运行性（吞吐/WCRT/负载窗口）** |
+| **examples/** | **test_examples.py** | **3** | **.asc 样例可解析 + replay_demo 剧情断言可复现** |
 | **失败导出 hook** | **test_failure_export.py** | **2** | **失败现场自动导出 summary/json/csv（元测试）** |
 
 合计 **960 用例（44 文件）**。

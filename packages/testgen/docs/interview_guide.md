@@ -55,10 +55,15 @@ Closed），用例事先不知道。相关用例全被杀 = 用例断言覆盖�
 把它们做成变异是明确的下一步。
 
 **Q4 真实 LLM 跑过吗？**
-答：诚实说——本机无 API key，真 LLM 未跑。但「同管线」不是空话：mock 与
+答：跑过，且报告可复现（P3b / P4 / P5）。「同管线」不是空话：mock 与
 真 LLM 共享同一 output 契约，system prompt 已强制要求每条用例带 execution
 DSL（白名单原语 + 资产事实注入 + few-shot），真 LLM 输出同样会被
-parse/compile/kill_rate 管线量化。我不会把 mock 数字说成任何 LLM 的质量。
+parse/compile/kill_rate 管线量化。**实测结果**：P3b（deepseek-v3.2）compile 100%，
+且幻觉 `AlarmLevel=-1` 被真实执行器 `EncodeError` 当场拦截；P4 反思闭环 22 条 /
+5 失败 / 2 自愈 → `self_heal_rate` 0.40（n 小，仅证机制）；P5 三模型 × 3 批：
+v4-flash 面广但幻觉 5、v3.2 稳但 door 杀毒 0.364、r1 劣势面多——**推理模型在受约束
+DSL 任务上不划算**（`docs/experiments/p3-llm-real.md`、`p4-agent.md`、`p5-multi-model.md`）。
+我不会把 mock 数字说成任何 LLM 的质量。
 
 **Q5 覆盖率 97.96% 的 960 例 vs 你的生成器，谁强？**
 答：这不是替代关系。960 例是金标（human expert 上界），生成器提供的是

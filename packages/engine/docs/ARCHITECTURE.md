@@ -67,10 +67,10 @@ DBC 协议 + 仿真器(线程) ──→ 虚拟/真实 CAN 总线 ──→ 测�
    须 ∈ faultlevel 合法集，与 faultlevel.FAULTS 重名条目校验一致）。
 2. `tests/test_faultdb.py` 断言字典总数/唯一性自动覆盖（读文件不硬编码数）。
 3. 若要被场景消费：确认 `faultlevel`/注入器支持该 key（v1.7 起处置
-   回退统一字典，66 键全可注入）。
+   回退统一字典，203 键全可注入）。
 
 ### 3.3 新增一个场景
-1. `scenarios/<name>.yaml` 声明式编排（注入/恢复/断言），参照既有 13 例。
+1. `scenarios/<name>.yaml` 声明式编排（注入/恢复/断言），参照既有 104 例。
 2. 头部注释写 F-TCMS 编号，与字典逐条对齐。
 3. `tests/test_scenario_registry.py` 自动参数化执行目录内全部 YAML——
    无需改测试文件。保持注册表规模守卫 ≥5。

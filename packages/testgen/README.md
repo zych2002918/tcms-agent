@@ -9,7 +9,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10+-3776ab)](#)
 [![tests](https://img.shields.io/badge/tests-165%20passed-2dd4a0)](docs/metrics.md)
-[![coverage](https://img.shields.io/badge/coverage-91%25-2dd4a0)](docs/metrics.md)
+[![coverage](https://img.shields.io/badge/coverage-93%25-2dd4a0)](docs/metrics.md)
 [![CI](https://github.com/zych2002918/tcms-ai-testgen/actions/workflows/ci.yml/badge.svg)](https://github.com/zych2002918/tcms-ai-testgen/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
