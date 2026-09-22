@@ -46,8 +46,8 @@ async function main() {
     assert(page.url().includes("/graph"));
     record("graph: 默认基础关联图谱已加载（无需搜索）");
     const nodeText = await page.evaluate(() => document.body.innerText);
-    assert(nodeText.includes("56 节点"), "overview 计数 Tag 应含 56 节点");
-    record("graph: overview 计数 56 节点可见");
+    assert(nodeText.includes("59 节点"), "overview 计数 Tag 应含 59 节点（13 系统 + 11 功能 + 代表故障 + 孤立域补的真实成员）");
+    record("graph: overview 计数 59 节点可见");
 
     // B. FaultLab：URL 直达场景自动演示 + 具体异常文案
     await page.goto(`${BASE}/faultlab?scenario=door_cascade.yaml&from=scenario-exec`, { waitUntil: "domcontentloaded" });

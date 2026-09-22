@@ -118,7 +118,7 @@
 | 向量文档 | 基础 508；服务态 644 | 资产 + 领域(离线 HashedEmbedder) + 12 症状文档 |
 | 症状资产（无码） | 12 | symptoms.yaml（hints 全锚真实故障键/13 系统域；annotation real 7/mixed 5） |
 | 因果边（诊断） | 54（indicates 41 / causes 13） | causal_edges.yaml（real_mechanism 41 / derived 13，逐条 basis+note） |
-| 图谱默认骨架（overview） | 56 节点 / 65 边 | GET /api/kb/overview：13 system + 11 function + 每功能代表故障 |
+| 图谱默认骨架（overview） | 59 节点 / 69 边 | GET /api/kb/overview：13 system + 11 function + 每功能代表故障；**2026-09-22 起**再给"零成员"的系统域（辅助供电/照明/电池储能）沿既有边补一个真实成员——骨架里不允许出现没有任何连线的孤立点（旧口径 56 节点/65 边见 CHANGELOG/ACCEPTANCE 等历史记录） |
 | 场景中文名 / desc | 104 name 唯一；44 个 wave_* 模板名已改短并补 desc | scenarios/*.yaml + Scenarios/Agent 结果标题映射 |
 | Agent 内置任务 | 8 | 真实故障锚定防漂移（自由目标规则 + RAG 澄清，见 freeform/advisor） |
 

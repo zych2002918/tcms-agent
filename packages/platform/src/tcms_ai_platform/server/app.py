@@ -722,6 +722,7 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
 
         前端进入图谱页（未搜索/未选种子）时直接展示本视图：
         节点 = system:SYS-* 全部 + function:F-* 全部 + 各功能 fault_keys 前 limit 个真实故障；
+        并给"零成员"的系统域沿既有边补一个真实成员 —— **骨架里不允许出现孤立点**（没有连线的点会被读成"图谱坏了"）。
         边 = 这些节点之间既有的 belongs_to / triggers / covers / injects 等真实关系。
         计数全部派生自 enrich 后的图与资产模型（机器自证）。
         """
@@ -734,6 +735,37 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
                 nid = f"fault:{fk}"
                 if nid in graph.nodes:
                     keep.add(nid)
+
+        # 补齐「孤立系统域」：代表故障只按 function.fault_keys 取，于是**没有任何功能挂其故障的系统域**
+        # （辅助供电 SYS-AUX / 照明 SYS-LIGHT / 电池储能 SYS-BATT）拿不到成员，在骨架里变成
+        # **没有连线的浮点** —— 用户看到几个孤零零的点，只会读成"图谱显示不全/坏了"（实测 3/56）。
+        # 这里给度数为 0 的节点各补一个**真实成员**：只沿图里既有的边找，不发明任何关系。
+        deg_all: dict[str, int] = {}
+        deg_kept: dict[str, int] = {}
+        for e in graph.edges:
+            deg_all[e.src] = deg_all.get(e.src, 0) + 1
+            deg_all[e.dst] = deg_all.get(e.dst, 0) + 1
+            if e.src in keep and e.dst in keep:
+                deg_kept[e.src] = deg_kept.get(e.src, 0) + 1
+                deg_kept[e.dst] = deg_kept.get(e.dst, 0) + 1
+        backfill: list[str] = []
+        for nid in sorted(n for n in keep if deg_kept.get(n, 0) == 0):
+            cands: list[str] = []
+            for e in graph.edges:
+                if e.src == nid:
+                    other = e.dst
+                elif e.dst == nid:
+                    other = e.src
+                else:
+                    continue
+                if other in graph.nodes and other not in keep and other not in backfill:
+                    cands.append(other)
+            if not cands:
+                continue
+            # 取全图度数最高者（信息量最大）；同分按 id 排序 —— 同一份资产每次得到的骨架完全一致。
+            cands.sort(key=lambda c: (-deg_all.get(c, 0), c))
+            backfill.append(cands[0])
+        keep.update(backfill)
         nodes = [
             {"id": n.id, "kind": n.kind, "label": n.label}
             for n in graph.nodes.values()

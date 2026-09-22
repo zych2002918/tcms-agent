@@ -8,12 +8,18 @@
 // 用法： cd e2e && node capture-doc-shots.mjs
 import { chromium } from "playwright-core";
 import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const BASE = process.env.TCMS_SHOT_BASE ?? "http://127.0.0.1:8000";
 const EDGE =
   process.env.TCMS_EDGE ??
   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
-const OUT = "../docs";
+// 输出目录按**脚本自身位置**解析，不跟当前工作目录走。
+// 踩过一次（2026-09-22）：从 packages/platform 运行 → `../docs` 变成了 packages/docs，
+// 而本仓是 uv workspace（`packages/*` 每个成员都必须有 pyproject.toml），
+// 一个凭空出现的目录就让整个工作区失效（uv 直接报 "missing a pyproject.toml"）。
+const OUT = resolve(dirname(fileURLToPath(import.meta.url)), "../docs");
 
 // 期望的新鲜度：与当前构建一致（改版时同步更新这里）
 const EXPECT = {
