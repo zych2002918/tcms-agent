@@ -60,7 +60,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          body_path: release_notes.md
+          # 注意：action 的路径相对**仓库根**——`defaults.run.working-directory` 只作用于
+          # run 步骤。因此这里必须带 `packages/engine/` 前缀，否则 Release 会因找不到
+          # body / 附件而失败；而失败点藏在一个**从未触发过**的 workflow 里，极难发现。
+          body_path: packages/engine/release_notes.md
           files: |
-            dist/*.whl
-            dist/*.tar.gz
+            packages/engine/dist/*.whl
+            packages/engine/dist/*.tar.gz
