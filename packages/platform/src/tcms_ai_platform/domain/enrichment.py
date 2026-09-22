@@ -467,6 +467,56 @@ def _system_domain_of(code: str, sys: dict) -> str:
     return mapping.get(code, "")
 
 
+def _inherit_domains(g: KnowledgeGraph, store: VectorStore) -> dict:
+    """给「领域知识层」的文档补域：按图谱邻接从**本来就有域**的邻居继承（多数票）。
+
+    ## 为什么需要（实测缺陷，2026-09-22）
+
+    域路由检索会把**无域文档整段排除**（见 `vector.search` 的 `domains` 过滤）。而阈值/联锁/
+    状态/机制/标准/概念/危害这几类注入文档此前都没有 `domain`（实测 **111 篇**），
+    于是路由一旦命中某个域 —— 也就是绝大多数工程问题 —— 这些文档**完全不可达**：
+
+      · 「EBM 零速阈值是多少」→ 路由 brake → 8 条命中里没有一条 threshold（那份文档明明存在）
+      · 「开门时列车移动会怎样」→ 路由 door → 没有 interlock（那条规则讲的正是这件事）
+      · 「紧急制动管理在什么状态下会缓解」→ 路由 brake → 没有任何 state 文档
+
+    对照组：路由为空的路由（如「EN 50128 是什么」）能正常召回 `standard:EN 50128` 第 1 名 ——
+    说明问题出在"无域"，不在检索本身。
+
+    ## 口径
+
+    只走**一跳**、只从"本来就有域"的邻居取票、多数票平票时按域名排序取定（结果可复现）；
+    没有任何有域邻居的**保持无域**（诚实留白，不猜它属于哪个域）。
+    """
+    if store is None:
+        return {"filled": 0, "still_empty": 0, "note": "no store"}
+    known = {d.doc_id: str(d.meta.get("domain") or "") for d in store.docs}
+    known = {k: v for k, v in known.items() if v}
+    if not known:
+        return {"filled": 0, "still_empty": 0, "note": "no domain source"}
+
+    adj: dict[str, list[str]] = {}
+    for e in g.edges:
+        adj.setdefault(e.src, []).append(e.dst)
+        adj.setdefault(e.dst, []).append(e.src)
+
+    filled = 0
+    for d in store.docs:
+        if str(d.meta.get("domain") or ""):
+            continue
+        votes: dict[str, int] = {}
+        for nb in adj.get(d.doc_id, []):
+            dom = known.get(nb)
+            if dom:
+                votes[dom] = votes.get(dom, 0) + 1
+        if not votes:
+            continue
+        d.meta["domain"] = max(votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+        filled += 1
+    still = sum(1 for d in store.docs if not str(d.meta.get("domain") or ""))
+    return {"filled": filled, "still_empty": still}
+
+
 def enrich_graph(g: KnowledgeGraph, store: VectorStore | None = None) -> dict:
     """注入全部可用领域知识。返回注入统计（files: {name: count}）。"""
     report: dict = {"files": {}}
@@ -486,4 +536,6 @@ def enrich_graph(g: KnowledgeGraph, store: VectorStore | None = None) -> dict:
     report["symptom_causal"] = _inject_symptoms(g, store)
     # 故障 → 危害 深连（在全部注入完成后，确保 hazard/fault 都已存在）
     report["fault_hazard_links"] = _link_faults_to_safety(g)
+    # 领域知识层补域：必须放在**全部注入 + 深连之后**，这时邻接关系才完整。
+    report["domain_inherit"] = _inherit_domains(g, store) if store is not None else {}
     return report

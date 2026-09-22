@@ -146,3 +146,39 @@ def test_default_truncation_is_announced(client) -> None:
     full = client.get("/api/kb/nodes", params={"kind": "fault", "limit": 100000})
     assert full.headers["X-Truncated"] == "false", "拿全量时不该再报截断"
     assert len(full.json()) == total, "全量条数应与 X-Total-Count 相等"
+
+
+# ---------------------------------------------------------------------------
+# 领域知识层必须"有域"，否则在按域检索里整层不可达
+# ---------------------------------------------------------------------------
+
+
+@needs_engine
+def test_domainless_docs_stay_bounded_and_reachable(client) -> None:
+    """无域文档必须**有界**：域路由检索会把无域文档整段排除，所以"无域"等于"不可达"。
+
+    实测缺陷（2026-09-22）：阈值/联锁/状态/机制/标准/概念/危害共 **111 篇**注入文档都没有
+    `domain`，于是路由一旦命中某个域（绝大多数工程问题都会），这一整层就再也搜不到：
+
+      · 「EBM 零速阈值是多少」→ 路由 brake → 8 条命中里没有一条 threshold（文档明明存在）
+      · 「开门时列车移动会怎样」→ 路由 door → 没有 interlock（那条规则讲的正是这件事）
+      · 「紧急制动管理在什么状态下会缓解」→ 路由 brake → 没有任何 state 文档
+
+    修法：按图谱邻接从**本来就有域**的邻居继承域（`domain/enrichment.py::_inherit_domains`，
+    只走一跳、只用既有边，无邻居可继承的诚实留白）。实测 121 → 26。
+
+    本用例守两件事：① 无域数量不得反弹（新注入文档要记得给域）；② 归域后确实能被按域检索召回。
+    """
+    stats = client.get("/api/kb/stats").json()
+    empty = stats["vector"]["by_domain"].get("", 0)
+    assert empty <= 30, (
+        f"无域向量文档 {empty} 篇（上限 30）—— 按域检索会把它们整段排除。"
+        "新增领域知识文档时请在 meta 里给 domain，或确认它能从图谱邻居继承到域。"
+    )
+
+    r = client.post("/api/kb/search", json={"query": "EBM 零速阈值是多少", "k": 5})
+    assert r.status_code == 200, r.text
+    ids = [h["doc_id"] for h in r.json()["hits"]]
+    assert any(i.startswith("threshold:") for i in ids), (
+        f"阈值类文档在按域检索里仍召回不到（该查询路由到 brake）：{ids}"
+    )
