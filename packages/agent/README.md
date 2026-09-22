@@ -114,7 +114,8 @@ uv run tcms-agent eval gate --candidate a.json --baseline b.json   # 回归门�
 它更常直接调 `verify_fault_action` 拿引擎证据，跳过中间检索。
 
 > 诚实说明：**记忆与重排在这套任务集上测不出差异**，原因是仪器不对而非效果不存在
-> （重排的仪器是检索 golden：那里实测 top-1 由 12/14 → 14/14）。
+> （重排的仪器是检索 golden：扩容到 28 条后实测 top-1 由 23 → 25，同时暴露 3 条中文
+> 描述性查询被排差——已登记为待修工单，新增劣化会红）。
 > 详见 `docs/ARCHITECTURE.md` §2.8 与 ADR-016。
 
 ## 四层记忆
@@ -167,7 +168,7 @@ uv run tcms-agent nolib --verify
 
 ```bash
 cd packages/agent
-pytest -q      # 179 passed + 2 skipped：无 API key，全部离线可复现
+pytest -q      # 188 passed + 2 skipped：无 API key，全部离线可复现
 ```
 
 覆盖：权限门禁（含"被拒的调用绝不能真的执行"）、诚实错误、审计记录、

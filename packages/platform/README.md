@@ -128,7 +128,7 @@ bash start.sh
 
 | 门禁 | 结果 | 说明 |
 |---|---|---|
-| `pytest -q` | **340 passed + 1 skipped** | 检索 14 golden、诊断 8 golden、30 条对抗集、图谱通道契约、上游路径护栏、多轮/澄清/MCP/function-calling 契约… |
+| `pytest -q` | **340 passed + 1 skipped** | 检索 28 golden、诊断 8 golden、30 条对抗集、图谱通道契约、上游路径护栏、多轮/澄清/MCP/function-calling 契约… |
 | `ruff check src tests` | clean | |
 | `pnpm vitest run` | 16/16 | 播放器状态机/3D 布局纯逻辑 |
 | `node e2e/graph-interact.mjs` | 5/5 | 图谱单击详情/双击跳转/返回/3D 交互（真浏览器） |

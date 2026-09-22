@@ -548,17 +548,22 @@ def test_hybrid_retrieve_shape_and_anchors():
 
 @NEEDS_UPSTREAM
 def test_golden_retrieval_gate():
-    """检索评测集门禁：14 条 golden，混合通道全过；纯向量通道 ≥ 13/14（防回退）。"""
+    """检索评测集门禁：混合通道全过；纯向量通道按比例设下限（防回退）。
+
+    条数与下限都**不写死**——扩容 golden 是正常演进，不该每次都来改测试。
+    实测（2026-09-21 扩容至 28 条）：hybrid 28/28、top-1 23；vector 28/28、top-1 22。
+    """
     from tcms_ai_platform.knowledge.golden import evaluate_retriever
 
     _m, _g, _vs, hr, _report = _enriched_kb()
     hy = evaluate_retriever(hr, k=5, hybrid=True)
     vec = evaluate_retriever(hr, k=5, hybrid=False)
     fails = [row["q"] for row in hy["rows"] if not row["pass"]]
-    assert hy["total"] == 14
-    assert hy["passed"] == hy["total"], f"混合通道 golden 未全过: {fails}"
-    assert hy["top1"] >= 10
-    assert vec["passed"] >= 13, "纯向量通道回退超标（golden 防回退门禁）"
+    total = hy["total"]
+    assert total >= 14, "golden 不该缩水（扩容正常，缩水要说明理由）"
+    assert hy["passed"] == total, f"混合通道 golden 未全过: {fails}"
+    assert hy["top1"] >= total * 0.7, f"top-1 命中率回退：{hy['top1']}/{total}"
+    assert vec["passed"] >= total * 0.9, "纯向量通道回退超标（golden 防回退门禁）"
     # 确定性：同语料重跑结果一致
     assert evaluate_retriever(hr, k=5, hybrid=True)["passed"] == hy["passed"]
 

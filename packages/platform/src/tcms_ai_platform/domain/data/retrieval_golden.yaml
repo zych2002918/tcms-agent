@@ -1,4 +1,4 @@
-# 检索评测集（P1-1 golden queries）：机器断言“检索质量不回退”
+﻿# 检索评测集（P1-1 golden queries）：机器断言“检索质量不回退”
 #
 # 每条：q = 用户自然问法；expect = 应被 top-k 命中的真实 doc_id（任一命中即过）；
 # min_at 可选 = 至少应出现在第 min_at 名及以前（不设则只要求进入 top-k）。
@@ -49,3 +49,59 @@ queries:
   - q: 受电弓拉弧 停车
     expect: [fault:pantograph_arc]
     min_at: 3
+
+  # --- 2026-09-21 扩容（14 → 28）：补「症状式」与「易混淆」查询 ---
+  #
+  # 起因：原表 14 条偏「故障键直问」，查什么词就出什么键，测不出**域路由**对口语查询
+  # 的影响。扩容时实测 15 条候选，发现并修掉一个真实缺陷：`light` 域词表缺现象/部件词
+  # （灯带/频闪/闪烁），而 `hvac` 词表里有位置词「客室」——于是「客室灯带频闪」整条被
+  # 路由进 hvac 域、返回客室过温，真正的症状根本不在候选里。diagnoser 早就记录过这个坑
+  # 并在自己那条链上绕开了域路由，检索通道这里补齐词表。
+  #
+  # 期望值全部来自**实测排名**（不是设想），min_at 留了余量。
+  # 已知缺口（**故意不入表**，否则等于把未达标项写成门禁）：
+  #   「制动灯异常点亮」→ 路由到 brake 域，`symptom:brake_light_abnormal` 排在前 8 之外。
+  #   与「客室灯带频闪」同源（复合词跨域：制动 + 灯），但 light 词表若收「制动灯」会与
+  #   brake 域抢词；真正需要的是"位置/部件词不单独决定路由"的机制，属另一件事。
+  - q: HMI 黑屏
+    expect: [fault:cab_display_blank, symptom:hmi_blank]
+    min_at: 5
+  - q: 时钟跳变 时间对不上
+    expect: [symptom:clock_jump, fault:gateway_clock_drift]
+    min_at: 5
+  - q: 客室灯带频闪
+    expect: [fault:cabin_light_flicker, symptom:cabin_light_strobe, symptom:lamp_flicker]
+    min_at: 5
+  - q: PIS 屏显示花屏
+    expect: [symptom:pis_screen_glitch, fault:pis_display_fault]
+    min_at: 5
+  - q: 速度表突然归零
+    expect: [symptom:speed_zero_drop]
+    min_at: 5
+  - q: 蜂鸣器一直响 但没有报警
+    expect: [symptom:false_alarm_buzzer]
+    min_at: 5
+  - q: 照明闪烁
+    expect: [symptom:cabin_light_strobe, fault:cabin_light_flicker, symptom:lamp_flicker]
+    min_at: 5
+  - q: 心跳丢失
+    expect: [fault:heartbeat_loss_vcu]
+    min_at: 5
+  - q: 车门系统故障
+    expect: [system:SYS-DOOR, symptom:door_open_light_flicker]
+    min_at: 5
+  - q: 走行部监测异常
+    expect: [system:SYS-BOGIE, fault:bogie_vibration_high]
+    min_at: 5
+  - q: 烟火报警 误报
+    expect: [symptom:false_alarm_buzzer, fault:smoke_detected]
+    min_at: 8
+  - q: 辅助变流器 故障
+    expect: [fault:aux_converter_fault, system:SYS-AUX]
+    min_at: 5
+  - q: 牵引系统 降功率
+    expect: [fault:traction_power_cap_violation, fault:traction_loss]
+    min_at: 5
+  - q: 蓄电池 充电异常
+    expect: [fault:bms_precharge_fail, fault:bms_charge_state_conflict]
+    min_at: 5

@@ -170,6 +170,69 @@ def make_plan_node(knowledge: KnowledgeContext) -> Callable[[AgentState], dict]:
 # ---------------------------------------------------------------------------
 
 
+#: 压缩占位文案：必须如实说明"省了什么、什么没受影响"。
+_BUDGET_PLACEHOLDER = (
+    "[上下文预算压缩] 本条工具结果原 {n} 字符，已省略；"
+    "它返回过的资产引用仍保留在本次运行的 sources 里，引用校验不受影响。"
+)
+
+
+def _message_chars(m: Any) -> int:
+    c = getattr(m, "content", "")
+    return len(c if isinstance(c, str) else str(c))
+
+
+def _apply_context_budget(
+    messages: list[Any], budget: int, *, keep_recent: int = 4
+) -> tuple[list[Any], str]:
+    """按字符预算压缩**较早的工具结果**，返回 `(messages, note)`；未触发时 note 为空串。
+
+    四条设计约束，每条都对应一个真实的失败模式：
+
+    1. **不删消息**，只把 content 换成占位摘要 —— `tool_call` 与 `tool_result` 必须成对，
+       删掉一条会让下一轮请求被模型侧直接拒掉（400），而报错位置离病因很远；
+    2. **system 与最近 `keep_recent` 条永不裁** —— system 承载工具面与纪律；最后一条
+       AI 消息是结论，`verify` 正是从它里面抽引用，裁了会让引用校验凭空失真；
+    3. **只压 `ToolMessage`**，不动对话与决策 —— 观察可以重取，决策链不可重放；
+    4. **压不动就如实不压**（返回空 note），不为了"看起来守住了预算"而删东西。
+    """
+    if budget <= 0 or not messages:
+        return messages, ""
+    total = sum(_message_chars(m) for m in messages)
+    if total <= budget:
+        return messages, ""
+
+    protected = {0} | set(range(max(0, len(messages) - keep_recent), len(messages)))
+    out = list(messages)
+    freed = 0
+    trimmed = 0
+    for i, m in enumerate(messages):
+        if total - freed <= budget:
+            break
+        if i in protected or not isinstance(m, ToolMessage):
+            continue
+        old = _message_chars(m)
+        if old <= 200:  # 已经很小，压了只增加噪声
+            continue
+        placeholder = _BUDGET_PLACEHOLDER.format(n=old)
+        out[i] = ToolMessage(content=placeholder, tool_call_id=m.tool_call_id)
+        freed += old - len(placeholder)
+        trimmed += 1
+
+    if not trimmed:
+        return messages, ""
+    note = (
+        f"上下文预算 {budget} 字符（原 {total}）：压缩 {trimmed} 条较早的工具结果，"
+        f"释放约 {freed} 字符"
+    )
+    remaining = total - freed
+    if remaining > budget:
+        # 压不动了：受保护的消息（system / 最近若干条）本身就超预算。
+        # 如实说明，而不是假装守住了预算——那会让人误以为长任务已经安全。
+        note += f"；压缩后仍约 {remaining} 字符（受保护的消息本身已超预算）"
+    return out, note
+
+
 def make_agent_node(
     model: Any, registry: ToolRegistry, knowledge: KnowledgeContext, cfg: AgentConfig
 ):
@@ -191,6 +254,7 @@ def make_agent_node(
             _system_message(knowledge, registry, state.get("memory_context", "")),
             *state["messages"],
         ]
+        msgs, budget_note = _apply_context_budget(msgs, cfg.max_context_chars)
         ai: AIMessage = bound.invoke(msgs)
         calls = list(getattr(ai, "tool_calls", None) or [])
         if calls:
@@ -203,7 +267,10 @@ def make_agent_node(
         return {
             "messages": [ai],
             "steps": step + 1,
-            "trace": [_e("agent", ev, detail, step, tool_calls=[c.get("name") for c in calls])],
+            "trace": (
+                [_e("agent", ev, detail, step, tool_calls=[c.get("name") for c in calls])]
+                + ([_e("agent", "context_budget", budget_note, step)] if budget_note else [])
+            ),
         }
 
     return agent_node
