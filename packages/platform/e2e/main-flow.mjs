@@ -10,12 +10,31 @@ import os from "node:os";
 
 const BASE = process.env.TCMS_E2E_BASE ?? "http://127.0.0.1:8000";
 
+/** 备选扫描位置（仅当 playwright 自己解析不出可用路径时才用）。 */
+const CHROMIUM_ROOTS = [
+  path.join(os.homedir(), "AppData", "Local", "ms-playwright"),
+  path.join(os.homedir(), ".cache", "ms-playwright"),
+  "/root/.cache/ms-playwright",
+];
+
 function findChromium() {
-  const roots = [path.join(os.homedir(), "AppData", "Local", "ms-playwright"), path.join(os.homedir(), ".cache", "ms-playwright")];
+  const roots = CHROMIUM_ROOTS;
+  // 1) 显式指定优先（CI / 特殊环境可用 TCMS_CHROMIUM 指任意浏览器）
+  const explicit = process.env.TCMS_CHROMIUM;
+  if (explicit) return explicit;
+  // 2) 首选 playwright **自己**解析出的路径：那正是 `npx playwright install` 装的位置，
+  //    也因此一定与 playwright-core 的版本期望一致。此前只靠扫描目录猜结构，结果在 CI 上
+  //    出现"服务起来了、dist 也构建了，却报未找到 chromium"这种本地永远复现不了的失败。
+  try {
+    const p = chromium.executablePath();
+    if (p && fs.existsSync(p)) return p;
+  } catch {
+    /* 解析不出来就退回目录扫描 */
+  }
   const candidates = [];
   for (const root of roots) {
     if (!fs.existsSync(root)) continue;
-    for (const dir of fs.readdirSync(root)) {
+    for (const dir of fs.readdirSync(root).sort()) {
       const full = path.join(root, dir);
       for (const rel of ["chrome-win64/chrome.exe", "chrome-headless-shell-win64/chrome-headless-shell.exe", "chrome-linux/chrome", "chrome-mac/Chromium"]) {
         const p = path.join(full, rel);
@@ -32,7 +51,24 @@ async function waitText(page, text, ms = 20000) {
 
 async function main() {
   const exe = findChromium();
-  if (!exe) throw new Error("未找到 chromium 可执行文件，请先 npx playwright install chromium");
+  if (!exe) {
+    let resolved = "(解析失败)";
+    try {
+      resolved = chromium.executablePath();
+    } catch (e) {
+      resolved = `(解析抛错: ${String(e && e.message)} )`;
+    }
+    throw new Error(
+      [
+        "未找到 chromium 可执行文件。诊断信息：",
+        `  TCMS_CHROMIUM          = ${process.env.TCMS_CHROMIUM ?? "(未设)"}`,
+        `  playwright 期望的路径  = ${resolved}`,
+        `  该路径存在吗           = ${resolved.startsWith("/") || resolved.includes(":") ? fs.existsSync(resolved) : false}`,
+        `  扫描过的位置           = ${CHROMIUM_ROOTS.join(" / ")}`,
+        "  修法：npx playwright install chromium（或显式设 TCMS_CHROMIUM 指向浏览器可执行文件）",
+      ].join("\n"),
+    );
+  }
   console.log(`[e2e] chromium: ${exe}`);
   const browser = await chromium.launch({ executablePath: exe, headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

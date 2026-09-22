@@ -240,8 +240,16 @@ jobs:
       - name: 浏览器驱动（e2e/package.json 有意不入库，故就地装；版本与脚本依赖对齐）
         working-directory: packages/platform/e2e
         run: |
-          npm install --no-save playwright-core@^1.63.0 playwright@^1.63.0
+          # 版本必须**锁死成同一个**：驱动（playwright-core）与下载器（playwright）若落在
+          # 不同 revision，就会出现"浏览器其实装了、但 executablePath() 指向的那个不存在"
+          # —— 表现正是本地永远复现不了、只有 CI 才有的"未找到 chromium"。
+          npm install --no-save playwright-core@1.63.0 playwright@1.63.0
           npx playwright install --with-deps chromium
+          # 打印 playwright 自己解析出的可执行路径：e2e 脚本优先用它，
+          # 打印出来是为了失败时一眼能看出"装到哪了 / 在不在"。
+          echo "--- playwright resolved executablePath ---"
+          node -p "require('playwright-core').chromium.executablePath()"
+          node -e "const p=require('playwright-core').chromium.executablePath();console.log('exists =', require('node:fs').existsSync(p))"
       # 起服务与跑断言放在**同一个 step**：GitHub Actions 每个 step 是独立 shell，
       # 跨 step 挂后台进程是已知的脆弱点，合并成一个 step 就不存在这个风险。
       - name: 真浏览器验收（起真实服务 + 真实 dist → e2e/main-flow.mjs）
