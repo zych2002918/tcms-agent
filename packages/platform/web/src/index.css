@@ -30,7 +30,7 @@ html.theme-dark {
   --input: #101113;
   --ink: #f2f3f5;
   --ink-dim: #9ba1a9;
-  --ink-faint: #6c737c;
+  --ink-faint: #7a818a;
   --on-info: #ffffff;
   --scrim: rgba(8, 9, 10, 0.66);
 
@@ -80,8 +80,8 @@ html.theme-light {
   --line-soft: #eef0f2;
   --input: #ffffff;
   --ink: #0f1115;
-  --ink-dim: #5b6472;
-  --ink-faint: #8b93a1;
+  --ink-dim: #4a5260;
+  --ink-faint: #656d7f;
   --on-info: #ffffff;
   --scrim: rgba(15, 17, 21, 0.35);
 
@@ -90,8 +90,8 @@ html.theme-light {
   --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.1), 0 2px 6px rgba(16, 24, 40, 0.06);
   --shadow-lg: 0 16px 48px rgba(16, 24, 40, 0.14);
 
-  --ok: #0d9f6e;
-  --warn: #c2740a;
+  --ok: #0f7a55;
+  --warn: #a16207;
   --bad: #dc2626;
   --info: #4f46e5;
   --vio: #7c3aed;

@@ -2,6 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, type KbNode, type KbSearchHit, type KbSubgraph } from "../api";
 import { Callout, EmptyState, Explain, KV, Panel, SkeletonRows, Tabs, Tag } from "../components/ui";
+import {
+  IconCaret,
+  IconCube,
+  IconExpand,
+  IconFlat,
+  IconGraph,
+  IconPause,
+  IconPlay,
+  IconRewind,
+  IconSearch,
+} from "../components/icons";
 import { KIND_META, plainExplain } from "../lib/explanations";
 import {
   CAM_DEFAULT as CAM3D_DEFAULT,
@@ -437,7 +448,7 @@ export function GraphWorkspace() {
           {/* 原理收进可展开层：明面只留一句人话 */}
           <Callout
             tone="dim"
-            icon="⌕"
+            icon={<IconSearch className="h-4 w-4" />}
             title="三通道融合检索："
             details={
               <div className="space-y-1">
@@ -471,7 +482,7 @@ export function GraphWorkspace() {
             <Panel bodyClass="p-3">
               <EmptyState
                 compact
-                icon="◈"
+                icon={<IconGraph className="h-4 w-4" />}
                 title="问一句话就行，不用背术语"
                 desc="上面已放好示例问句，点一下即检索。检索结果会长这样："
                 steps={[
@@ -662,7 +673,7 @@ export function GraphWorkspace() {
                     )}
                     {!isOverview && (
                       <button className="btn-ghost btn-sm" onClick={() => void loadOverview()} title="回到 13 系统域基础关联图谱">
-                        ↺ 骨架
+                        <IconRewind className="h-3.5 w-3.5" /> 骨架
                       </button>
                     )}
                   </div>
@@ -777,7 +788,7 @@ export function GraphWorkspace() {
                       onClick={() => void focus(selHitView.hit.doc_id)}
                       title="以这条命中为中心拉出关系子图"
                     >
-                      ⤢ 以它为中心展开图谱
+                      <IconExpand className="h-3.5 w-3.5" /> 以它为中心展开图谱
                     </button>
                   </div>
                 )}
@@ -800,7 +811,7 @@ export function GraphWorkspace() {
                 {!selNode ? (
                   <EmptyState
                     compact
-                    icon="◉"
+                    icon={<IconGraph className="h-4 w-4" />}
                     title="单击图上节点看详情"
                     desc="双击节点=以它为中心重新展开；色点颜色代表实体类型（见下方图例）。"
                   />
@@ -826,7 +837,7 @@ export function GraphWorkspace() {
                         }}
                         title="以该节点为中心重新拉子图（与图上双击同效）"
                       >
-                        ⤢ 以它为中心扩展
+                        <IconExpand className="h-3.5 w-3.5" /> 以它为中心扩展
                       </button>
                       {selScenFile && (
                         <button
@@ -836,7 +847,7 @@ export function GraphWorkspace() {
                           }}
                           title="跳到 FaultLab 播放该场景的故障动画"
                         >
-                          ▶ 去 FaultLab 演示
+                          <IconPlay className="h-3.5 w-3.5" /> 去 FaultLab 演示
                         </button>
                       )}
                     </div>
@@ -896,7 +907,7 @@ export function GraphWorkspace() {
           onClick={() => setShowValue((v) => !v)}
           aria-expanded={showValue}
         >
-          <span className={`inline-block transition-transform ${showValue ? "rotate-90" : ""} text-ink-faint text-[11px]`}>▶</span>
+          <span className={`inline-block transition-transform ${showValue ? "rotate-90" : ""} text-ink-faint text-[11px]`}><IconCaret className="h-3 w-3" /></span>
           <span className="text-[13px] font-semibold text-ink">这张知识图谱，是给谁用的？</span>
           <span className="ml-auto text-[11px] text-ink-faint">{showValue ? "收起" : "人用 / AI 用，两种读法"}</span>
         </button>
@@ -1321,7 +1332,7 @@ function GraphCanvas3D({
   rotRef.current = rot;
   camRef.current = cam;
 
-  // 「⤢ 适配」：平滑过渡到默认视角（整球入画 + 初始姿态，easeInOutCubic ~420ms）
+  // 「适配」按钮：平滑过渡到默认视角（整球入画 + 初始姿态，easeInOutCubic ~420ms）
   useEffect(() => {
     const fromRot = { ...rotRef.current };
     const fromCam = camRef.current;
@@ -1533,8 +1544,8 @@ function GraphCanvas({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 border-b border-line-soft">
         <Tabs
           items={[
-            { value: "2d" as ViewMode, label: "◫ 2D", hint: "平面图：滚轮缩放、空白拖拽平移" },
-            { value: "3d" as ViewMode, label: "◍ 3D", hint: "球面俯瞰：拖拽旋转、可自动缓转" },
+            { value: "2d" as ViewMode, label: <><IconFlat className="h-3.5 w-3.5" /> 2D</>, hint: "平面图：滚轮缩放、空白拖拽平移" },
+            { value: "3d" as ViewMode, label: <><IconCube className="h-3.5 w-3.5" /> 3D</>, hint: "球面俯瞰：拖拽旋转、可自动缓转" },
           ]}
           value={mode}
           onChange={setMode}
@@ -1544,7 +1555,7 @@ function GraphCanvas({
           onClick={() => setFitSignal((s) => s + 1)}
           title={mode === "2d" ? "把全部节点适配到可视区域（或双击画布空白）" : "3D 视角重置：整球入画并回到初始姿态"}
         >
-          ⤢ 适配
+          <IconExpand className="h-3.5 w-3.5" /> 适配
         </button>
         {mode === "3d" && (
           <button
@@ -1552,7 +1563,15 @@ function GraphCanvas({
             onClick={() => setAuto((a) => !a)}
             title={auto ? "停止自动旋转" : "开始自动旋转（停转后无操作 3 秒自动恢复）"}
           >
-            {auto ? "⏸ 停转" : "▶ 自转"}
+            {auto ? (
+              <>
+                <IconPause className="h-3.5 w-3.5" /> 停转
+              </>
+            ) : (
+              <>
+                <IconPlay className="h-3.5 w-3.5" /> 自转
+              </>
+            )}
           </button>
         )}
         {!isOverview && (

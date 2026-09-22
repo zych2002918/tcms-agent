@@ -14,6 +14,19 @@ import { Panel, Tag, EmptyState, SkeletonRows } from "../components/ui";
 import { LiveWhiteBox } from "../components/LiveWhiteBox";
 import { ModelPicker } from "../components/ModelPicker";
 import { type ModelChoice, choiceToParams, loadModelChoice, saveModelChoice } from "../lib/modelChoice";
+import {
+  IconArrow,
+  IconCheck,
+  IconDot,
+  IconGear,
+  IconInfo,
+  IconLayers,
+  IconPlay,
+  IconReplay,
+  IconSearch,
+  IconSpark,
+  IconTarget,
+} from "../components/icons";
 
 type AgentRun = AgentRunResp["runs"][number];
 
@@ -486,7 +499,14 @@ export function AgentPage() {
             disabled={phase === "running" || !goal.trim() || engineBlocked}
             title={engineBlocked ? "需先启用 TCMS 引擎" : "让 Agent 先去理解你的目标，再检索证据、真实执行（Ctrl/⌘+Enter）"}
           >
-            {phase === "running" ? "执行中…" : "✦ 让 Agent 去查证"}
+            {phase === "running" ? (
+              "执行中…"
+            ) : (
+              <>
+                <IconSpark className="h-4 w-4" />
+                让 Agent 去查证
+              </>
+            )}
           </button>
           <button
             className="btn-ghost justify-center whitespace-nowrap"
@@ -494,7 +514,14 @@ export function AgentPage() {
             disabled={composing || !goal.trim() || engineBlocked}
             title={engineBlocked ? "需先启用 TCMS 引擎" : "让 Agent 把这句话理解成「多个故障的组合场景」并真实执行"}
           >
-            {composing ? "组合中…" : "⧉ 组合"}
+            {composing ? (
+              "组合中…"
+            ) : (
+              <>
+                <IconLayers className="h-4 w-4" />
+                组合
+              </>
+            )}
           </button>
         </div>
         <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -539,7 +566,7 @@ export function AgentPage() {
           </button>
           {(diagSidRef.current || diagResp) && (
             <button className="btn-ghost justify-center whitespace-nowrap" onClick={resetDiagnose} title="清空多轮记忆与会话，开始全新诊断">
-              ⟲ 新会话
+              <IconReplay className="h-4 w-4" /> 新会话
             </button>
           )}
           <label className="inline-flex items-center gap-1.5 text-[11px] text-ink-dim cursor-pointer select-none whitespace-nowrap" title="开启后 LLM 只在候选故障内重排诊断顺序（不引入候选外故障键）；需在设置中配置 API key">
@@ -550,12 +577,14 @@ export function AgentPage() {
         {diagErr && <div className="mt-2 text-[12px] text-bad">⚠ {diagErr}</div>}
         {diagResp?.llm_generated && (
           <div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-vio/40 bg-vio/10 px-2 py-0.5 text-[10.5px] text-vio">
-            ✦ 本次结果已由真实 LLM 在候选内重排仲裁（llm_generated=true）
+            <IconSpark className="h-3.5 w-3.5" />
+            本次结果已由真实 LLM 在候选内重排仲裁（llm_generated=true）
           </div>
         )}
         {diagResp?.session_anchor_used && (
           <div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-info/40 bg-info/10 px-2 py-0.5 text-[10.5px] text-info">
-            ↩ 沿上一轮症状锚点继续诊断（证据引用式多轮记忆，不存摘要）
+            <IconArrow className="h-3.5 w-3.5 rotate-180" />
+            沿上一轮症状锚点继续诊断（证据引用式多轮记忆，不存摘要）
           </div>
         )}
         {diagResp && (
@@ -648,7 +677,7 @@ export function AgentPage() {
                               window.location.href = `/faultlab?scenario=${encodeURIComponent(s.file)}&from=kb`;
                             }}
                           >
-                            ▶ {s.name || s.file.replace(".yaml", "")}
+                            <IconPlay className="h-3.5 w-3.5" /> {s.name || s.file.replace(".yaml", "")}
                           </button>
                         ))}
                       </div>
@@ -692,7 +721,14 @@ export function AgentPage() {
             ))}
           </select>
           <button className="btn justify-center whitespace-nowrap flex-1" onClick={() => run()} disabled={phase === "running" || !sel || engineBlocked} title={engineBlocked ? "需先启用 TCMS 引擎" : "在真实引擎上执行这个任务"}>
-            {phase === "running" ? "执行中…" : "▶ 执行"}
+            {phase === "running" ? (
+              "执行中…"
+            ) : (
+              <>
+                <IconPlay className="h-4 w-4" />
+                执行
+              </>
+            )}
           </button>
           <button className="btn-ghost justify-center whitespace-nowrap" onClick={() => run(tasks[0]?.task_id)} disabled={phase === "running" || tasks.length === 0 || engineBlocked} title="依次跑全部内置任务">
             全部
@@ -775,7 +811,7 @@ export function AgentPage() {
       {goalHint && phase === "done" && (
         <div className="panel px-4 py-5 step-in">
           <EmptyState
-            icon="?"
+            icon={<IconInfo className="h-5 w-5" />}
             title={freeResp?.situation ? "这句话说的是「现象」，不是故障名" : "这句未能锚定到具体故障"}
             desc={`${goalHint}${
               freeResp?.suggested_faults?.length
@@ -829,7 +865,7 @@ export function AgentPage() {
           <Panel
             title={
               <>
-                ⧉ Agent 组合的场景 <code className="kbd-mono ml-1">{composeResp.goal.slice(0, 40)}</code>
+                <IconLayers className="h-3.5 w-3.5 inline-block align-[-0.15em]" /> Agent 组合的场景 <code className="kbd-mono ml-1">{composeResp.goal.slice(0, 40)}</code>
               </>
             }
             right={
@@ -846,7 +882,7 @@ export function AgentPage() {
             )}
             {composeResp.interlock_note && (
               <div className="mb-2 rounded-md border border-vio/40 bg-vio/5 px-3 py-2">
-                <div className="text-[11px] font-medium text-vio mb-1">⚙ 联锁联合提示（处置取决于原因）</div>
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-vio mb-1"><IconGear className="h-3.5 w-3.5" />联锁联合提示（处置取决于原因）</div>
                 <div className="text-[12px] text-ink-dim leading-5">{composeResp.interlock_note}</div>
                 {composeResp.interlock_scenarios && composeResp.interlock_scenarios.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -1002,7 +1038,7 @@ export function AgentPage() {
                   onClick={() => composeToFaultLab(composeResp.steps!)}
                   title="把当前组合步骤作为动画序列播放"
                 >
-                  ▶ 去 FaultLab 播放这组步骤
+                  <IconPlay className="h-4 w-4" /> 去 FaultLab 播放这组步骤
                 </button>
               )}
               <button
@@ -1010,7 +1046,7 @@ export function AgentPage() {
                 onClick={() => void runCompose(composeResp.goal, [])}
                 title="回到用户原始句重新原子化（清空已点选并入）"
               >
-                ↻ 重新组合
+                <IconReplay className="h-4 w-4" /> 重新组合
               </button>
               {!composeResp.composed &&
                 composeResp.fault_matches &&
@@ -1120,7 +1156,7 @@ export function AgentPage() {
                         ["反思", run.score.radar.reflection, "text-warn"],
                       ].map(([l, v, c]) => (
                         <div key={String(l)}>
-                          <span className={String(c)}>●</span> {l} {String(v)}
+                          <span className={`${String(c)} inline-block align-[-0.15em]`}><IconDot className="h-2.5 w-2.5" /></span> {l} {String(v)}
                           <span className="text-ink-faint">/100</span>
                         </div>
                       ))}
@@ -1138,7 +1174,7 @@ export function AgentPage() {
                       href={faultlabHref(run.scenario, "agent-exec", run.fault)}
                       title="跳转 FaultLab，用动画回放这个场景的故障注入 → 检测 → 处置 → 恢复"
                     >
-                      ▶ 看动画
+                      <IconPlay className="h-4 w-4" /> 看动画
                     </a>
                   </div>
                 )}
@@ -1206,7 +1242,7 @@ export function AgentPage() {
         <section className="panel px-5 py-5">
           <div className="flex items-center gap-3">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line bg-surface-2 text-[15px] text-ink-faint">
-              ◎
+              <IconInfo className="h-5 w-5" />
             </span>
             <div className="min-w-0">
               <div className="text-[14px] font-semibold text-ink">工作台就绪 · 白盒待命</div>
@@ -1218,16 +1254,16 @@ export function AgentPage() {
 
           <ul className="mt-4 grid gap-2 sm:grid-cols-2">
             {[
-              ["⌖", "目标解析", "这句话锚定到哪个真实故障、置信度多少、依据是什么"],
-              ["⌕", "知识底座检索", "真实查询串 + 逐条命中（文档号 / 分数 / 通道 / 出处）"],
-              ["▶", "真实执行", "在 tcms 引擎上跑，摊开该场景实际注入了哪些故障"],
-              ["✓", "断言核对", "expect → actual 逐条给你看，通过与否不含糊"],
+              [<IconTarget className="h-3.5 w-3.5" />, "目标解析", "这句话锚定到哪个真实故障、置信度多少、依据是什么"],
+              [<IconSearch className="h-3.5 w-3.5" />, "知识底座检索", "真实查询串 + 逐条命中（文档号 / 分数 / 通道 / 出处）"],
+              [<IconPlay className="h-3.5 w-3.5" />, "真实执行", "在 tcms 引擎上跑，摊开该场景实际注入了哪些故障"],
+              [<IconCheck className="h-3.5 w-3.5" />, "断言核对", "expect → actual 逐条给你看，通过与否不含糊"],
             ].map(([icon, title, desc]) => (
               <li
-                key={title}
+                key={String(title)}
                 className="flex items-start gap-2.5 rounded-[var(--radius-md)] border border-line-soft bg-surface-2/50 px-3 py-2.5"
               >
-                <span className="text-ink-faint text-[13px] shrink-0 mt-0.5">{icon}</span>
+                <span className="inline-flex text-ink-faint text-[13px] shrink-0 mt-0.5">{icon}</span>
                 <div className="min-w-0">
                   <div className="text-[12.5px] text-ink">{title}</div>
                   <div className="text-[11px] text-ink-faint leading-4 mt-0.5">{desc}</div>

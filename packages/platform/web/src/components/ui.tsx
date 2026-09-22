@@ -12,6 +12,7 @@
  */
 
 import type { ReactNode } from "react";
+import { IconEmpty } from "./icons";
 
 /** 信号色 tag（语义即颜色） */
 export function Tag({
@@ -138,19 +139,19 @@ export function StatCard({
  * 不再撑出一张占半屏的大白卡；`steps` 用来**预告将要出现的结构**（比空话有用）。
  */
 export function EmptyState({
-  icon = "◌",
+  icon = <IconEmpty className="h-5 w-5" />,
   title,
   desc,
   action,
   compact = false,
   steps,
 }: {
-  icon?: string;
+  icon?: ReactNode;
   title: string;
   desc?: string;
   action?: ReactNode;
   compact?: boolean;
-  steps?: { icon: string; title: string; desc: string }[];
+  steps?: { icon: ReactNode; title: string; desc: string }[];
 }) {
   if (compact) {
     return (
@@ -168,7 +169,7 @@ export function EmptyState({
                   key={s.title}
                   className="flex items-start gap-2 rounded-[var(--radius-md)] border border-line-soft bg-surface-2/50 px-2.5 py-2"
                 >
-                  <span className="text-ink-faint text-[12px] shrink-0 mt-0.5">{s.icon}</span>
+                  <span className="inline-flex text-ink-faint text-[12px] shrink-0 mt-0.5">{s.icon}</span>
                   <div className="min-w-0">
                     <div className="text-[12px] text-ink">{s.title}</div>
                     <div className="text-[11px] text-ink-faint leading-4">{s.desc}</div>
@@ -206,7 +207,7 @@ export function Callout({
   className = "",
 }: {
   tone?: "info" | "warn" | "ok" | "dim";
-  icon?: string;
+  icon?: ReactNode;
   title: ReactNode;
   children?: ReactNode;
   /** 展开后才显示的细节（可以是段落、列表、代码块） */
@@ -250,7 +251,7 @@ export function Tabs<T extends string>({
   onChange,
   className = "",
 }: {
-  items: { value: T; label: string; hint?: string; count?: number }[];
+  items: { value: T; label: ReactNode; hint?: string; count?: number }[];
   value: T;
   onChange: (v: T) => void;
   className?: string;

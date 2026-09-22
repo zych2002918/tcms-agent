@@ -72,11 +72,13 @@ async function main() {
     // D. 图谱 3D：切到 3D 视图仍渲染画布，且“适配/停转”控件可见
     await page.goto(`${BASE}/graph`, { waitUntil: "domcontentloaded" });
     await waitText(page, "基础关联图谱（13 系统域骨架）");
-    await page.getByRole("button", { name: "◍ 3D" }).click();
+    await page.getByRole("tab", { name: "3D" }).click();
     await page.waitForTimeout(400);
     assert((await page.locator("svg.chart-bg").count()) >= 1, "3D 视图应有 svg 画布");
     const threeText = await page.evaluate(() => document.body.innerText);
-    assert(threeText.includes("⤢ 适配") && threeText.includes("⏸ 停转"), "3D 控制条应有适配与停转");
+    assert((await page.getByRole("button", { name: "适配" }).count()) >= 1, "3D 控制条应有适配");
+    assert((await page.getByRole("button", { name: "停转" }).count()) >= 1, "3D 控制条应有停转");
+    assert(threeText.includes("拖拽旋转"), "3D 模式下应显示 3D 操作提示（2D 提示为「空白拖拽平移」）");
     record("graph-3d: 3D 视图渲染正常，控件可用");
   } finally {
     await browser.close();

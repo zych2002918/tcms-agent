@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { type ModelChoice, isOverridden } from "../lib/modelChoice";
 import { useClampedPopover } from "../lib/popover";
+import { IconBolt, IconDot, IconReplay, IconRing } from "./icons";
 
 /** 按名称粗分"非对话类"模型（embedding / 语音 / 视觉 / 重排…）。
  *  这是**启发式**，只用来减少噪音：拿不准的一律留在"对话"里，不武断隐藏。 */
@@ -216,8 +217,8 @@ export function ModelPicker({
             }`}
           >
             <div className="flex items-center gap-2">
-              <span className={`text-[12px] ${value.mode === "follow" ? "text-info" : "text-ink"}`}>
-                {value.mode === "follow" ? "●" : "○"} 跟随设置
+              <span className={`inline-flex items-center gap-1 text-[12px] ${value.mode === "follow" ? "text-info" : "text-ink"}`}>
+                {value.mode === "follow" ? <IconDot className="h-3.5 w-3.5" /> : <IconRing className="h-3.5 w-3.5" />} 跟随设置
               </span>
               <span className="kbd-mono text-[11px] text-ink-dim truncate">{followLabel}</span>
             </div>
@@ -246,7 +247,19 @@ export function ModelPicker({
                 disabled={probe === "loading"}
                 title="带 key 请求一次 {base_url}/models，拿到你这个账号真实可用的清单"
               >
-                {probe === "loading" ? "获取中…" : probe === "done" ? "↻ 重新获取" : "⚡ 获取模型列表"}
+                {probe === "loading" ? (
+                  "获取中…"
+                ) : probe === "done" ? (
+                  <>
+                    <IconReplay className="h-4 w-4" />
+                    重新获取
+                  </>
+                ) : (
+                  <>
+                    <IconBolt className="h-4 w-4" />
+                    获取模型列表
+                  </>
+                )}
               </button>
             </div>
 
@@ -355,8 +368,8 @@ function ModelRowItem({
         active ? "bg-info/5" : ""
       }`}
     >
-      <span className={`text-[11px] shrink-0 ${active ? "text-info" : "text-ink-faint"}`}>
-        {active ? "●" : "○"}
+      <span className={`inline-flex shrink-0 text-[11px] ${active ? "text-info" : "text-ink-faint"}`}>
+        {active ? <IconDot className="h-3.5 w-3.5" /> : <IconRing className="h-3.5 w-3.5" />}
       </span>
       <span className={`kbd-mono text-[12px] truncate ${dim ? "text-ink-faint" : "text-ink"}`}>
         {m.id}

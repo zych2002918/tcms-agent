@@ -4,6 +4,18 @@ import { api, type FaultLabCurvePoint, type FaultLabEvent, type FaultLabResp } f
 import { Callout, KV, Panel, Tag, EmptyState, SkeletonRows } from "../components/ui";
 import { SearchPicker } from "../components/SearchPicker";
 import { ScenarioCompositionCard } from "../components/ScenarioCompositionCard";
+import {
+  IconBolt,
+  IconCheck,
+  IconGear,
+  IconInfo,
+  IconPause,
+  IconPlay,
+  IconReplay,
+  IconRewind,
+  IconShield,
+  IconWarn,
+} from "../components/icons";
 import { advancePlayback, activeSpanKeys, buildSpans, eventWindow } from "../lib/playerState";
 
 /* ================= t4 资产化：任意序列 / 跳转演示初始化 =================
@@ -717,13 +729,20 @@ export function FaultLabPage() {
             filterPlaceholder="筛选：场景名 / 文件名 / 故障键（如 door、overspeed）"
           />
           <button className="btn justify-center shrink-0" onClick={() => load(sel)} disabled={phase === "loading" || !sel}>
-            {phase === "loading" ? "加载中…" : "▶ 演示此场景"}
+            {phase === "loading" ? (
+              "加载中…"
+            ) : (
+              <>
+                <IconPlay className="h-4 w-4" />
+                演示此场景
+              </>
+            )}
           </button>
         </div>
         <Callout
           className="mt-2.5"
           tone="dim"
-          icon="ⓘ"
+          icon={<IconInfo className="h-4 w-4" />}
           title="动画里的每一步都来自真实场景与引擎断言，不是示意图。"
           details={
             <>
@@ -739,7 +758,7 @@ export function FaultLabPage() {
 
       {err && (
         <div className="panel border-bad/40 bg-bad/10 px-4 py-2.5 flex items-start gap-2 text-[13px] text-bad">
-          <span className="shrink-0">⚠</span>
+          <span className="inline-flex shrink-0 mt-0.5"><IconWarn className="h-4 w-4" /></span>
           <span className="min-w-0 flex-1 break-words">{err}</span>
           <button
             className="btn-ghost btn-sm shrink-0"
@@ -761,7 +780,7 @@ export function FaultLabPage() {
         <Panel bodyClass="p-3">
           <EmptyState
             compact
-            icon="⚠"
+            icon={<IconWarn className="h-4 w-4" />}
             title="演示加载失败"
             desc="没有拿到这个场景的演示数据。确认后端服务与 TCMS 引擎状态后重试；引擎缺失时动画仍可播放，只是处置结果取自故障字典而不是引擎断言。"
             action={
@@ -868,7 +887,27 @@ export function FaultLabPage() {
                 aria-pressed={playing}
                 title={playing ? "暂停回放（拖动进度条也会自动暂停）" : t >= dur ? "从头重播" : "继续播放"}
               >
-                {playing ? "⏸ 播放中" : t <= 0 ? "▶ 播放" : t >= dur ? "↻ 重播" : "▶ 继续"}
+                {playing ? (
+                  <>
+                    <IconPause className="h-4 w-4" />
+                    播放中
+                  </>
+                ) : t <= 0 ? (
+                  <>
+                    <IconPlay className="h-4 w-4" />
+                    播放
+                  </>
+                ) : t >= dur ? (
+                  <>
+                    <IconReplay className="h-4 w-4" />
+                    重播
+                  </>
+                ) : (
+                  <>
+                    <IconPlay className="h-4 w-4" />
+                    继续
+                  </>
+                )}
               </button>
               <button
                 type="button"
@@ -879,7 +918,7 @@ export function FaultLabPage() {
                 }}
                 title="停止播放并回到 0 秒"
               >
-                ↺ 回到开头
+                <IconRewind className="h-4 w-4" /> 回到开头
               </button>
               <div
                 role="group"
@@ -1150,14 +1189,14 @@ export function FaultLabPage() {
         <Panel title="还没有开始演示" bodyClass="p-3">
           <EmptyState
             compact
-            icon="⚙"
+            icon={<IconGear className="h-4 w-4" />}
             title="选一个真实故障场景，看它如何发生"
             desc="FaultLab 把真实场景 YAML（或你从场景执行 / Agent 执行跳转过来的步骤）变成可播放的事件时间线；下面是它固定会走完的四步。"
             steps={[
-              { icon: "⚡", title: "① 注入 · 故障发生", desc: "列车剖面上对应部位出现脉冲高亮与闪烁" },
-              { icon: "◎", title: "② 检测 · 系统识别", desc: "子系统判定等级并写入事件，时刻来自场景" },
-              { icon: "⛔", title: "③ 处置 · 引擎断言", desc: "限速 / 制动 / 降级，给出期望值与实际值" },
-              { icon: "✓", title: "④ 恢复 · 回到正常", desc: "通道状态复位，可拖进度条回看关键瞬间" },
+              { icon: <IconBolt className="h-3.5 w-3.5" />, title: "① 注入 · 故障发生", desc: "列车剖面上对应部位出现脉冲高亮与闪烁" },
+              { icon: <IconInfo className="h-3.5 w-3.5" />, title: "② 检测 · 系统识别", desc: "子系统判定等级并写入事件，时刻来自场景" },
+              { icon: <IconShield className="h-3.5 w-3.5" />, title: "③ 处置 · 引擎断言", desc: "限速 / 制动 / 降级，给出期望值与实际值" },
+              { icon: <IconCheck className="h-3.5 w-3.5" />, title: "④ 恢复 · 回到正常", desc: "通道状态复位，可拖进度条回看关键瞬间" },
             ]}
           />
         </Panel>

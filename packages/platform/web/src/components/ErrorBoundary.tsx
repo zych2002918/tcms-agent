@@ -12,6 +12,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Callout } from "./ui";
+import { IconWarn } from "./icons";
 
 export class ErrorBoundary extends Component<
   { children: ReactNode; onHome?: () => void },
@@ -35,7 +36,7 @@ export class ErrorBoundary extends Component<
       <div className="mx-auto w-full max-w-[860px] space-y-3">
         <Callout
           tone="warn"
-          icon="⚠"
+          icon={<IconWarn className="h-4 w-4" />}
           title="这个页面出错了。"
           details={
             <pre className="mt-1 max-h-64 overflow-auto rounded-[var(--radius-sm)] bg-surface-2 p-2 text-[11px] leading-relaxed kbd-mono whitespace-pre-wrap break-all">

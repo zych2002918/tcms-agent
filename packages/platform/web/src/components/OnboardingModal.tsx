@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type SettingsView } from "../api";
 import { Callout, KV, Tag, StatusDot } from "./ui";
+import { IconBolt, IconClose, IconLock, IconReplay, IconTrain } from "./icons";
 
 const STEPS = [
   { n: "①", label: "为什么接 AI" },
@@ -191,7 +192,7 @@ export function OnboardingModal({
         <header className="sticky top-0 z-[var(--z-sticky)] bg-surface/95 backdrop-blur border-b border-line-soft px-5 py-3.5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-lg">🚄</span>
+              <IconTrain className="h-5 w-5 shrink-0" />
               <div>
                 <div className="text-[13px] font-semibold text-ink">TCMS × AI · 首次使用引导</div>
                 <div className="text-[10.5px] text-ink-faint">30 秒可选配置：把平台接上你自己的大模型</div>
@@ -203,7 +204,7 @@ export function OnboardingModal({
               aria-label="关闭引导"
               title="关闭引导（不接模型也能完整体验；下次启动会再提醒）"
             >
-              ✕
+              <IconClose className="h-4 w-4" />
             </button>
           </div>
           {/* 步骤条 */}
@@ -250,7 +251,7 @@ export function OnboardingModal({
               </div>
               <Callout
                 tone="dim"
-                icon="🔒"
+                icon={<IconLock className="h-4 w-4" />}
                 title="Key 只留在你本机。"
                 details={
                   <div className="space-y-1">
@@ -398,7 +399,17 @@ export function OnboardingModal({
                   </button>
                   {probeState !== "loading" && (
                     <button className="btn-ghost btn-sm" onClick={() => void runProbe()}>
-                      {probeState === "done" ? "↻ 重新获取" : "⚡ 测试连接并获取模型"}
+                      {probeState === "done" ? (
+                        <>
+                          <IconReplay className="h-4 w-4" />
+                          重新获取
+                        </>
+                      ) : (
+                        <>
+                          <IconBolt className="h-4 w-4" />
+                          测试连接并获取模型
+                        </>
+                      )}
                     </button>
                   )}
                 </div>

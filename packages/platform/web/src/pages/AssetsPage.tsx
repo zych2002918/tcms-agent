@@ -10,6 +10,7 @@ import {
   type SignalInfo,
 } from "../api";
 import { Callout, EmptyState, Explain, KV, Panel, SkeletonRows, Tabs, Tag } from "../components/ui";
+import { IconClose, IconGear, IconInfo, IconPlay, IconSearch, IconWarn } from "../components/icons";
 
 type Tab = "messages" | "signals" | "faults" | "requirements" | "scenarios" | "functions";
 
@@ -86,7 +87,7 @@ function EmptyRow({ colSpan, kw, onClear }: { colSpan: number; kw: string; onCle
       <td colSpan={colSpan} className="px-3 py-3">
         <EmptyState
           compact
-          icon="⌕"
+          icon={<IconSearch className="h-4 w-4" />}
           title={kw ? "没有匹配项" : "这一类资产是空的"}
           desc={
             kw
@@ -365,7 +366,7 @@ export function AssetsPage() {
       {loadErr ? (
         <Callout
           tone="warn"
-          icon="⚠"
+          icon={<IconWarn className="h-4 w-4" />}
           title="资产没有读出来"
           details={
             <>
@@ -581,7 +582,7 @@ export function AssetsPage() {
                     }
                     right={
                       <button className="btn-ghost btn-sm" onClick={() => setSelFault(null)} title="关闭详情">
-                        ✕
+                        <IconClose className="h-4 w-4" />
                       </button>
                     }
                     bodyClass="p-3"
@@ -602,8 +603,9 @@ export function AssetsPage() {
                       <KV k="注入层" v={fd.layer} />
                     </div>
                     {fd.action_note && (
-                      <p className="mt-2.5 rounded-[var(--radius-md)] border border-vio/30 bg-vio/8 px-2.5 py-1.5 text-[11.5px] leading-5 text-vio">
-                        ⚙ 处置取决于原因：{fd.action_note}
+                      <p className="mt-2.5 flex items-start gap-1.5 rounded-[var(--radius-md)] border border-vio/30 bg-vio/8 px-2.5 py-1.5 text-[11.5px] leading-5 text-vio">
+                        <IconGear className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                        <span>处置取决于原因：{fd.action_note}</span>
                       </p>
                     )}
                     {/* 散文类字段用 KV wrap：与上面的标量字段同一套排版，
@@ -633,7 +635,7 @@ export function AssetsPage() {
                   <Panel bodyClass="p-3">
                     <EmptyState
                       compact
-                      icon="☝"
+                      icon={<IconInfo className="h-4 w-4" />}
                       title="还没选故障"
                       desc="点左侧任一故障，这里会显示它的等级、处置动作，以及如何检测 / 注入 / 恢复。"
                     />
@@ -739,7 +741,7 @@ export function AssetsPage() {
                                 href={`/faultlab?scenario=${encodeURIComponent(s.file)}`}
                                 title={`跳 FaultLab 演示 ${s.file} 的动画`}
                               >
-                                ▶ 看动画
+                                <IconPlay className="h-4 w-4" /> 看动画
                               </a>
                             </div>
                           </td>

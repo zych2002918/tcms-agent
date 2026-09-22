@@ -9,18 +9,27 @@ import { FaultLabPage } from "./pages/FaultLabPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { OnboardingModal } from "./components/OnboardingModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import {
+  IconGear,
+  IconGraph,
+  IconLayout,
+  IconList,
+  IconPlay,
+  IconSpark,
+  IconWave,
+} from "./components/icons";
 import { api, type SettingsView } from "./api";
 import { StatusDot } from "./components/ui";
 import { applyTheme, currentTheme, toggleTheme } from "./lib/theme";
 
 const NAV = [
-  { to: "/", label: "总览", icon: "◫", hint: "系统状态与入口" },
-  { to: "/assets", label: "测试资产", icon: "▤", hint: "报文 · 信号 · 故障 · 需求" },
-  { to: "/scenarios", label: "场景执行", icon: "▶", hint: "跑真实故障场景" },
-  { to: "/faultlab", label: "故障演示", icon: "⚙", hint: "故障发生过程动画演示" },
-  { to: "/graph", label: "知识图谱", icon: "◈", hint: "检索领域知识" },
-  { to: "/agent", label: "AI Agent", icon: "✦", hint: "指挥测试 Agent" },
-  { to: "/settings", label: "设置 / 引导", icon: "⚙", hint: "资产源 · API · 扩展点 · 新手引导" },
+  { to: "/", label: "总览", icon: <IconLayout className="h-4 w-4" />, hint: "系统状态与入口" },
+  { to: "/assets", label: "测试资产", icon: <IconList className="h-4 w-4" />, hint: "报文 · 信号 · 故障 · 需求" },
+  { to: "/scenarios", label: "场景执行", icon: <IconPlay className="h-4 w-4" />, hint: "跑真实故障场景" },
+  { to: "/faultlab", label: "故障演示", icon: <IconWave className="h-4 w-4" />, hint: "故障发生过程动画演示" },
+  { to: "/graph", label: "知识图谱", icon: <IconGraph className="h-4 w-4" />, hint: "检索领域知识" },
+  { to: "/agent", label: "AI Agent", icon: <IconSpark className="h-4 w-4" />, hint: "指挥测试 Agent" },
+  { to: "/settings", label: "设置 / 引导", icon: <IconGear className="h-4 w-4" />, hint: "资产源 · API · 扩展点 · 新手引导" },
 ];
 
 const TITLES: Record<string, { t: string; s: string }> = {
@@ -122,7 +131,7 @@ export default function App() {
                 }`
               }
             >
-              <span className="w-4 text-center text-sm shrink-0">{n.icon}</span>
+              <span className="w-4 shrink-0 inline-flex items-center justify-center">{n.icon}</span>
               {!collapsed && <span>{n.label}</span>}
             </NavLink>
           ))}

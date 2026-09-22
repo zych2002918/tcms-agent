@@ -2,6 +2,19 @@ import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type SettingsView } from "../api";
 import { Callout, EmptyState, KV, Panel, StatusDot, Tag } from "../components/ui";
+import {
+  IconBolt,
+  IconCheck,
+  IconGear,
+  IconGraph,
+  IconInfo,
+  IconList,
+  IconPlay,
+  IconReplay,
+  IconSpark,
+  IconSwap,
+  IconWarn,
+} from "../components/icons";
 
 type Sys = {
   engine: { ok: boolean; version?: string; reason?: string };
@@ -42,10 +55,15 @@ function InlineNote({ tone, children }: { tone: "ok" | "bad" | "info" | "warn"; 
     warn: "text-warn",
     info: "text-ink-dim",
   }[tone];
-  const icon = { ok: "✓", bad: "⚠", warn: "⚠", info: "·" }[tone];
+  const icon = {
+    ok: <IconCheck className="h-3.5 w-3.5" />,
+    bad: <IconWarn className="h-3.5 w-3.5" />,
+    warn: <IconWarn className="h-3.5 w-3.5" />,
+    info: <IconInfo className="h-3.5 w-3.5" />,
+  }[tone];
   return (
     <div className={`flex items-start gap-1.5 text-[11.5px] leading-5 ${cls}`} role="status" aria-live="polite">
-      <span className="shrink-0">{icon}</span>
+      <span className="inline-flex shrink-0 mt-0.5">{icon}</span>
       <span className="min-w-0">{children}</span>
     </div>
   );
@@ -289,13 +307,13 @@ export function SettingsPage() {
   ];
 
   /** 完成步的下一步建议（可点击直达） */
-  const nextSteps: { t: string; d: string; to?: string; back?: number }[] = [
-    { t: "▶ 故障演示", d: "选一个真实故障，看它如何被检测与处置", to: "/faultlab" },
-    { t: "◈ 知识图谱", d: "用大白话问 TCMS 领域知识，看证据链", to: "/graph" },
-    { t: "✦ AI Agent · 自由目标", d: "给 Agent 一个任务/目标，看它检索证据并真实执行", to: "/agent" },
-    { t: "▤ 测试资产", d: "浏览 DBC 报文 / 故障字典 / 安全需求", to: "/assets" },
-    { t: "⚙ 自定义场景", d: "手动编排故障场景，在 TCMS 引擎上真实执行", to: "/scenarios" },
-    { t: "⇄ 接入自有数据 / AI", d: "回到第①②步：接资产目录、填 API key", back: STEP.ASSETS },
+  const nextSteps: { t: string; d: string; icon?: ReactNode; to?: string; back?: number }[] = [
+    { t: "故障演示", d: "选一个真实故障，看它如何被检测与处置", icon: <IconPlay className="h-4 w-4" />, to: "/faultlab" },
+    { t: "知识图谱", d: "用大白话问 TCMS 领域知识，看证据链", icon: <IconGraph className="h-4 w-4" />, to: "/graph" },
+    { t: "AI Agent · 自由目标", d: "给 Agent 一个任务/目标，看它检索证据并真实执行", icon: <IconSpark className="h-4 w-4" />, to: "/agent" },
+    { t: "测试资产", d: "浏览 DBC 报文 / 故障字典 / 安全需求", icon: <IconList className="h-4 w-4" />, to: "/assets" },
+    { t: "自定义场景", d: "手动编排故障场景，在 TCMS 引擎上真实执行", icon: <IconGear className="h-4 w-4" />, to: "/scenarios" },
+    { t: "接入自有数据 / AI", d: "回到第①②步：接资产目录、填 API key", icon: <IconSwap className="h-4 w-4" />, back: STEP.ASSETS },
   ];
 
   return (
@@ -439,7 +457,7 @@ export function SettingsPage() {
           <div className="space-y-3">
             <Callout
               tone="dim"
-              icon="✦"
+              icon={<IconSpark className="h-4 w-4" />}
               title="这一步是可选的："
               details={
                 <div className="space-y-1">
@@ -529,7 +547,19 @@ export function SettingsPage() {
                     {probeState === "error" && <div className="mt-1 text-[11px] text-bad">{probeError}</div>}
                     <div className="flex gap-2 mt-1.5 flex-wrap">
                       <button className="btn-ghost btn-sm" onClick={() => void runProbe()} disabled={probeState === "loading"}>
-                        {probeState === "loading" ? "连接中…" : probeState === "done" ? "↻ 重新获取模型" : "⚡ 测试连接并获取模型"}
+                        {probeState === "loading" ? (
+                          "连接中…"
+                        ) : probeState === "done" ? (
+                          <>
+                            <IconReplay className="h-4 w-4" />
+                            重新获取模型
+                          </>
+                        ) : (
+                          <>
+                            <IconBolt className="h-4 w-4" />
+                            测试连接并获取模型
+                          </>
+                        )}
                       </button>
                       {probeState === "error" && (
                         <button className="btn-ghost btn-sm" onClick={() => setManualMode(true)}>
@@ -602,7 +632,7 @@ export function SettingsPage() {
             {statusKnown && !engineOk && (
               <Callout
                 tone="warn"
-                icon="⚠"
+                icon={<IconWarn className="h-4 w-4" />}
                 title="引擎不可用不影响先体验："
                 details={
                   <div className="space-y-1">
@@ -633,7 +663,7 @@ export function SettingsPage() {
               {nextSteps.map((n) => {
                 const inner = (
                   <>
-                    <div className="font-medium text-ink">{n.t}</div>
+                    <div className="flex items-center gap-1.5 font-medium text-ink">{n.icon}{n.t}</div>
                     <div className="text-ink-dim mt-0.5 text-xs">{n.d}</div>
                   </>
                 );
@@ -681,7 +711,7 @@ export function SettingsPage() {
       >
         <Callout
           tone="dim"
-          icon="⚙"
+          icon={<IconGear className="h-4 w-4" />}
           title="三类扩展点都开放成外部接口："
           details={
             <div className="space-y-1">
@@ -876,7 +906,7 @@ export function SettingsPage() {
 
       {!st && !err && (
         <Panel bodyClass="p-3">
-          <EmptyState compact icon="⚙" title="正在读取本机设置…" desc="读取设置文件与引擎状态。" />
+          <EmptyState compact icon={<IconGear className="h-4 w-4" />} title="正在读取本机设置…" desc="读取设置文件与引擎状态。" />
         </Panel>
       )}
     </div>

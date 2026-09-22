@@ -9,6 +9,7 @@ import {
 } from "../api";
 import { Panel, Tag, EmptyState, SkeletonRows, Callout, Tabs, StatCard } from "../components/ui";
 import { SearchPicker } from "../components/SearchPicker";
+import { IconClose, IconEmpty, IconLayout, IconPlay, IconSpark } from "../components/icons";
 
 /**
  * 手动编排（自定义故障场景）—— 契约已由队长确认（be-contracts t1，POST /api/run/custom）：
@@ -791,7 +792,7 @@ export function ScenariosPage() {
                   }}
                   title={`${file} · ${s.steps ?? "?"} 步编排`}
                 >
-                  ▶ {s.name ?? file}
+                  <IconPlay className="h-3.5 w-3.5" /> {s.name ?? file}
                 </button>
               );
             })}
@@ -831,7 +832,7 @@ export function ScenariosPage() {
         {/* 场景从哪来：一句人话在明面，"加文件即生效"这类说明收进 details */}
         <Callout
           tone="dim"
-          icon="◫"
+          icon={<IconLayout className="h-4 w-4" />}
           className="mb-2.5"
           title="这里的场景都来自当前资产源的场景目录"
           details={
@@ -881,7 +882,14 @@ export function ScenariosPage() {
                 onClick={runBuiltin}
                 disabled={phase === "running" || !sel || !engineOk}
               >
-                {phase === "running" ? "运行中…" : "▶ 运行此场景"}
+                {phase === "running" ? (
+                  "运行中…"
+                ) : (
+                  <>
+                    <IconPlay className="h-4 w-4" />
+                    运行此场景
+                  </>
+                )}
               </button>
             </div>
             {!engineOk && <div className="mt-2 text-[11px] text-warn">TCMS 引擎未接入，选中也无法真实执行（见下方说明）。</div>}
@@ -1074,7 +1082,7 @@ export function ScenariosPage() {
                         title="删除此步"
                         onClick={() => setRows((rs) => rs.filter((x) => x.id !== r.id))}
                       >
-                        ✕
+                        <IconClose className="h-4 w-4" />
                       </button>
                     </div>
                     {r.err && <div className="text-[11px] text-bad mt-1">⚠ {r.err}</div>}
@@ -1100,7 +1108,14 @@ export function ScenariosPage() {
                 + 添加一步
               </button>
               <button className="btn btn-sm justify-center" onClick={runCustom} disabled={phase === "running" || !engineOk}>
-                {phase === "running" ? "执行中…" : "▶ 执行这个自定义场景"}
+                {phase === "running" ? (
+                  "执行中…"
+                ) : (
+                  <>
+                    <IconPlay className="h-4 w-4" />
+                    执行这个自定义场景
+                  </>
+                )}
               </button>
               {!engineOk && <span className="text-[11px] text-warn">需要先启用 TCMS 引擎（见下方说明）</span>}
             </div>
@@ -1111,7 +1126,7 @@ export function ScenariosPage() {
             {/* AI 编排顾问 —— 多轮对话；任何输入都有回复，不因无法匹配而拒绝 */}
             <div className="panel border-vio/25 overflow-hidden">
               <div className="flex items-center gap-2 px-3 py-2 border-b border-line-soft bg-surface-2/30">
-                <span className="text-vio text-[12px]">◇</span>
+                <span className="inline-flex text-vio text-[12px]"><IconSpark className="h-3.5 w-3.5" /></span>
                 <span className="text-[12px] font-semibold text-ink">AI 编排顾问</span>
                 <span className="text-[10px] text-ink-faint">描述「想验证的情形」 → 翻译成可执行步骤（RAG 检索 + 规则编排）</span>
               </div>
@@ -1296,7 +1311,7 @@ export function ScenariosPage() {
                     }
                     title="跳转 FaultLab，用动画回放本次执行的故障注入 → 检测 → 处置 → 恢复"
                   >
-                    ▶ 用动画看这次执行
+                    <IconPlay className="h-4 w-4" /> 用动画看这次执行
                   </a>
                   <span className="text-[11px] text-ink-faint">
                     {lastRun?.kind === "custom"
@@ -1324,7 +1339,7 @@ export function ScenariosPage() {
               <div className="mt-3">
                 <EmptyState
                   compact
-                  icon="◌"
+                  icon={<IconEmpty className="h-4 w-4" />}
                   title="本次运行没有产生断言明细"
                   desc="这个场景里没有写「期望处置」，或引擎没有回传逐条断言——运行本身已完成。可以换一个带断言的场景对比。"
                 />
@@ -1394,7 +1409,7 @@ export function ScenariosPage() {
           {!current ? (
             <EmptyState
               compact
-              icon="▶"
+              icon={<IconPlay className="h-4 w-4" />}
               title={scenarios.length ? "先选一个场景" : "场景加载中…"}
               desc="选中后这里会列出它的每一步——点运行之前就能知道会发生什么。"
               steps={[
@@ -1445,7 +1460,7 @@ export function ScenariosPage() {
           ) : (
             <EmptyState
               compact
-              icon="◌"
+              icon={<IconEmpty className="h-4 w-4" />}
               title="这个场景的构成明细暂时取不到"
               desc="下面显示场景列表里已有的字段；点运行仍会真实执行，结果不受影响。"
             />

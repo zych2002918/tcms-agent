@@ -22,6 +22,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useClampedPopover } from "../lib/popover";
+import { IconDot, IconRing } from "./icons";
 
 export interface PickerItem {
   /** 唯一键（场景场景 = 文件名） */
@@ -191,8 +192,8 @@ export function SearchPicker({
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className={`shrink-0 text-[11px] ${active ? "text-info" : "text-ink-faint"}`}>
-                      {active ? "●" : "○"}
+                    <span className={`inline-flex shrink-0 text-[11px] ${active ? "text-info" : "text-ink-faint"}`}>
+                      {active ? <IconDot className="h-3.5 w-3.5" /> : <IconRing className="h-3.5 w-3.5" />}
                     </span>
                     <span
                       className={`min-w-0 flex-1 truncate text-[12.5px] ${

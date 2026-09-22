@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Stats } from "../api";
 import { Panel, Tag, StatusDot, StatCard, Callout, SkeletonRows } from "../components/ui";
+import { IconGear, IconGraph, IconInfo, IconPlay, IconSpark } from "../components/icons";
 
 /** 资产源：把后端给的路径说成人话（完整路径收进 title / 细节层，不占首屏一行） */
 function assetSourceLabel(src?: string | null): string {
@@ -35,21 +36,21 @@ export function Dashboard() {
   const secondary = [
     {
       to: "/scenarios",
-      icon: "▶",
+      icon: <IconPlay className="h-4 w-4" />,
       title: "跑一个故障场景",
       desc: "挑一个现成场景，先看它编排了什么，再让 TCMS 引擎真跑一遍看断言。",
       cta: "去执行场景",
     },
     {
       to: "/faultlab",
-      icon: "⚙",
+      icon: <IconGear className="h-4 w-4" />,
       title: "看故障如何发生",
       desc: "选一个真实故障，用动画看它如何被检测、系统如何处置——每个事件都可溯源。",
       cta: "去故障演示",
     },
     {
       to: "/graph",
-      icon: "◈",
+      icon: <IconGraph className="h-4 w-4" />,
       title: "问 TCMS 领域知识",
       desc: "输入「车门故障不能发车」这类问题，返回带证据链的答案。",
       cta: "去知识图谱",
@@ -109,12 +110,12 @@ export function Dashboard() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-6">
             <div className="flex min-w-0 items-start gap-3 lg:flex-1">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[var(--radius-md)] border border-info/40 bg-info/10 text-[18px] text-info">
-                ✦
+                <IconSpark className="h-[18px] w-[18px]" />
               </span>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[15px] font-medium text-ink">指挥 AI 测试 Agent</span>
-                  <Tag tone="info">推荐从这里开始</Tag>
+                  <Tag tone="dim">推荐从这里开始</Tag>
                 </div>
                 <p className="mt-1 text-[12.5px] leading-5 text-ink-dim">
                   用大白话给一个目标（例如「车门故障了还能发车吗」），它自己检索证据、在真实引擎上执行，并把每一步摊开给你看。
@@ -188,7 +189,7 @@ export function Dashboard() {
 
         <Callout
           tone="dim"
-          icon="◎"
+          icon={<IconInfo className="h-3.5 w-3.5" />}
           className="mt-3"
           title="这些数字是从真实资产里数出来的"
           details={

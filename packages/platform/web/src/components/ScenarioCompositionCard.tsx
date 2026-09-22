@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ScenarioComposition } from "../api";
 import { Tag } from "./ui";
+import { IconInfo } from "./icons";
 
 /**
  * 「为什么注入了多个故障」解释卡。
@@ -50,15 +51,15 @@ export function ScenarioCompositionCard({
   const entry = comp.injections.find((i) => i.role === "entry");
   const co = comp.injections.filter((i) => i.role === "co");
   const headline = comp.is_multi
-    ? `ⓘ 本场景共注入 ${comp.total_faults} 个故障${
+    ? `本场景共注入 ${comp.total_faults} 个故障${
         comp.total_injections !== comp.total_faults ? `（${comp.total_injections} 次）` : ""
       }`
-    : `ⓘ 本场景把同一个故障注入了 ${comp.total_injections} 次`;
+    : `本场景把同一个故障注入了 ${comp.total_injections} 次`;
 
   return (
     <div className="rounded-[var(--radius-md)] border border-info/30 bg-info/8 px-3 py-2.5 step-in">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-info text-sm font-medium">{headline}</span>
+        <span className="inline-flex items-center gap-1.5 text-info text-sm font-medium"><IconInfo className="h-4 w-4" />{headline}</span>
         <span className="text-[11px] text-ink-faint">
           {comp.is_multi
             ? entry

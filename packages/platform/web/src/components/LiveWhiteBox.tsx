@@ -21,23 +21,24 @@
  * - **可审计**：一键导出整条轨迹 JSON，便于贴到问题单或评审里。
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AgentLlmIdentity, AgentStreamTraceEntry } from "../api";
 import { Tag } from "./ui";
+import { IconCheck, IconGraph, IconList, IconPlay, IconReplay, IconRewind, IconSearch, IconStar, IconTarget } from "./icons";
 
 const STEP_META: Record<
   string,
-  { label: string; icon: string; tone: "info" | "ok" | "warn" | "vio" | "bad" | "dim" }
+  { label: string; icon: ReactNode; tone: "info" | "ok" | "warn" | "vio" | "bad" | "dim" }
 > = {
-  parse: { label: "目标解析", icon: "⌖", tone: "info" },
-  plan: { label: "任务装载", icon: "▤", tone: "dim" },
-  recall: { label: "记忆召回", icon: "↺", tone: "vio" },
-  retrieve: { label: "知识底座检索", icon: "⌕", tone: "info" },
-  act: { label: "决策 · 选场景", icon: "◈", tone: "vio" },
-  exec: { label: "真实执行", icon: "▶", tone: "warn" },
-  verify: { label: "断言核对", icon: "✓", tone: "ok" },
-  reflect: { label: "反思 / 自检", icon: "↻", tone: "vio" },
-  report: { label: "结论", icon: "★", tone: "bad" },
+  parse: { label: "目标解析", icon: <IconTarget className="h-3.5 w-3.5" />, tone: "info" },
+  plan: { label: "任务装载", icon: <IconList className="h-3.5 w-3.5" />, tone: "dim" },
+  recall: { label: "记忆召回", icon: <IconRewind className="h-3.5 w-3.5" />, tone: "vio" },
+  retrieve: { label: "知识底座检索", icon: <IconSearch className="h-3.5 w-3.5" />, tone: "info" },
+  act: { label: "决策 · 选场景", icon: <IconGraph className="h-3.5 w-3.5" />, tone: "vio" },
+  exec: { label: "真实执行", icon: <IconPlay className="h-3.5 w-3.5" />, tone: "warn" },
+  verify: { label: "断言核对", icon: <IconCheck className="h-3.5 w-3.5" />, tone: "ok" },
+  reflect: { label: "反思 / 自检", icon: <IconReplay className="h-3.5 w-3.5" />, tone: "vio" },
+  report: { label: "结论", icon: <IconStar className="h-3.5 w-3.5" />, tone: "bad" },
 };
 
 const TONE_CLASS: Record<string, { dot: string; chip: string }> = {
@@ -165,8 +166,8 @@ function StepFacts({ step, p }: { step: string; p: Payload }) {
         <ul className="mt-1 space-y-0.5">
           {cands.map((c, i) => (
             <li key={i} className="flex items-baseline gap-2">
-              <span className={c.is_chosen ? "text-ok shrink-0" : "text-ink-faint shrink-0"}>
-                {c.is_chosen ? "✔ 选中" : "· 落选"}
+              <span className={c.is_chosen ? "inline-flex items-center gap-1 text-ok shrink-0" : "text-ink-faint shrink-0"}>
+                {c.is_chosen ? <><IconCheck className="h-3.5 w-3.5" />选中</> : "· 落选"}
               </span>
               <span className="kbd-mono text-ink-dim truncate">{str(c.file)}</span>
               <span className="text-ink-faint shrink-0">注入 {str(c.inject_count)} 个故障</span>
