@@ -168,7 +168,7 @@ uv run tcms-agent nolib --verify
 
 ```bash
 cd packages/agent
-pytest -q      # 188 passed + 2 skipped：无 API key，全部离线可复现
+pytest -q      # 192 passed + 2 skipped：无 API key，全部离线可复现
 ```
 
 覆盖：权限门禁（含"被拒的调用绝不能真的执行"）、诚实错误、审计记录、

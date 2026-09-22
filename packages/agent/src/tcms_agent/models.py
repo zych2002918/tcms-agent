@@ -26,6 +26,8 @@
 
 from __future__ import annotations
 
+import os
+import warnings
 from typing import Any
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
@@ -322,6 +324,36 @@ class OfflineScriptedModel(BaseChatModel):
 # ---------------------------------------------------------------------------
 
 
+def _sanitize_no_proxy_env() -> str:
+    """剔掉 `NO_PROXY`/`no_proxy` 里 httpx 认不出的条目，返回一句如实说明（空串 = 没动过）。
+
+    为什么 agent 侧也要做一遍：platform 的 `_request()` 有"坏代理绕过重试"（ADR-024），
+    但 agent 的 LLM 调用走 **langchain-openai 自己的 httpx 客户端**，根本不经过那层。
+    实测（本机 `NO_PROXY=localhost,127.0.0.1,::1,[::1]`）：`tcms-agent run --llm`
+    不是"诚实降级"，而是**构造阶段直接崩**——`InvalidURL: Invalid port: ':1]'`。
+
+    典型元凶是 IPv6 字面量的**方括号**写法：浏览器与 curl 认，httpx 的 `URLPattern` 不认。
+    这里的选择是**修好它并如实说出来**，而不是把异常吞掉——后者会让人以为在用 LLM、
+    实际走了别的路，那正是 ADR-024 要根治的症状。
+    """
+    touched: list[str] = []
+    for var in ("NO_PROXY", "no_proxy"):
+        raw = os.environ.get(var)
+        if not raw:
+            continue
+        keep: list[str] = []
+        drop: list[str] = []
+        for tok in raw.split(","):
+            tok = tok.strip()
+            if not tok:
+                continue
+            (drop if ("[" in tok or "]" in tok) else keep).append(tok)
+        if drop:
+            os.environ[var] = ",".join(keep)
+            touched.append(f"{var} 剔除了 httpx 无法解析的 {', '.join(drop)}")
+    return "；".join(touched)
+
+
 def build_chat_model(cfg: AgentConfig, knowledge: Any = None) -> tuple[Any, str]:
     """构建聊天模型。
 
@@ -338,6 +370,10 @@ def build_chat_model(cfg: AgentConfig, knowledge: Any = None) -> tuple[Any, str]
     from tcms_ai_platform.agent.llm_backend import _api_key
 
     base, model = resolve_llm_settings(cfg)
+    proxy_note = _sanitize_no_proxy_env()
+    if proxy_note:
+        # 如实说出来：环境被改过，用户有权知道（否则"能用了"会显得莫名其妙）
+        warnings.warn(f"环境代理配置有 httpx 无法解析的条目，已自动修正后继续：{proxy_note}", stacklevel=2)
     chat = ChatOpenAI(
         model=model,
         base_url=base,
