@@ -198,3 +198,72 @@ jobs:
         run: |
           python -m tcms_agent.cli tools | head -20
           python -m tcms_agent.cli doctor
+
+  # ---------------------------------------------------------------------------
+  # 真浏览器验收（e2e）—— 把 P2-5 当初因"起本地 server 成本高"砍掉的最后一段补回来
+  #
+  # 为什么现在必须进 CI：这批断言全是"界面不骗人"类，而且**只有真浏览器能验**：
+  #   · 图谱默认骨架进页即显，且计数与后端一致；
+  #   · 「解析不到的种子必须给出空态解释」—— 防白屏；
+  #   · 2D/3D 分段控件按 role 可达；FaultLab 动画真的推进到故障高亮。
+  # 反面教材（本仓真发生过）：脚本按 role="button" 找 2D/3D 切换，而该控件后来改成了
+  # 正确的 role="tab" —— 验收脚本于是静默失效 4 天，而 **CI 全绿、没有任何东西提醒**。
+  # 这类失效靠单测挡不住（单测是纯逻辑，不碰 DOM），唯一能挡住的就是在 CI 里真跑一次。
+  # ---------------------------------------------------------------------------
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install engine (workspace member) + platform
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ../engine
+          pip install -e ".[test,lint]"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - name: Build web/dist（e2e 打的是真实产物，不是 dev server）
+        working-directory: packages/platform/web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: 浏览器驱动（e2e/package.json 有意不入库，故就地装；版本与脚本依赖对齐）
+        working-directory: packages/platform/e2e
+        run: |
+          npm install --no-save playwright-core@^1.63.0 playwright@^1.63.0
+          npx playwright install --with-deps chromium
+      # 起服务与跑断言放在**同一个 step**：GitHub Actions 每个 step 是独立 shell，
+      # 跨 step 挂后台进程是已知的脆弱点，合并成一个 step 就不存在这个风险。
+      - name: 真浏览器验收（起真实服务 + 真实 dist → e2e/main-flow.mjs）
+        run: |
+          nohup python -m uvicorn tcms_ai_platform.server.app:app --host 127.0.0.1 --port 8000 \
+            > "$RUNNER_TEMP/uvicorn.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8000/api/health >/dev/null && break
+            sleep 2
+          done
+          if ! curl -sf http://127.0.0.1:8000/api/health >/dev/null; then
+            echo "::error::服务起不来（端口 8000）"
+            tail -60 "$RUNNER_TEMP/uvicorn.log"
+            exit 1
+          fi
+          # 预热知识底座：首次 /api/kb/overview 会现场构建图谱（CI runner 比本机慢），
+          # 不预热就会撞上 e2e 里"等文案出现"的 20s 超时，变成假失败。
+          curl -sf "http://127.0.0.1:8000/api/kb/overview?limit=3" >/dev/null
+          echo "--- server ready，开始真浏览器验收 ---"
+          if ! node e2e/main-flow.mjs; then
+            echo "::group::uvicorn log"
+            tail -100 "$RUNNER_TEMP/uvicorn.log"
+            echo "::endgroup::"
+            exit 1
+          fi

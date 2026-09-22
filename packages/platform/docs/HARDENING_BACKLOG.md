@@ -138,7 +138,7 @@
 - 方向：平台加 workflow：pytest+ruff → vitest → e2e(起本地 server)；README 挂 badge；提交后若 bot 前移 remote 记得同步。
 - 验收：push 后 Actions 全绿。
 - 量级：小-中。
-- **结果**：`.github/workflows/ci.yml`（ubuntu，双 checkout：platform + 上游 tcms-can-test 到 `$GITHUB_WORKSPACE/tcms-can-test` 使 NEEDS_UPSTREAM 全量资产测试可跑；python3.11 → `pip install -e ".[test,lint]"` → ruff → pytest 全量 → node20+pnpm9 → vitest；push/PR 到 main/master 触发 + 并发取消）。e2e 需起本地 server，成本高未入 CI（本地脚本保留）。README 已挂 Actions badge。注：未 commit → push 门禁在首次提交后生效，Actions 首次运行需在仓库 Settings 开启。
+- **结果**：`.github/workflows/ci.yml`（ubuntu，双 checkout：platform + 上游 tcms-can-test 到 `$GITHUB_WORKSPACE/tcms-can-test` 使 NEEDS_UPSTREAM 全量资产测试可跑；python3.11 → `pip install -e ".[test,lint]"` → ruff → pytest 全量 → node20+pnpm9 → vitest；push/PR 到 main/master 触发 + 并发取消）。e2e **已于 2026-09-22 补入 CI**（独立 `e2e` job：装平台 + 构建真实 web/dist + 装 chromium + 起真实服务 + 跑 `e2e/main-flow.mjs`，起服务与断言合并在同一个 step 里以避开"跨 step 后台进程"的脆弱点）。当初因"起本地 server 成本高"砍掉，现在补回的理由是实测出来的：验收脚本曾因一个 `role` 改名**静默失效 4 天而 CI 全绿**，同期查出的"点『全部』再缩小标签全消失""解析不到的种子白屏""报文跳转空图"三个缺陷也都只有真浏览器能暴露 —— 单测是纯逻辑、不碰 DOM，挡不住这一类。README 已挂 Actions badge。注：未 commit → push 门禁在首次提交后生效，Actions 首次运行需在仓库 Settings 开启。
 
 ---
 
