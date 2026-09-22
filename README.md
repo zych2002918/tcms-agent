@@ -9,6 +9,12 @@
 [![tests](https://img.shields.io/badge/tests-1682%20passed-2dd4a0)](#测试与门禁)
 [![License](https://img.shields.io/badge/license-MIT-8ca0c0)](#license)
 
+![平台总览：真实资产规模、三个入口与列车视角的被测功能](packages/platform/docs/dashboard-preview.png)
+
+> 上图由 `packages/platform/e2e/capture-doc-shots.mjs` 从**当前构建**采集，
+> 并带新鲜度守卫（引擎版本 / 图谱节点 / 资产规模不符即失败）——README 里的数字
+> 与界面上的数字因此都不可能靠手抄。
+
 ---
 
 ## 这是什么

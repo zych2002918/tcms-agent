@@ -10,8 +10,11 @@
 
 ```bash
 # 前置：后端已启动且 web/dist 已构建（127.0.0.1:8000）
-cd e2e
+# 首次：安装浏览器驱动（该目录的 package.json 被 .gitignore 有意忽略、不随仓库分发，
+# 因此 clone 后需自己装一次；浏览器用本机缓存/系统 Edge，不额外下载）
+npm install          # 或 pnpm install
 npm run smoke        # 等价 node main-flow.mjs
+npm run shots        # 采集 README 用的界面截图（带新鲜度守卫，不符即失败）
 ```
 
 - 浏览器可执行文件从本机 Playwright 缓存自动探测（无需在线下载）；

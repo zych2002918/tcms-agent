@@ -51,6 +51,18 @@ try {
     }
   };
 
+  // ---- 0. 总览（dashboard）—— 仓库首屏（根 README）用图 ----
+  // 此前这张图**没有生成脚本**，长期停留在早期版本（还带着已废弃的 D 盘资产源与
+  // 8 报文/22 FMEA 的旧规模）。因此这里除了截图，还加一道**数字守卫**：
+  // 首页若没显示当前规模，宁可失败也不把过期数字送上 README。
+  await theme("dark");
+  await page.waitForTimeout(1200);
+  const dBody = await page.locator("body").innerText();
+  ok("总览:显示当前规模(FMEA 203)", /\b203\b/.test(dBody), "首页应含 FMEA 203");
+  ok("总览:无废弃 D 盘路径", !/D:\\DSHworkplace/i.test(dBody), "不应出现旧工作区路径");
+  await page.screenshot({ path: `${OUT}/dashboard-preview.png` });
+  results.push("  → docs/dashboard-preview.png");
+
   // ---- 1. 知识图谱（2D, dark）----
   await theme("dark");
   await page.goto(BASE + "/graph?focus=F-EBM", { waitUntil: "networkidle" });
