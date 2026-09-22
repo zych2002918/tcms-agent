@@ -95,3 +95,54 @@ def test_overview_is_deterministic() -> None:
     b = client.get("/api/kb/overview?limit=3").json()
     assert [n["id"] for n in a["nodes"]] == [n["id"] for n in b["nodes"]]
     assert a["edges"] == b["edges"]
+
+
+# ---------------------------------------------------------------------------
+# 按类型列节点："一共多少"与"返回多少"必须能分开读
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def client():
+    if not UPSTREAM.is_dir():
+        pytest.skip(f"上游不存在: {UPSTREAM}")
+    from fastapi.testclient import TestClient
+
+    from tcms_ai_platform.server.app import create_app
+
+    return TestClient(create_app(upstream=UPSTREAM))
+
+
+@needs_engine
+def test_kind_listing_total_matches_stats(client) -> None:
+    """每个类型的节点总数，必须与 /api/kb/stats 的 by_kind 一致（不许静默少给）。
+
+    真实缺陷（2026-09-22 实测）：`fault` 一类 by_kind=203，而 `/api/kb/nodes` 缺省只返回 200，
+    且 body 里没有任何"被截断"的提示 —— 调用方会把 200 读成"一共 200"。
+    """
+    stats = client.get("/api/kb/stats").json()
+    by_kind = stats["graph"]["by_kind"]
+    assert len(by_kind) >= 10, f"by_kind 读不到，实际：{by_kind}"
+    mismatched: list[str] = []
+    for kind, expected in sorted(by_kind.items()):
+        r = client.get("/api/kb/nodes", params={"kind": kind, "limit": 100000})
+        assert r.status_code == 200, r.text
+        got = len(r.json())
+        if got != expected:
+            mismatched.append(f"{kind}: by_kind={expected}，按类型列出={got}")
+    assert not mismatched, "按类型列出的总数与 by_kind 不一致：\n  " + "\n  ".join(mismatched)
+
+
+@needs_engine
+def test_default_truncation_is_announced(client) -> None:
+    """缺省 limit 会截断，但必须**显式告知**（响应头）—— 只在文档里写等于没写。"""
+    r = client.get("/api/kb/nodes", params={"kind": "fault"})
+    assert r.status_code == 200
+    assert "X-Total-Count" in r.headers, "缺省截断没有告知总数，调用方会把返回条数当成总数"
+    assert r.headers["X-Truncated"] == "true", "fault 一类必然被截断，X-Truncated 应为 true"
+    total = int(r.headers["X-Total-Count"])
+    assert total >= len(r.json())
+
+    full = client.get("/api/kb/nodes", params={"kind": "fault", "limit": 100000})
+    assert full.headers["X-Truncated"] == "false", "拿全量时不该再报截断"
+    assert len(full.json()) == total, "全量条数应与 X-Total-Count 相等"

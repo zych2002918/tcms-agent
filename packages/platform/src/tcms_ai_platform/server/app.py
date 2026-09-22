@@ -15,7 +15,7 @@ import threading as _threading
 import time as _time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -825,22 +825,31 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
         }
 
     @app.get("/api/kb/nodes")
-    def kb_nodes(kind: str | None = None, q: str | None = None, limit: int | None = None) -> list[dict]:
+    def kb_nodes(
+        response: Response,
+        kind: str | None = None,
+        q: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
         """节点浏览/搜索（前端下拉、图谱定位用）。kind ∈ graph.NODE_TYPES。
 
-        limit 缺省时按前端浏览上限 200 截断（UI 性能用）；显式传大值可拿全量
-        （计数/审计口径，避免"端点静默截断"误导数量断言）。
+        limit 缺省时按前端浏览上限 200 截断（UI 性能用）；显式传大值可拿全量。
+        截断**一律显式告知**：响应头 `X-Total-Count` = 匹配总数、`X-Truncated` = true/false ——
+        否则调用方会把"返回了 200"读成"一共只有 200"（实测 fault 一类正是 200/203，差 3 条）。
         """
         cap = 200 if limit is None else limit
         out = []
+        total = 0
         for n in graph.nodes.values():
             if kind and n.kind != kind:
                 continue
             if q and q.lower() not in n.label.lower() and q.lower() not in n.id.lower():
                 continue
-            out.append({"id": n.id, "kind": n.kind, "label": n.label})
-            if len(out) >= cap:
-                break
+            total += 1
+            if len(out) < cap:
+                out.append({"id": n.id, "kind": n.kind, "label": n.label})
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Truncated"] = "true" if total > len(out) else "false"
         return out
 
     @app.get("/api/kb/node/{node_id}")

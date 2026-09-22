@@ -562,7 +562,13 @@ export function AgentPage() {
             disabled={diagBusy}
           />
           <button className="btn justify-center whitespace-nowrap" onClick={() => void runDiagnose()} disabled={diagBusy || !diagQ.trim()}>
-            {diagBusy ? "推理中…" : "🔎 症状诊断"}
+            {diagBusy ? (
+              "推理中…"
+            ) : (
+              <>
+                <IconSearch className="h-4 w-4" /> 症状诊断
+              </>
+            )}
           </button>
           {(diagSidRef.current || diagResp) && (
             <button className="btn-ghost justify-center whitespace-nowrap" onClick={resetDiagnose} title="清空多轮记忆与会话，开始全新诊断">

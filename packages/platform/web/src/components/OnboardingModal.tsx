@@ -19,7 +19,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type SettingsView } from "../api";
 import { Callout, KV, Tag, StatusDot } from "./ui";
-import { IconBolt, IconClose, IconLock, IconReplay, IconTrain } from "./icons";
+import { IconBolt, IconCheck, IconClose, IconLock, IconReplay, IconTrain } from "./icons";
 
 const STEPS = [
   { n: "①", label: "为什么接 AI" },
@@ -430,7 +430,7 @@ export function OnboardingModal({
           {step === 3 && (
             <>
               <div className="text-center py-2 space-y-2 modal-card-in">
-                <div className="text-4xl">🎉</div>
+                <div className="text-ok"><IconCheck className="h-9 w-9" /></div>
                 <h3 className="text-[15px] font-semibold text-ink">
                   {provider ? `已接入 ${provs[provider]?.label ?? provider}` : "已接入自定义端点"} · {model}
                 </h3>

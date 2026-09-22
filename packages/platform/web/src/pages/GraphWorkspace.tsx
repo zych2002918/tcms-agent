@@ -400,7 +400,7 @@ export function GraphWorkspace() {
         <div className="flex flex-col gap-2.5">
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1 min-w-0">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint text-[15px]">🔍</span>
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint"><IconSearch className="h-4 w-4" /></span>
               <input
                 className="input h-11 pl-10 text-[14px]"
                 placeholder="用大白话问，如：车门故障了还能发车吗 / 紧急制动失败会怎样（回车即检索）"
@@ -479,6 +479,35 @@ export function GraphWorkspace() {
           窄屏（< xl）自动上下堆叠，画布与面板都不会被压变形。 */}
       <div className={`grid gap-4 ${showAside ? "xl:grid-cols-[minmax(0,1fr)_344px] xl:items-start" : ""}`}>
         <div className="space-y-4 min-w-0">
+          {/* 「全库有什么」：按类型列出**真实计数**（来自 /api/kb/stats 的 by_kind，机器自证），
+              点一下即以该类型的一个真实实体为中心展开。
+              为什么需要：落地骨架只画 13 系统 + 11 功能 + 代表故障，而需求 52 / 危害 13 /
+              信号 116 / 场景 104 这些项目里最有说服力的资产此前在落地页**没有任何入口** ——
+              用户只会以为"图谱就这么点东西"，把它读成"显示不全"。 */}
+          {kbStats && Object.keys(kbStats.graph.by_kind).length > 0 && (
+            <Panel bodyClass="px-3 py-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-ink-faint whitespace-nowrap">
+                  全库 {kbStats.graph.nodes} 节点 / {Object.keys(kbStats.graph.by_kind).length} 类 · 按类型进：
+                </span>
+                {Object.entries(kbStats.graph.by_kind)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([kind, n]) => (
+                    <PickChip
+                      key={kind}
+                      label={`${kindLabel(kind)} ${n}`}
+                      title={`全库 ${n} 个${kindLabel(kind)}${kindWhat(kind) ? `：${kindWhat(kind)}` : ""}`}
+                      onPick={() => {
+                        void api.kbNodes(kind).then((list) => {
+                          if (list.length) openObject(list[0].id);
+                        });
+                      }}
+                    />
+                  ))}
+              </div>
+            </Panel>
+          )}
+
           {/* 起步引导（还没检索过时显示）：紧凑 + 预告结构 + 一键对象，不占半屏 */}
           {!searched && (
             <Panel bodyClass="p-3">
@@ -669,7 +698,7 @@ export function GraphWorkspace() {
                   <div className="flex items-center gap-2">
                     <Tag tone="dim">{sub.node_count} 节点 / {sub.edges.length} 边</Tag>
                     {isOverview && (
-                      <span className="text-[11px] text-ink-faint whitespace-nowrap">骨架视图 · 点任一节点展开它的完整关系</span>
+                      <span className="text-[11px] text-ink-faint whitespace-nowrap">骨架视图 · 点节点展开（全库 {kbStats?.graph.nodes ?? "—"} 节点）</span>
                     )}
                     {histLen > 0 && (
                       <button className="btn-ghost btn-sm" onClick={() => void goBack()} title="返回上一视图（浏览历史可回退）">

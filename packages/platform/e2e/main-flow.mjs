@@ -62,7 +62,7 @@ async function main() {
     await waitText(page, "没有故障码？描述异常现象 → 图谱多跳诊断");
     const input = page.locator('input[aria-label="症状描述输入"]');
     await input.fill("仪表盘闪烁但无故障码");
-    await page.getByRole("button", { name: "🔎 症状诊断" }).click();
+    await page.getByRole("button", { name: "症状诊断" }).click();
     await waitText(page, "症状资产");
     await page.waitForTimeout(600);
     const diagText = await page.evaluate(() => document.body.innerText);
