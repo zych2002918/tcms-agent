@@ -80,6 +80,12 @@ async function main() {
     assert((await page.getByRole("button", { name: "停转" }).count()) >= 1, "3D 控制条应有停转");
     assert(threeText.includes("拖拽旋转"), "3D 模式下应显示 3D 操作提示（2D 提示为「空白拖拽平移」）");
     record("graph-3d: 3D 视图渲染正常，控件可用");
+
+    // E. 空子图不许静默（曾出现：种子解析不到实体 → 纯白画布，用户只会以为"图谱不全"）
+    const bogus = encodeURIComponent("不存在的对象XYZ");
+    await page.goto(`${BASE}/graph?focus=${bogus}`, { waitUntil: "domcontentloaded" });
+    await waitText(page, "这个对象在图谱里没有对应节点");
+    record("graph: 解析不到的种子给出空态解释（不静默白屏）");
   } finally {
     await browser.close();
   }

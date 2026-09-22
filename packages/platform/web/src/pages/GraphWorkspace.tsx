@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { api, type KbNode, type KbSearchHit, type KbSubgraph } from "../api";
 import { Callout, EmptyState, Explain, KV, Panel, SkeletonRows, Tabs, Tag } from "../components/ui";
 import {
+  IconArrow,
   IconCaret,
   IconCube,
   IconExpand,
@@ -12,6 +13,7 @@ import {
   IconPlay,
   IconRewind,
   IconSearch,
+  IconWarn,
 } from "../components/icons";
 import { KIND_META, plainExplain } from "../lib/explanations";
 import {
@@ -194,7 +196,7 @@ export function GraphWorkspace() {
     setErr("");
     try {
       const r = await api.kbOverview();
-      pushHistory(); // 记录当前视图，供“⬅ 返回”
+      pushHistory(); // 记录当前视图，供“<IconArrow className="h-3.5 w-3.5 rotate-180" /> 返回”
       setSub(r);
       setHits(null);
       setSeedLabel("基础关联图谱（13 系统域骨架）");
@@ -217,7 +219,7 @@ export function GraphWorkspace() {
     setErr("");
     try {
       const r = await api.kbSubgraph(seedId, d);
-      pushHistory(); // 成功后记录上一视图（⬅ 返回用）
+      pushHistory(); // 成功后记录上一视图（<IconArrow className="h-3.5 w-3.5 rotate-180" /> 返回用）
       setSub(r);
       setHits(null);
       setSeedLabel(r.nodes.find((n) => n.id === seedId)?.label ?? seedId);
@@ -666,9 +668,12 @@ export function GraphWorkspace() {
                 right={
                   <div className="flex items-center gap-2">
                     <Tag tone="dim">{sub.node_count} 节点 / {sub.edges.length} 边</Tag>
+                    {isOverview && (
+                      <span className="text-[11px] text-ink-faint whitespace-nowrap">骨架视图 · 点任一节点展开它的完整关系</span>
+                    )}
                     {histLen > 0 && (
                       <button className="btn-ghost btn-sm" onClick={() => void goBack()} title="返回上一视图（浏览历史可回退）">
-                        ⬅ 返回
+                        <IconArrow className="h-3.5 w-3.5 rotate-180" /> 返回
                       </button>
                     )}
                     {!isOverview && (
@@ -681,6 +686,28 @@ export function GraphWorkspace() {
                 bodyClass="p-0"
               >
                 {/* 视图控件放在画布之外的工具条上（原先是浮在画布左上角，会压住节点标签） */}
+                {/* 空子图不许静默：种子解析不到实体时，画布是白的，用户只会以为"图谱不全"。
+                    说清原因 + 给一条出路（回去骨架或改用检索），见 frontend-redesign-plan §7.5 的口径。 */}
+                {sub.node_count === 0 && (
+                  <div className="px-3 pt-3">
+                    <Callout
+                      tone="warn"
+                      icon={<IconWarn className="h-4 w-4" />}
+                      title="这个对象在图谱里没有对应节点"
+                    >
+                      种子「{seedLabel}」没有匹配到任何实体。图谱节点 id 是
+                      <code className="kbd-mono"> 类型:名字 </code>
+                      的形式（如 <code className="kbd-mono">fault:overspeed</code>、
+                      <code className="kbd-mono">message:TCMS_Heartbeat</code>）；
+                      从外部链接跳进来时若只给了名字、没带类型前缀，就会落到这里。
+                      <div className="mt-2">
+                        <button className="btn-ghost btn-sm" onClick={() => void loadOverview()}>
+                          <IconRewind className="h-3.5 w-3.5" /> 回到基础关联图谱
+                        </button>
+                      </div>
+                    </Callout>
+                  </div>
+                )}
                 <GraphCanvas
                   sub={sub}
                   selId={selId}
@@ -697,7 +724,7 @@ export function GraphWorkspace() {
                   </summary>
                   <div className="mt-1 text-[11.5px] text-ink-dim leading-5">
                     中心是「{seedLabel}」，连线上的词是关系（如「发送方→」「触发」）；色点代表实体类型，数字是该类型在本子图里的个数。
-                    单击节点=选中并看详情（图上出现高亮环），双击节点=以它为中心跳转；「深度」扩/缩关联范围，⬅ 返回回上一视图。
+                    单击节点=选中并看详情（图上出现高亮环），双击节点=以它为中心跳转；「深度」扩/缩关联范围，<IconArrow className="h-3.5 w-3.5 rotate-180" /> 返回回上一视图。
                   </div>
                 </details>
               </Panel>
@@ -1173,7 +1200,10 @@ function GraphCanvas2D({
     e.preventDefault(); // 阻止空白区双击触发浏览器文本选择
     fit();
   };
-  const showLabels = view.scale >= 0.42;
+  // 缩放阈值只用来给"自动"降噪：用户显式选了「全部」就不再替他做主。
+  // （此前这里无条件生效 —— 点了「全部」再缩小，标签会全部消失，且界面不给任何提示，
+  //   同一个控件在不同缩放下行为相反、原因不可见。见 docs/frontend-redesign-plan.md §7.5）
+  const showLabels = labelMode === "all" || view.scale >= 0.42;
   const showEdgeText = view.scale >= 0.85;
 
   // 标签降噪（只影响"何时显示"，不碰布局）：选中优先、其次悬停，作为"关注点"
@@ -1538,6 +1568,19 @@ function GraphCanvas({
     return () => window.clearTimeout(t);
   }, [auto, mode]);
 
+  // 标签模式的解释必须写在控件旁边：此前只藏在 tab 的 title 提示里，而右侧那行操作提示
+  // 在 <1280px 屏幕上是 `hidden xl:inline` —— 结果"为什么有些节点没有名字"在界面上没有答案。
+  const labelHint =
+    labelMode === "off"
+      ? "已关闭（悬停仍可看单个名字）"
+      : labelMode === "all"
+        ? mode === "3d"
+          ? "全部显示（球背面的转过来才画）"
+          : "全部显示（缩得很小时可能互相压字）"
+        : mode === "3d"
+          ? "只常显关键节点 · 球背面不画"
+          : "只常显关键节点 · 悬停/单击看其余";
+
   return (
     <div>
       {/* 视觉语义：分段控件（Tabs）= 切状态；带描边的 .btn-ghost = 执行一次动作 */}
@@ -1601,6 +1644,7 @@ function GraphCanvas({
             onChange={setLabelMode}
           />
         </div>
+        <span className="text-[11px] text-ink-faint whitespace-nowrap">{labelHint}</span>
         <span className="ml-auto hidden xl:inline text-[10.5px] text-ink-faint whitespace-nowrap">
           {mode === "2d"
             ? "滚轮缩放 · 空白拖拽平移 · 悬停/单击节点看名字 · 双击节点换中心"

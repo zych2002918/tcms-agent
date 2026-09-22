@@ -432,7 +432,7 @@ export function AssetsPage() {
                           <button
                             className="btn-ghost btn-sm whitespace-nowrap"
                             title={`在图谱中查看 ${m.name} 的关联`}
-                            onClick={() => (window.location.href = `/graph?focus=${m.name}`)}
+                            onClick={() => (window.location.href = `/graph?focus=${encodeURIComponent("message:" + m.name)}`)}
                           >
                             图谱 →
                           </button>
