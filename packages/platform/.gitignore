@@ -27,6 +27,8 @@ web/shot-*.png
 web/node_modules/
 e2e/node_modules/
 e2e/package*.json
+# lock 与 manifest 必须一致地忽略：只留 lock 会让 clone 后 `pnpm install` 直接失败
+e2e/pnpm-lock.yaml
 
 # TS 构建缓存
 web/*.tsbuildinfo
