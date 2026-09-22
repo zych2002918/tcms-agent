@@ -46,6 +46,34 @@ FEATURES: dict[str, float] = {
 }
 
 
+def weights_for(query: str) -> dict[str, float]:
+    """按查询**实际可用的信号**给出特征权重（确定性）。
+
+    为什么需要：`id_hit` 判的是"查询里的字符/词是否出现在 **doc_id** 中"，而 doc_id 是
+    英文标识符（`symptom:false_alarm_buzzer`）——**中文单字不可能出现在里面**，于是纯中文
+    查询的 id_hit 恒为 0，等于 1/6 的判别力对它**永久失效**。这不是"中文查询更难"，
+    而是这一路信号对它根本不存在。
+
+    处理：拿不到 id_hit 的查询，把它的权重转给 `query_overlap`——同样是字面匹配，
+    只是目标从 doc_id 换成文档文本。含拉丁标识符的查询（如「VCU 心跳丢失 降级」）
+    仍按原权重走，因为 `vcu` 确实能命中 `fault:heartbeat_loss_vcu`。
+
+    实测（2026-09-21，28 条 golden）：把 id_hit 的权重转给 query_overlap 后**指标一字未变**
+    （top-1 仍 25/28、被排差的仍是那 3 条）——所以"中文查询被 id_hit 拖累"这个怀疑**不成立**。
+    真正主导排序的是 `channel_consensus`（0.45），它对短中文查询可能偏向"多通道共识但不精准"
+    的候选。保留本函数是因为"信号不可用就不该占权重"在概念上仍然正确，且它把**实际用到的
+    权重**一并回传（`weights` 字段）——但它**不是**那 3 条劣化的解药，别误以为它修好了什么。
+    """
+    import re
+
+    if re.search(r"[A-Za-z_][A-Za-z0-9_]*", query or ""):
+        return dict(FEATURES)
+    out = dict(FEATURES)
+    out["query_overlap"] += out["id_hit"]  # 转移，不是丢弃
+    out["id_hit"] = 0.0
+    return out
+
+
 @dataclass
 class RerankFeatures:
     channel_consensus: float
@@ -93,12 +121,15 @@ def compute_features(query: str, hit: dict[str, Any]) -> RerankFeatures:
     )
 
 
-def rerank_score(hit: dict[str, Any], feats: RerankFeatures) -> float:
+def rerank_score(
+    hit: dict[str, Any], feats: RerankFeatures, *, weights: dict[str, float] | None = None
+) -> float:
+    w = weights if weights is not None else FEATURES
     return (
-        FEATURES["channel_consensus"] * feats.channel_consensus
-        + FEATURES["query_overlap"] * feats.query_overlap
-        + FEATURES["id_hit"] * feats.id_hit
-        + FEATURES["kind_prior"] * feats.kind_prior
+        w["channel_consensus"] * feats.channel_consensus
+        + w["query_overlap"] * feats.query_overlap
+        + w["id_hit"] * feats.id_hit
+        + w["kind_prior"] * feats.kind_prior
     )
 
 
@@ -110,13 +141,16 @@ def rerank_hits(
     返回新的列表（原 dict 复制后附加 `rerank_score` / `features` / `rrf_rank`），
     便于对照"重排前第几名、重排后第几名"。
     """
+    w = weights_for(query)
     out: list[dict[str, Any]] = []
     for i, h in enumerate(hits):
         feats = compute_features(query, h)
         item = dict(h)
         item["rrf_rank"] = i + 1
-        item["rerank_score"] = round(rerank_score(h, feats), 6)
+        item["rerank_score"] = round(rerank_score(h, feats, weights=w), 6)
         item["features"] = feats.to_dict()
+        # 把本次实际用的权重也带上：读轨迹的人能分辨"这条为什么排前面"
+        item["weights"] = {k: round(v, 4) for k, v in w.items()}
         out.append(item)
     out.sort(key=lambda x: (-x["rerank_score"], x["rrf_rank"]))
     return out[:top_k] if top_k else out
@@ -146,4 +180,5 @@ __all__ = [
     "compute_features",
     "rerank_hits",
     "rerank_score",
+    "weights_for",
 ]

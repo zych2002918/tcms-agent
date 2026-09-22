@@ -58,7 +58,6 @@ def main() -> int:
     ap.add_argument("--workdir", default="", help="实验目录（默认临时目录，便于复跑对照）")
     args = ap.parse_args()
 
-    from tcms_agent.config import AgentConfig
     from tcms_agent.eval.harness import Arm, run_arm
     from tcms_agent.eval.tasks import load_tasks
     from tcms_agent.knowledge import build_knowledge
