@@ -10,7 +10,7 @@ dist/tcms-ai-platform/
   _internal/                ← 运行时依赖 + 内置资产 + 前端静态资源
 ```
 
-打包后**无需安装 Python / 无需配 TCMS 引擎 / 无需配前端**——引擎(1.9.1)、内置资产
+打包后**无需安装 Python / 无需配 TCMS 引擎 / 无需配前端**——引擎（打包时取 workspace 版本，见 `packages/engine/tcms/_version.py`）、内置资产
 快照、web UI 全部打进包里。启动自动开浏览器到 http://127.0.0.1:8000（`PORT` 环境变量可改）。
 
 ## 如何打包（开发者）
@@ -19,7 +19,7 @@ dist/tcms-ai-platform/
 
 ```bash
 pip install -e .            # 平台本体（editable 即可，spec 用仓库 src 路径）
-pip install tcms-can-test   # 引擎（非 editable，普通安装，PyInstaller 才能收全）
+pip install -e ../engine    # 引擎（**不要** pip install tcms-can-test：该包未发布到 PyPI）
 pip install pyinstaller
 ```
 

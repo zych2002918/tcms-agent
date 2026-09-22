@@ -43,7 +43,7 @@ python examples/consumer_api.py
   （`tests/test_examples.py` 子进程复跑），示例不会被改坏。
 - **公共 API 面有实证**：`consumer_api.py` 只 import `tcms` 顶层
   （`load_database / make_bus / load_fault_dictionary / scenarios.run_yaml`），
-  证明 `pip install tcms-can-test` 后外部使用者可站在公共契约上写自己的
+  证明**安装态**（CI 里装的是本地构建的 `dist/*.whl`；该包**未发布到 PyPI**）下，外部使用者可站在公共契约上写自己的
   第一个用例（平台化判据，CI demo-smoke 复跑）。
 - 数据字节布局与 `tcms/replay.py` 的解析约定一一对应（见
   `make_demo_asc.py` 头注释），改剧情时保持布局一致即可。
