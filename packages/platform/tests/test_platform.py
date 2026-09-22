@@ -620,9 +620,13 @@ def test_llm_models_remote_error(client, monkeypatch, tmp_path):
     from tcms_ai_platform.agent import llm_backend as _lb
 
     monkeypatch.setattr(
-        _lb.httpx,
-        "get",
-        lambda url, headers=None, timeout=None: _FakeResp(401, "unauthorized"),
+        _lb,
+        "_request",
+        # 打桩点跟着实现走（与本文件其余 LLM 探测测试一致）：请求统一经 `_request`
+        # —— 它负责"坏代理绕过重试"。此前打的是底层 `httpx.get`，在重试路径上会
+        # 漏掉打桩、真的发出网络请求：一条断言"远端 401"的测试反而依赖真实网络，
+        # 全量回归中出现过偶发失败（单跑必绿、连跑才现）。
+        lambda method, url, **kw: (_FakeResp(401, "unauthorized"), ""),
     )
     r = client.post("/api/llm/models", json={})
     assert r.status_code == 200

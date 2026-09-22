@@ -213,7 +213,12 @@ class ToolRegistry:
             level_label=level.label,
             ok=ok,
             duration_ms=duration_ms,
-            error=error,
+            # 兜底：失败却没有原因时，从 result 里把错误捞出来。
+            # 起因：两条拒绝路径（未注册工具 / 权限不足）曾漏传 error 参数，
+            # 审计于是只记着 ok=False、原因却是空的——而"这次调用为什么被拒"
+            # 正是安全关键域里审计要回答的基本问题。放在这里而不是逐个调用点，
+            # 是为了让"失败必带原因"成为机制：今后新增拒绝路径不会再漏。
+            error=error or (str(result.get("error") or "") if not ok else ""),
             result_chars=len(json.dumps(result, ensure_ascii=False, default=str)),
             result_digest=_digest(result),
         )
