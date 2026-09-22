@@ -85,7 +85,10 @@ class TaskRun:
     attempts: int = 0
     reflected: bool = False  # 是否经反思（首轮失败后改进）
     trace: list[dict] = field(default_factory=list)  # 轨迹审计
-    started: float = field(default_factory=time.time)
+    #: 用 **perf_counter** 测量时长：既单调（不受 NTP/手动校时回拨影响），又是当前平台分辨率最高的时钟。
+    #: 两个坑都踩过：time.time() 会被校时回拨；time.monotonic() 在 Windows 走 GetTickCount64、
+    #: 分辨率约 15.6ms——整条链若在同一 tick 内跑完，时间戳会一起被 round(…, 3) 抹成 0.0。
+    started: float = field(default_factory=time.perf_counter)
     duration_ms: int = 0
     notes: list[str] = field(default_factory=list)
     review: object | None = None  # RuleReviewer 的 ReviewVerdict（评审驱动自愈）
@@ -100,7 +103,7 @@ class TaskRun:
         前端展开某一步时看的就是它，因此这里放的是"可核对的事实"，
         不是又一层转述。
         """
-        entry: dict = {"step": step, "detail": detail, "t": round(time.time() - self.started, 3)}
+        entry: dict = {"step": step, "detail": detail, "t": round(time.perf_counter() - self.started, 3)}
         if payload:
             entry["payload"] = payload
         self.trace.append(entry)
@@ -268,7 +271,7 @@ class AgentHarness:
         except Exception as e:
             run.log("act", f"计划失败: {e}", {"stage": "决策（选场景）", "error": str(e)})
             run.notes.append(str(e))
-            run.duration_ms = int((time.time() - run.started) * 1000)
+            run.duration_ms = int((time.perf_counter() - run.started) * 1000)
             return run
 
         # 3. act + verify（最多 2 次尝试，含一次反思重试）
@@ -338,7 +341,7 @@ class AgentHarness:
                 run.reflected = True
                 run.log("reflect", "首轮未达成，反思换场景重试")
 
-        run.duration_ms = int((time.time() - run.started) * 1000)
+        run.duration_ms = int((time.perf_counter() - run.started) * 1000)
         if run.achieved:
             run.log("report", f"达成: {task.target_fault} → {task.expected_action}")
         else:

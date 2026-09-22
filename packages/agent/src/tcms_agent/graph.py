@@ -53,11 +53,11 @@ def build_registry(
       - `describe()` 能如实告诉人"这个工具存在，但当前档位不给用"。
     两道防线都真实生效，这才是"双保险"的本意。
 
-    各级别实现进度：
-        R0 只读    ✅ 7 个（复用 platform 5 个 + 原生 2 个）
-        R1 沙箱写  ⬜ 计划于 R4（需同时落地沙箱与丢弃机制）
-        R2 真实执行 ✅ 2 个（子进程 + 真超时 + 产物归档）
-        R3 持久化  ✅ 2 个（write_memory / promote_artifact）+ 人工审批 + 引用门禁
+    四级已全部落地（共 15 个工具；数字由 tests/test_tool_surface_docs.py 守着）：
+        R0 只读    9 个（复用 platform 5 个 + 原生 4 个）
+        R1 沙箱写  1 个（draft_test_case：编译期校验 + 可丢弃沙箱）
+        R2 真实执行 3 个（execution.py 2 个 + run_draft；子进程 + 真超时 + 产物归档）
+        R3 持久化  2 个（write_memory / promote_artifact）+ 人工审批 + 引用门禁
     """
     registry = ToolRegistry(max_level=cfg.max_level)
     registry.register_all(build_readonly_tools(knowledge, rerank=cfg.rerank_enabled))  # R0

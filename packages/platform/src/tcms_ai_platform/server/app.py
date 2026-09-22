@@ -1543,13 +1543,13 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
         _END = object()
 
         def _worker() -> None:
-            t0 = _time.time()
+            t0 = _time.perf_counter()  # 高分辨率单调时钟：白盒时间轴既要能观测耗时，又不允许倒退
 
             def _log(step: str, detail: str, payload: dict | None = None) -> None:
                 entry: dict = {
                     "step": step,
                     "detail": detail,
-                    "t": round(_time.time() - t0, 3),
+                    "t": round(_time.perf_counter() - t0, 3),
                 }
                 if payload:
                     entry["payload"] = payload
@@ -1557,7 +1557,7 @@ def create_app(asset_model: AssetModel | None = None, upstream: str | Path | Non
 
             def _relay(entry: dict) -> None:
                 e = dict(entry)
-                e["t"] = round(_time.time() - t0, 3)  # 与解析阶段同一条时间轴
+                e["t"] = round(_time.perf_counter() - t0, 3)  # 与解析阶段同一条时间轴
                 q.put({"type": "trace", "entry": e})
 
             try:
