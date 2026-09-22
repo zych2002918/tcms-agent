@@ -36,7 +36,7 @@ function findChromium() {
     if (!fs.existsSync(root)) continue;
     for (const dir of fs.readdirSync(root).sort()) {
       const full = path.join(root, dir);
-      for (const rel of ["chrome-win64/chrome.exe", "chrome-headless-shell-win64/chrome-headless-shell.exe", "chrome-linux/chrome", "chrome-mac/Chromium"]) {
+      for (const rel of ["chrome-win64/chrome.exe", "chrome-headless-shell-win64/chrome-headless-shell.exe", "chrome-linux/chrome", "chrome-linux64/chrome", "chrome-mac/Chromium"]) {
         const p = path.join(full, rel);
         if (fs.existsSync(p)) candidates.push(p);
       }
@@ -46,6 +46,18 @@ function findChromium() {
 }
 
 async function waitText(page, text, ms = 20000) {
+  // 全新实例（CI 就是全新实例）会自动弹出「首次使用引导」弹窗，它是 aria-modal 全屏浮层，
+  // **会拦截点击** —— 真实用户也是先把它关掉。本地因为引导已完成，永远看不到这一幕，
+  // 所以这个失败只在 CI 上出现（这正是把 e2e 放进 CI 的价值）。
+  const guide = page.getByRole("dialog", { name: "首次使用引导" });
+  if (await guide.count()) {
+    await page.keyboard.press("Escape"); // Esc 关闭（弹窗三件套之一）
+    if (await guide.count()) {
+      const skip = guide.getByRole("button", { name: /跳过|关闭|稍后/ }).first();
+      if (await skip.count()) await skip.click().catch(() => undefined);
+    }
+    await guide.waitFor({ state: "hidden", timeout: 5000 }).catch(() => undefined);
+  }
   await page.waitForFunction((t) => document.body && document.body.innerText.includes(t), text, { timeout: ms });
 }
 
