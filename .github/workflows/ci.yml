@@ -30,8 +30,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install ruff
@@ -39,7 +39,7 @@ jobs:
       - name: Ruff check (all members)
         run: ruff check packages
       - name: 工作区定义校验（uv.lock 可用）
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
       - name: uv lock --check
         run: uv lock --check
       # 分发卫生：.ps1 的 BOM / .bat 的纯 ASCII / 行尾 / 说明文档里的入口是否存在。
@@ -68,8 +68,8 @@ jobs:
       run:
         working-directory: packages/engine
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
@@ -85,13 +85,13 @@ jobs:
             --cov=tcms --cov-report=term --cov-report=json
       - name: Upload coverage JSON
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: engine-coverage-py${{ matrix.python-version }}
           path: packages/engine/coverage.json
       - name: Upload JUnit XML
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: engine-junit-py${{ matrix.python-version }}
           path: packages/engine/reports/junit-py${{ matrix.python-version }}.xml
@@ -105,8 +105,8 @@ jobs:
       run:
         working-directory: packages/platform
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -119,10 +119,10 @@ jobs:
         run: python -m ruff check src tests
       - name: Pytest（真实上游资产门禁）
         run: python -m pytest -q
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11
       - name: Frontend pure-logic tests
@@ -144,8 +144,8 @@ jobs:
       run:
         working-directory: packages/testgen
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install engine (workspace member) + testgen
@@ -169,8 +169,8 @@ jobs:
       run:
         working-directory: packages/agent
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -216,8 +216,8 @@ jobs:
       run:
         working-directory: packages/platform
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -226,10 +226,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ../engine
           pip install -e ".[test,lint]"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11
       - name: Build web/dist（e2e 打的是真实产物，不是 dev server）
