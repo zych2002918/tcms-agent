@@ -61,6 +61,32 @@ async function waitText(page, text, ms = 20000) {
   await page.waitForFunction((t) => document.body && document.body.innerText.includes(t), text, { timeout: ms });
 }
 
+/** 受控输入先 fill 再点按钮。
+ *
+ * 为什么要重试：页面挂载时的并发请求陆续返回会**重排布局**，抢在它们之前 fill+click 时，
+ * 受控输入可能被这一轮重渲染清空（`value={state}` 把 DOM 值写回空串），按钮随即变回
+ * `disabled`，于是 Playwright 一直卡在 "visible, enabled and stable"
+ * ——2026-10-07 CI #48/#49 就是这么红的，本地因为接口毫秒级返回永远复现不了。
+ *
+ * 彻底失败时把现场写进错误里：下次再红，日志自己就能说清是"值被清空"还是"按钮禁用"。
+ */
+async function fillAndClickWhenEnabled(page, input, text, buttonName, tries = 12) {
+  const btn = page.getByRole("button", { name: buttonName });
+  for (let i = 0; i < tries; i++) {
+    await input.fill(text);
+    await page.waitForTimeout(300); // 让这一轮重渲染落地
+    if (await btn.isEnabled().catch(() => false)) {
+      await btn.click({ timeout: 10000 });
+      return;
+    }
+  }
+  const value = await input.inputValue().catch(() => "(读不到)");
+  const disabled = await btn.isDisabled().catch(() => "(读不到)");
+  throw new Error(
+    `按钮「${buttonName}」重试 ${tries} 次后仍不可点：input=${JSON.stringify(value)} disabled=${disabled}`,
+  );
+}
+
 async function main() {
   const exe = findChromium();
   if (!exe) {
@@ -108,9 +134,11 @@ async function main() {
     // C. Agent 症状诊断卡（无码症状 → 候选卡）
     await page.goto(`${BASE}/agent`, { waitUntil: "domcontentloaded" });
     await waitText(page, "没有故障码？描述异常现象 → 图谱多跳诊断");
+    // AgentPage 挂载时并发拉 tasks/systemStatus/settings/scenarios 四个接口，
+    // 先等「N 个可执行任务」出现（= tasks 已返回，AgentPage.tsx:1327），再动输入框。
+    await waitText(page, "个可执行任务", 8000).catch(() => undefined); // 等不到也不致命：真正兜底的是下面的重试
     const input = page.locator('input[aria-label="症状描述输入"]');
-    await input.fill("仪表盘闪烁但无故障码");
-    await page.getByRole("button", { name: "症状诊断" }).click();
+    await fillAndClickWhenEnabled(page, input, "仪表盘闪烁但无故障码", "症状诊断");
     await waitText(page, "症状资产");
     await page.waitForTimeout(600);
     const diagText = await page.evaluate(() => document.body.innerText);
