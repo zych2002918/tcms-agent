@@ -42,9 +42,9 @@
 - [x] c. DBC 多网段化（✅ 2026-09-08）：DBC GenMsgSegment 单一真源标注 3 网段（vehicle 13/comfort 7/backbone 1）；schedulability 网段级分析（vehicle 9.4%/comfort 1.1%/backbone 0.1% 全可调度）；平台 loader 暴露 MessageDef.segment —— 单总线 10% 上限叙事解除，comfort/backbone 留出扩帧余量
 - [x] d. RTM 四向追溯视图（✅）：上游 scripts/gen_trace_4way.py + docs/rtm_4way.md —— SR(52)↔场景/模块↔测试↔故障 机器生成，改 rtm/场景/故障后重跑防漂移
 - [x] e. 全链数字终扫（✅）：上游覆盖率口径 98%（2651/55）；文档计数/版本收口 ①-③（上游 v1.12.0 / 平台 v0.4.0）；陈旧数字残留清零
-      —— Wave A+B+C 已同步（基础图谱 517 / 向量 506 / 122 passed）
+      —— Wave A+B+C 已同步（**Wave C 当时值**：基础图谱 517 / 向量 506 / 122 passed）
 
-**验收 ✅**：上游 958 collected 全绿；平台 123 passed；无孤儿故障；多网段可调度（vehicle 9.4%/comfort 1.1%/backbone 0.1%）；KB 基础图谱 517/向量 506。
+**验收 ✅**：上游 958 collected 全绿；平台 123 passed；无孤儿故障；多网段可调度（vehicle 9.4%/comfort 1.1%/backbone 0.1%）；KB 基础图谱 517/向量 506（**Wave C 当时值**，当前口径见 `resume\_口径卡_项目数字.md`）。
 
 ## ④ Q3 原子组合器（"真·原子化组合"）
 

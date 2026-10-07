@@ -177,8 +177,9 @@ def test_every_probe_resolves_when_its_source_is_present(registry, request: pyte
     cache: dict[str, Any] = {}
     # 这两类依赖当前环境本来就拿不到的输入，合法跳过，不算「空探针」：
     #   coverage_percent —— 需要先跑过 --cov 产出 coverage.json；
-    #   passed/skipped_total —— 需要 --full-run（收集阶段 skip 数还没决定）。
-    exempt = {"coverage_percent", "passed_total", "skipped_total"}
+    #   passed/skipped_total —— 需要 --full-run（收集阶段 skip 数还没决定）；
+    #   kb_state —— 需要 platform 包在场（CI 的 lint job 只装 pytest）。
+    exempt = {"coverage_percent", "passed_total", "skipped_total", "kb_state"}
     hollow: list[str] = []
     for claim in claims:
         if claim.probe in exempt:

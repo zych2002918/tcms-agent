@@ -3,7 +3,8 @@
 # 规则
 #   · 加一个对外数字/状态声明 = 在这里加一条 claim；没登记的声明门禁不认识它。
 #   · tier = "authority" 不一致 => FAIL（CI 红）；"history" => 仅提示。
-#   · pattern 用 TOML 字面串（单引号）写正则，捕获组必须叫 value。
+#   · pattern 用 TOML 字面串（单引号）写正则，所以**只写单反斜杠**：
+#     写成 '\\d' 在正则里是「字面反斜杠 + d」，永远匹配不到数字（本表踩过）。
 #   · 拿不到数据（上游缺失 / 只跑子集 / coverage.json 不存在）时如实跳过，不猜。
 #
 # 用法
@@ -221,6 +222,82 @@ sites = [
 note = "run 的决策臂只有 2 只（offline-rule/llm），评测 harness 有 5 只——两张表不能互相顶替。"
 
 # ---------------------------------------------------------------------------
+# 知识底座：基础态（仅资产）与服务态（注入领域知识 + 症状因果）
+#
+# 2026-10-07 实测（按 server/app.py:455-465 同序构建）：
+#   基础   519 节点 / 748 边 / 508 向量   ← = 203+104+22+116+52+11+11 / 508 / 519-11
+#   服务态 655 节点 / 1176 边 / 644 向量  ← = 基础 + 领域知识(41/39/31/13 域文件) + 症状 12
+# 「基础」这一组正是 ROADMAP 里 517/506 与 PROJECT_ARC 里 519/748/508 打架的那一对。
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "kb.base_nodes"
+label = "基础图谱节点数"
+kind = "number"
+probe = "kb_state"
+args = { state = "base", key = "nodes" }
+sites = [
+  { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '基础 (?P<value>\d+) / 748' },
+  { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '基础图仍 (?P<value>\d+)/748/508' },
+]
+note = "需要 platform 包在场；CI 的 lint job 不装成员包，故如实跳过。"
+
+[[claim]]
+id = "kb.base_edges"
+label = "基础图谱边数"
+kind = "number"
+probe = "kb_state"
+args = { state = "base", key = "edges" }
+sites = [
+  { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '基础 519 / (?P<value>\d+)' },
+  { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '基础图仍 519/(?P<value>\d+)/508' },
+]
+
+[[claim]]
+id = "kb.base_docs"
+label = "基础图谱向量数"
+kind = "number"
+probe = "kb_state"
+args = { state = "base", key = "docs" }
+sites = [
+  { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '基础图仍 519/748/(?P<value>\d+)' },
+]
+
+[[claim]]
+id = "kb.service_nodes"
+label = "服务态图谱节点数"
+kind = "number"
+probe = "kb_state"
+args = { state = "service", key = "nodes" }
+sites = [
+  { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '服务态\(含 enrich\+症状/因果\) (?P<value>\d+) / 1176' },
+  { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '服务态 \*\*(?P<value>\d+) 节点' },
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '图谱节点 \*\*(?P<value>\d+)\*\*' },
+]
+
+[[claim]]
+id = "kb.service_edges"
+label = "服务态图谱边数"
+kind = "number"
+probe = "kb_state"
+args = { state = "service", key = "edges" }
+sites = [
+  { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '服务态\(含 enrich\+症状/因果\) 655 / (?P<value>\d+)' },
+  { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '655 节点 / (?P<value>\d+) 边' },
+]
+
+[[claim]]
+id = "kb.service_docs"
+label = "服务态向量数"
+kind = "number"
+probe = "kb_state"
+args = { state = "service", key = "docs" }
+sites = [
+  { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '/ (?P<value>\d+) 向量文档' },
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '检索语料 \*\*(?P<value>\d+)\*\*' },
+]
+
+# ---------------------------------------------------------------------------
 # 观察项：不阻断，但会让「对外数字只在本机成立」的环境因素
 # ---------------------------------------------------------------------------
 
@@ -248,8 +325,8 @@ why = "14 条是 2026-09-21 扩容前的表；当前 golden 为 28 条（§2.7 �
 
 [[pending]]
 id = "P-3"
-label = "基础图谱到底 517/506 还是 519/748/508"
-why = "ROADMAP_Q2Q4.md:45/:47 与 PROJECT_ARC.md:117/:142 给出两套互斥的基础图谱口径；运行时只输出服务态总数（655/1176/644），基础口径需人定以哪套为准。"
+label = "（已解决 2026-10-07）基础图谱到底 517/506 还是 519/748/508"
+why = "按 server/app.py:455-465 同序构建实测：基础 = 519/748/508，服务态 = 655/1176/644。517/506 是 Wave C 当时值，已在 ROADMAP 就地标注为「Wave C 当时值」。本项已转成 kb.base_*/kb.service_* 六条 claim。"
 
 [[pending]]
 id = "P-4"

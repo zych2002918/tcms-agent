@@ -153,6 +153,54 @@ def probe_status_symbol(root: Path, marker_file: str, marker_pattern: str) -> st
     return "✅" if re.search(marker_pattern, text) else "⬜"
 
 
+_KB_CACHE: dict[str, dict[str, dict[str, int]]] = {}
+
+
+def _kb_snapshot(g: Any, store: Any) -> dict[str, int]:
+    gs = g.stats()
+    return {"nodes": gs["nodes"], "edges": gs["edges"], "docs": store.stats()["docs"]}
+
+
+def _kb_build(root: Path) -> dict[str, dict[str, int]] | None:
+    """按 `server/app.py:455-465` 的同一顺序建两态：基础（仅资产）/ 服务态（注入领域知识+症状因果）。
+
+    需要 platform 包在场；CI 的 lint job 只装 pytest → ImportError → 如实跳过。
+    """
+    key = str(root)
+    if key in _KB_CACHE:
+        return _KB_CACHE[key]
+    upstream = root / "packages" / "engine"
+    if not upstream.is_dir():
+        return None
+    try:
+        from tcms_ai_platform.core import load_asset_model
+        from tcms_ai_platform.domain import enrich_graph
+        from tcms_ai_platform.knowledge import (
+            VectorStore,
+            build_docs_from_asset,
+            build_knowledge_graph,
+        )
+    except ImportError:
+        return None
+    model = load_asset_model(upstream)
+    graph = build_knowledge_graph(model)
+    store = VectorStore()
+    store.add_many(build_docs_from_asset(model))
+    states = {"base": _kb_snapshot(graph, store)}
+    enrich_graph(graph, store)
+    states["service"] = _kb_snapshot(graph, store)
+    _KB_CACHE[key] = states
+    return states
+
+
+def probe_kb_state(root: Path, state: str, key: str) -> str | None:
+    """知识底座的节点/边/向量数：state ∈ base|service，key ∈ nodes|edges|docs。"""
+    states = _kb_build(root)
+    if states is None:
+        return None
+    return str(states[state][key])
+
+
 def probe_glob_count(root: Path, dir_: str, pattern: str) -> str:
     """某个目录下匹配的文件数（用于「环境残留物」这类观察项）。"""
     target = root / dir_
@@ -193,6 +241,7 @@ PROBES = {
     "harness_arms": probe_harness_arms,
     "coverage_percent": probe_coverage_percent,
     "glob_count": probe_glob_count,
+    "kb_state": probe_kb_state,
 }
 
 
@@ -243,6 +292,8 @@ def measure(
         return fn(root, claim.args["file"], claim.args["pattern"])  # type: ignore[operator]
     if claim.probe == "glob_count":
         return fn(root, claim.args["dir"], claim.args["pattern"])  # type: ignore[operator]
+    if claim.probe == "kb_state":
+        return fn(root, claim.args["state"], claim.args["key"])  # type: ignore[operator]
     raise KeyError(f"探针 {claim.probe!r} 调用方式未定义")
 
 
