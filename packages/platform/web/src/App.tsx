@@ -60,6 +60,8 @@ export default function App() {
     () => typeof window !== "undefined" && window.innerWidth < 1180,
   );
   const [sys, setSys] = useState<SysStatus | null>(null);
+  /** 平台健康（版本 / 引擎版本）：顶部信息带用。总览页不再自己取一份，避免同一事实两处渲染。 */
+  const [health, setHealth] = useState<{ status: string; version: string; engine_version: string | null } | null>(null);
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(currentTheme());
@@ -69,6 +71,8 @@ export default function App() {
 
   useEffect(() => {
     api.systemStatus().then(setSys).catch(() => undefined);
+    // 平台健康（版本 / 引擎版本）：顶部信息带用；总览页不再自己取一份
+    api.health().then(setHealth).catch(() => undefined);
     api.settingsGet().then((s) => {
       setSettings(s);
       // 服务端持久化的主题偏好 → 覆盖本地（多端一致）
@@ -81,6 +85,8 @@ export default function App() {
 
   const engineOk = sys?.engine.ok ?? true; // 未知时不打扰
   const needsEngine = !engineOk;
+  const platformOk = health?.status === "ok";
+  const engineReady = !!health?.engine_version || engineOk;
   const showBanner = needsEngine && !bannerDismissed;
   const onboardingPending = settings ? !settings.onboarding_done : false;
   const [onboardingOpen, setOnboardingOpen] = useState(true);
@@ -211,6 +217,40 @@ export default function App() {
             </NavLink>
           </div>
         )}
+
+        {/* 顶部信息带：哪一版 / 引擎在不在 / AI 通不通 / 资产从哪来 —— 全局事实，各页共享。
+            以前这四件事只在总览页那张「系统状态」卡里，换个页面想确认得先回首页。
+            仪器感来自下面那条标尺（细密小刻度 + 每 50px 一根强调刻度），不再叠阴影。 */}
+        <div className="status-ribbon shrink-0">
+          <div className="status-ribbon-cells">
+            <div className="status-cell">
+              <span className="status-cell-label">平台</span>
+              <span className="status-cell-value">
+                {health !== null && <StatusDot tone={platformOk ? "ok" : "bad"} pulse={platformOk} />}
+                {health === null ? "连接中…" : platformOk ? `运行中 · v${health.version}` : "异常"}
+              </span>
+            </div>
+            <div className="status-cell">
+              <span className="status-cell-label">TCMS 引擎</span>
+              <span className={`status-cell-value${engineReady ? "" : " is-muted"}`}>
+                {engineReady ? `v${health?.engine_version ?? sys?.engine.version ?? "–"}` : "未接入（场景执行需要它）"}
+              </span>
+            </div>
+            <div className="status-cell">
+              <span className="status-cell-label">AI 接入</span>
+              <span className={`status-cell-value${sys?.llm_key ? "" : " is-muted"}`}>
+                {sys === null ? "读取中…" : sys.llm_key ? "已配置 · 可用真模型决策" : "未配置 · 离线规则臂照跑"}
+              </span>
+            </div>
+            <div className="status-cell">
+              <span className="status-cell-label">资产来源</span>
+              <span className="status-cell-value is-muted">
+                {sys === null ? "读取中…" : sys.asset_mode === "bundled" ? "内置快照" : "外部引擎目录"}
+              </span>
+            </div>
+          </div>
+          <div className="status-ribbon-scale" aria-hidden="true" />
+        </div>
 
         {/* topbar */}
         <header className="flex items-baseline gap-3 px-5 lg:px-7 pt-5 pb-1 shrink-0">

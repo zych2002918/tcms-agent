@@ -25,7 +25,7 @@
  * 口径只有一条：**它旁边有词吗？** 有词 → 标点；自己独占一个"图形位" → 图标。
  */
 
-import type { SVGProps } from "react";
+import type { ComponentType, SVGProps } from "react";
 
 /** 统一规格：调用方只需传 className / style 调尺寸与颜色。 */
 const BASE: SVGProps<SVGSVGElement> = {
@@ -350,3 +350,222 @@ export function IconTrain(p: IconProps) {
     </svg>
   );
 }
+
+/* ===== 实体类型字形（2026-10）==================================================
+ *
+ * 为什么要有这一套：图谱的类型此前**只有色点**——17 种类型挤在一行色点里，
+ * 除了"颜色不同"读不出任何信息；类型名要靠文字逐个读。给每类一枚几何符号后，
+ * "这是什么类型"变成可扫读的，而且**同一套符号在图例 / 类型计数 / 命中卡里重复出现**，
+ * 与画布节点的对应关系仍然由颜色承担（图例里符号与色点同色）。
+ *
+ * 造型取向：全部由直线与圆构成、1.5 线宽、16 视框内留 2px 余量，
+ * 取"列车控制"的语汇——帧、方波、ECU 引脚、表决三通道、量程标尺、联锁环。
+ * 规格与其它图标完全一致（见文件头），因此可以和导航图标并排使用而不显拼凑。
+ * ========================================================================== */
+
+/** 报文：总线上的一帧 */
+export function IconKindMessage(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <path d="M2 12h12" />
+      <rect x="3" y="4.5" width="10" height="4.5" rx="1" />
+    </svg>
+  );
+}
+
+/** 信号：方波 */
+export function IconKindSignal(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <path d="M2 9.5h2.6V6.5h3.2v3h3.2V6.5H14" />
+    </svg>
+  );
+}
+
+/** 设备：控制单元与引脚 */
+export function IconKindDevice(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <rect x="3" y="3.4" width="10" height="7.4" rx="1.2" />
+      <path d="M5.4 10.8v2.4M8 10.8v2.4M10.6 10.8v2.4" />
+    </svg>
+  );
+}
+
+/** 被测功能：准星 */
+export function IconKindFunction(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <circle cx="8" cy="8" r="4" />
+      <path d="M8 1.8v2.2M8 12v2.2M1.8 8h2.2M12 8h2.2" />
+    </svg>
+  );
+}
+
+/** 安全需求：带勾的规格页 */
+export function IconKindRequirement(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <path d="M4.2 2.6h5.2l3.2 3.2v7.6H4.2z" />
+      <path d="M9.4 2.6v3.2h3.2" />
+      <path d="M6.3 10.2l1.4 1.4 2.6-2.9" />
+    </svg>
+  );
+}
+
+/** 故障：基线出现尖峰 */
+export function IconKindFault(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <path d="M1.8 8.4h2.6l1.4-3.6 2.2 7 1.4-3.4h4.8" />
+    </svg>
+  );
+}
+
+/** 场景：编排好的时序 */
+export function IconKindScenario(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <path d="M2.2 12.8h11.6" />
+      <path d="M4.8 12.8V7.6M8 12.8V4.6M11.2 12.8V9.4" />
+    </svg>
+  );
+}
+
+/** 运行记录：带条目的日志 */
+export function IconKindRun(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <path d="M4.6 4.4h8.8M4.6 8h8.8M4.6 11.6h5.2" />
+      <path d="M2.2 4.4h.02M2.2 8h.02M2.2 11.6h.02" />
+    </svg>
+  );
+}
+
+/** 驾驶模式：带球头的控制杆 */
+export function IconKindMode(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <path d="M3.4 13.2h9.2" />
+      <path d="M8 13.2V8.4" />
+      <circle cx="8" cy="5.6" r="2.4" />
+    </svg>
+  );
+}
+
+/** 状态：状态机两节点 */
+export function IconKindState(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <circle cx="3.9" cy="8" r="2.1" />
+      <circle cx="12.1" cy="8" r="2.1" />
+      <path d="M6.2 8h3.6" />
+    </svg>
+  );
+}
+
+/** 联锁规则：互锁环 */
+export function IconKindInterlock(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <rect x="2.4" y="6.2" width="6.4" height="3.6" rx="1.8" />
+      <rect x="7.2" y="6.2" width="6.4" height="3.6" rx="1.8" />
+    </svg>
+  );
+}
+
+/** 关键阈值：量程上的限值 */
+export function IconKindThreshold(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <path d="M2 12.4h12" />
+      <path d="M8.4 3.2v9.2" strokeDasharray="2 1.5" />
+      <path d="M6.6 5.6h3.6" />
+    </svg>
+  );
+}
+
+/** 安全机制：三通道表决 */
+export function IconKindMechanism(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <circle cx="4" cy="10.6" r="1.7" />
+      <circle cx="8" cy="10.6" r="1.7" />
+      <circle cx="12" cy="10.6" r="1.7" />
+      <path d="M4 7.4V5.2h8v2.2" />
+    </svg>
+  );
+}
+
+/** 标准：规范书 */
+export function IconKindStandard(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <path d="M3 3.6h4.2v9H3zM8.8 3.6H13v9H8.8z" />
+    </svg>
+  );
+}
+
+/** 安全危害：警示三角 */
+export function IconKindHazard(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <path d="M8 2.8 14 13H2z" />
+      <path d="M8 6.8v2.6M8 11.2h.02" />
+    </svg>
+  );
+}
+
+/** 领域概念：认识一件事 */
+export function IconKindConcept(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <path d="M8 2.6a3.5 3.5 0 0 1 2.1 6.3v1.3H5.9V8.9A3.5 3.5 0 0 1 8 2.6z" />
+      <path d="M6.7 12.6h2.6" />
+    </svg>
+  );
+}
+
+/** 列车系统：系统树 */
+export function IconKindSystem(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <rect x="6" y="2.6" width="4" height="3.2" rx=".8" />
+      <rect x="2.4" y="10.2" width="4" height="3.2" rx=".8" />
+      <rect x="9.6" y="10.2" width="4" height="3.2" rx=".8" />
+      <path d="M8 5.8v2.4M4.4 10.2V8.2h7.2v2" />
+    </svg>
+  );
+}
+
+/** 现象：观察到的异常表现 */
+export function IconKindSymptom(p: IconProps) {
+  return (
+    <svg {...BASE} {...p}>
+      <path d="M1.9 8S4.3 4.6 8 4.6 14.1 8 14.1 8 11.7 11.4 8 11.4 1.9 8 1.9 8z" />
+      <circle cx="8" cy="8" r="1.6" />
+    </svg>
+  );
+}
+
+/** kind → 字形（与 lib/explanations.ts 的 KIND_META 同键；未收录的类型由调用方兜底）。 */
+export const KIND_GLYPH: Record<string, ComponentType<IconProps>> = {
+  message: IconKindMessage,
+  signal: IconKindSignal,
+  device: IconKindDevice,
+  function: IconKindFunction,
+  requirement: IconKindRequirement,
+  fault: IconKindFault,
+  scenario: IconKindScenario,
+  run: IconKindRun,
+  mode: IconKindMode,
+  state: IconKindState,
+  interlock: IconKindInterlock,
+  threshold: IconKindThreshold,
+  mechanism: IconKindMechanism,
+  standard: IconKindStandard,
+  hazard: IconKindHazard,
+  concept: IconKindConcept,
+  system: IconKindSystem,
+  symptom: IconKindSymptom,
+};

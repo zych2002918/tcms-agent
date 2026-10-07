@@ -1,14 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Stats } from "../api";
-import { Panel, Tag, StatusDot, StatCard, Callout, SkeletonRows } from "../components/ui";
+import { Panel, Tag, StatCard, Callout, SkeletonRows } from "../components/ui";
 import { IconGear, IconGraph, IconInfo, IconPlay, IconSpark } from "../components/icons";
 
-/** 资产源：把后端给的路径说成人话（完整路径收进 title / 细节层，不占首屏一行） */
-function assetSourceLabel(src?: string | null): string {
-  if (!src) return "读取中…";
-  return src.startsWith("bundled:") ? "内置快照" : "外部引擎目录";
-}
 
 /**
  * 总览页。信息顺序按首屏决策排：**状态 → 入口 → 数据明细**。
@@ -21,16 +16,14 @@ function assetSourceLabel(src?: string | null): string {
  */
 export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
-  const [health, setHealth] = useState<{ status: string; version: string; engine_version: string | null } | null>(null);
+
   const [err, setErr] = useState("");
 
   useEffect(() => {
     api.stats().then(setStats).catch((e) => setErr(String(e)));
-    api.health().then(setHealth).catch(() => undefined);
+
   }, []);
 
-  const platformOk = health?.status === "ok";
-  const engineReady = !!health?.engine_version;
 
   /** 次要入口：主入口之外的三个分场景入口（顺序 = 真实执行的完整度：跑 → 看 → 查） */
   const secondary = [
@@ -73,31 +66,6 @@ export function Dashboard() {
         <div className="panel border-bad/40 bg-bad/10 px-4 py-2.5 text-sm text-bad">⚠ 无法连接后端：{err}</div>
       )}
 
-      {/* ① 状态：平台 / 引擎 / 资产源。路径不再是首屏正文，只说人话 */}
-      <Panel title="系统状态" bodyClass="py-3">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px]">
-          <span className="flex items-center gap-2">
-            <StatusDot tone={platformOk ? "ok" : "bad"} pulse />
-            <span>
-              {health === null ? "连接中…" : platformOk ? "平台运行中" : "平台异常"} · v
-              {stats?.version ?? "–"}
-            </span>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="text-ink-dim">TCMS 引擎：</span>
-            {engineReady ? (
-              <span className="text-ink">
-                v<span className="num">{health?.engine_version}</span>
-              </span>
-            ) : (
-              <span className="text-warn">未接入（场景执行需要它）</span>
-            )}
-          </span>
-          <span className="flex items-center gap-1.5 text-ink-dim" title={stats?.source_upstream ?? "资产源读取中…"}>
-            当前资产源：<Tag tone="dim">{assetSourceLabel(stats?.source_upstream)}</Tag>
-          </span>
-        </div>
-      </Panel>
 
       {/* ② 从这里开始：主入口一张强调卡，其余三个并列次要 */}
       <section>

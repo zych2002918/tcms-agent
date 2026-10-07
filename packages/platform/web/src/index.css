@@ -611,3 +611,55 @@ h2, h3 { letter-spacing: -0.018em; }
 @media (prefers-reduced-motion: reduce) {
   .panel:not(.panel-float) { transition: none; }
 }
+
+/* ===== 顶部信息带（2026-10）=====================================================
+   为什么在外壳而不在总览页：这四件事（哪一版 / 引擎在不在 / AI 通不通 / 资产从哪来）
+   是**全局事实**——此前只在首页那张「系统状态」卡里可见，换个页面想确认得先回首页。
+   分段靠发丝线，仪器感靠下面那条**标尺**（细密小刻度 + 每 50px 一根强调刻度），
+   而不是再加阴影或色块。
+   ============================================================================ */
+.status-ribbon {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.status-ribbon-cells {
+  display: flex;
+  flex-wrap: wrap;
+}
+.status-cell {
+  flex: 1 1 0;
+  min-width: 172px;
+  padding: 7px 18px 6px;
+  border-right: 1px solid var(--line-soft);
+}
+.status-cell:last-child {
+  border-right: 0;
+}
+.status-cell-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--ink-faint);
+}
+.status-cell-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.status-cell-value.is-muted {
+  color: var(--ink-dim);
+}
+.status-ribbon-scale {
+  height: 4px;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--info) 42%, transparent) 0 1px,
+      transparent 1px 50px
+    ),
+    repeating-linear-gradient(90deg, var(--line-soft) 0 1px, transparent 1px 10px);
+}

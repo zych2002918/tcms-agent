@@ -14,8 +14,15 @@ import {
   IconRewind,
   IconSearch,
   IconWarn,
+  KIND_GLYPH,
 } from "../components/icons";
 import { KIND_META, plainExplain } from "../lib/explanations";
+
+/** kind → 字形：未收录的类型**不画符号**（而不是塞一个通用占位符）。 */
+function KindGlyph({ kind, className = "h-3.5 w-3.5" }: { kind: string; className?: string }) {
+  const G = KIND_GLYPH[kind];
+  return G ? <G className={className} /> : null;
+}
 import {
   CAM_DEFAULT as CAM3D_DEFAULT,
   CAM_MAX as CAM3D_MAX,
@@ -102,11 +109,13 @@ const asEvidence = (h: KbSearchHit): HitEvidence => h as HitEvidence;
 function PickChip({
   label,
   title,
+  icon,
   active = false,
   onPick,
 }: {
   label: string;
   title: string;
+  icon?: React.ReactNode;
   active?: boolean;
   onPick: () => void;
 }) {
@@ -121,6 +130,7 @@ function PickChip({
           : "text-ink-dim border-line bg-surface-2 hover:text-ink hover:border-ink-faint/40"
       }`}
     >
+      {icon}
       {label}
     </button>
   );
@@ -495,6 +505,7 @@ export function GraphWorkspace() {
                   .map(([kind, n]) => (
                     <PickChip
                       key={kind}
+                      icon={<KindGlyph kind={kind} className="h-3 w-3 shrink-0" />}
                       label={`${kindLabel(kind)} ${n}`}
                       title={`全库 ${n} 个${kindLabel(kind)}${kindWhat(kind) ? `：${kindWhat(kind)}` : ""}`}
                       onPick={() => {
@@ -869,7 +880,7 @@ export function GraphWorkspace() {
                     compact
                     icon={<IconGraph className="h-4 w-4" />}
                     title="单击图上节点看详情"
-                    desc="双击节点=以它为中心重新展开；色点颜色代表实体类型（见下方图例）。"
+                    desc="双击节点=以它为中心重新展开；色点颜色（图例里同色符号）代表实体类型。"
                   />
                 ) : (
                   <div className="space-y-2.5">
@@ -944,7 +955,13 @@ export function GraphWorkspace() {
                 <div className="flex flex-wrap gap-x-3 gap-y-1.5">
                   {legendKinds.map((k) => (
                     <span key={k} className="inline-flex items-center gap-1.5 text-[11px] text-ink-dim">
-                      <span className="h-2 w-2 rounded-full shrink-0" style={{ background: kindHex(k) }} />
+                      {KIND_GLYPH[k] ? (
+                        <span className="shrink-0" style={{ color: kindHex(k) }}>
+                          <KindGlyph kind={k} className="h-3 w-3" />
+                        </span>
+                      ) : (
+                        <span className="h-2 w-2 rounded-full shrink-0" style={{ background: kindHex(k) }} />
+                      )}
                       {kindLabel(k)}
                       <span className="text-ink-faint num">×{subKinds?.[k] ?? 0}</span>
                     </span>
