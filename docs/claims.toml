@@ -298,6 +298,41 @@ sites = [
 ]
 
 # ---------------------------------------------------------------------------
+# P-1 / P-2 / P-4 的落地（2026-10-07：从「待人工拍板」转成机器守卫）
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "status.memory_semantic"
+label = "记忆召回的真语义通道是否已落地"
+kind = "number"
+probe = "status_symbol"
+args = { marker_file = "packages/agent/src/tcms_agent/memory/recall.py", marker_pattern = 'TCMS_EMBEDDER' }
+sites = [
+  { file = "docs/ARCHITECTURE.md", pattern = '记忆召回的真语义通道 \| (?P<value>[⬜✅])' },
+]
+note = "口径定为「能力存在且可用即算落地」，不要求默认开启：默认字符级哈希，TCMS_EMBEDDER=api 切实语义；默认关的理由写进正文（不可离线复现）。"
+
+[[claim]]
+id = "docs.golden_history_labelled"
+label = "检索 golden 的历史口径必须带「扩容前」标注"
+kind = "forbid_text"
+probe = "none"
+sites = [
+  { file = "docs/ARCHITECTURE.md", pattern = '12/14 → 14/14(?![^\n]*扩容前)', forbid = true },
+]
+note = "14 条是 2026-09-21 扩容前的表，现状 28 条（§2.7：23/28 → 25/28）。历史叙述允许保留，但同一行必须标注「扩容前」。"
+
+[[claim]]
+id = "docs.ci_gate_wording"
+label = "「门禁进 CI」不得写成不限定的一句"
+kind = "forbid_text"
+probe = "none"
+sites = [
+  { file = "docs/ARCHITECTURE.md", pattern = 'eval gate[^\n]*回归门禁进 CI', forbid = true },
+]
+note = "CI 里确有基线阈值门禁（随 agent 包 pytest，断言 test_baseline_task_set_gate），但没有 A/B 的 CLI 门禁；两者必须分开说。"
+
+# ---------------------------------------------------------------------------
 # 观察项：不阻断，但会让「对外数字只在本机成立」的环境因素
 # ---------------------------------------------------------------------------
 
@@ -309,19 +344,27 @@ probe = "glob_count"
 args = { dir = "packages/engine/tests", pattern = "test_ai_generated*.py" }
 note = "文件被 .gitignore 忽略（`test_ai_generated*.py`），但落在 pytest 会收集的目录里。clean clone 上数字是 960/全仓 X；跑过 agent 演示后变 961/X+1。对外报数字前先归档清掉——2026-10-07 就是这么被抓到的。"
 
+[[claim]]
+id = "watch.ci_eval_step"
+label = "CI 里出现了 eval 步骤（ARCHITECTURE 关于门禁的说法需要复核）"
+kind = "watch"
+probe = "file_regex_count"
+args = { file = ".github/workflows/ci.yml", pattern = '\beval\b' }
+note = "当前 CI 无 eval 步骤（A/B 门禁只在本地 CLI 跑）。哪天真接进 CI，这条会亮，提示同步 ARCHITECTURE §2.8 / §4 的说法。"
+
 # ---------------------------------------------------------------------------
 # 待人工拍板（机器判不了，如实列出，不假装守住了）
 # ---------------------------------------------------------------------------
 
 [[pending]]
 id = "P-1"
-label = "ARCHITECTURE §4「记忆召回的真语义通道」该标 ⬜ 还是 ✅"
-why = "默认通道确实是字符级哈希，但 TCMS_EMBEDDER=api 可切实语义（recall.py:67-69）。是「已落地但默认关」还是「未落地」，属口径判断，不能由正则裁定。"
+label = "（已解决 2026-10-07）ARCHITECTURE §4「记忆召回的真语义通道」该标 ⬜ 还是 ✅"
+why = "口径定为「能力存在且可用即算落地」→ 该行已改 ✅ 并写明「默认关是有意的（不可离线复现）」。本项已转成 claim status.memory_semantic 由机器守。"
 
 [[pending]]
 id = "P-2"
-label = "ARCHITECTURE:330/:583 的「top-1 12/14 → 14/14」叙述"
-why = "14 条是 2026-09-21 扩容前的表；当前 golden 为 28 条（§2.7 实测 23→25）。改写还是保留并标注「扩容前」，需要人定。"
+label = "（已解决 2026-10-07）ARCHITECTURE:330/:583 的「top-1 12/14 → 14/14」叙述"
+why = "处置：保留历史叙述但同句标注「（扩容前 14 条口径）」，并补上扩容后的 23/28 → 25/28。本项已转成 claim docs.golden_history_labelled（禁现未标注的写法）。"
 
 [[pending]]
 id = "P-3"
@@ -330,5 +373,5 @@ why = "按 server/app.py:455-465 同序构建实测：基础 = 519/748/508，服
 
 [[pending]]
 id = "P-4"
-label = "ARCHITECTURE:586「eval gate 回归门禁进 CI」的措辞"
-why = "CI 里确实有基线阈值门禁（随 agent 包 pytest），但没有 eval A/B 的 CLI 门禁。改成两句限定表述属文字判断。"
+label = "（已解决 2026-10-07）ARCHITECTURE:586「eval gate 回归门禁进 CI」的措辞"
+why = "处置：拆成两句——基线阈值门禁随 agent 包 pytest 进 CI（断言 test_baseline_task_set_gate）；A/B 比较（CLI eval gate）尚未接进 CI。本项已转成 claim docs.ci_gate_wording + 观察项 watch.ci_eval_step。"

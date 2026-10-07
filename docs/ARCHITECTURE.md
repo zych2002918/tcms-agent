@@ -327,7 +327,7 @@ tcms-agent eval gate --candidate a.json --baseline b.json
 **读不出的结论（负结果，必须如实说）**：
 - **记忆与重排在这套任务集上测不出差异**。原因不是"它们没用"，而是**仪器不对**：
   - 重排影响的是**检索排序**，而任务是通过 `verify_fault_action`（真执行）达成的，
-    排序变化不改变结论。重排的正确仪器是检索 golden——那里实测 **top-1 由 12/14 → 14/14**；
+    排序变化不改变结论。重排的正确仪器是检索 golden——那里实测 **top-1 由 12/14 → 14/14**（扩容前 14 条口径；现为 28 条，见 §2.7）；
   - 记忆的价值要在"必须从历史学到做法"的任务上才显现；本任务集里的目标，
     LLM 靠工具描述与 DSL 参考就能解决，不需要历史。
   - 规则臂的记忆对照更是结构上无效：它的技能是**写死的脚本**，
@@ -580,10 +580,10 @@ tcms-agent eval gate --candidate a.json --baseline b.json
 |---|---|---|
 | LLM 参与 `plan` 节点 | ⬜ 当前用规则（锚定真实资产，可复现） | R2 |
 | 上下文预算裁剪 / 压缩 | ✅ `nodes._apply_context_budget`：`config.max_context_chars`（48000 字符）为显式预算，超限压缩较早的工具结果并把 `event=context_budget` 写进轨迹（`tests/test_context_budget.py` 守着） | R2 |
-| 真 embedding / 图谱入融合 / rerank | ✅ 见 §2.7（图谱作纯补充通道 + 4 特征确定性重排；检索 golden top-1 12/14 → 14/14） | — |
-| 记忆召回的真语义通道 | ⬜ 当前是字符重合度（诚实标注，非语义） | R6 |
+| 真 embedding / 图谱入融合 / rerank | ✅ 见 §2.7（图谱作纯补充通道 + 4 特征确定性重排；检索 golden top-1 12/14 → 14/14（扩容前 14 条口径），扩容后 23/28 → 25/28） | — |
+| 记忆召回的真语义通道 | ✅ 可切换：默认走字符级哈希（诚实标注，非语义）；设 `TCMS_EMBEDDER=api` 且配 key 时切 `ApiEmbedder` 真语义（`memory/recall.py:67-69`）。**默认关闭是有意的**——它依赖外部服务、不可离线复现 | R6 |
 | 程序性记忆的 LLM 提炼 | ⬜ 当前是确定性规则挖掘（同样要过两道门禁） | R6 |
-| 评测任务集 / A-B 门禁 | ✅ 见 §2.8（11 任务四类 / 多对照臂 / `eval gate` 回归门禁进 CI） | — |
+| 评测任务集 / A-B 门禁 | ✅ 见 §2.8（11 任务四类 / 多对照臂）。**基线阈值门禁**随 agent 包 `pytest -q` 进 CI（断言 `test_baseline_task_set_gate`）；**A-B 比较**（CLI `eval gate --candidate/--baseline`）尚未接进 CI | — |
 | `nolib/` 手写最小 loop 对比 | ✅ 见 §2.9（175 有效行；同集 11/11 逐条一致 + 8 项能力断言） | — |
 
 ---

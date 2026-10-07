@@ -162,6 +162,27 @@ def test_pytest_summary_parser_handles_real_output() -> None:
     assert cc.parse_pytest_summary("") == {}
 
 
+def test_strict_mode_upgrades_unavailable_claims(tmp_path: Path, registry) -> None:
+    """发版前跑 `--strict`：本机本该真测却拿不到数据的项，从「跳过」升级成**阻断**。
+
+    「跳过 ≠ 通过」不能只写在注释里——否则发版前看到的仍是一片安静。
+    """
+    claims, _pending = registry
+    (tmp_path / "docs").mkdir()
+    shutil.copy(ROOT / cc.REGISTRY_REL, tmp_path / cc.REGISTRY_REL)
+
+    need_source = ("kb.", "coverage.", "tests.full_passed", "tests.full_skipped")
+
+    def tally(findings, status: str) -> int:
+        return sum(1 for f in findings if f.status == status and f.claim.startswith(need_source))
+
+    lax = cc.check(tmp_path, claims, collected=None)
+    strict = cc.check(tmp_path, claims, collected=None, strict=True)
+    assert tally(lax, "skip") > 0, "预期：非严格模式下这些项以「跳过」呈现（CI 就是这样）"
+    assert tally(strict, "missing") == tally(lax, "skip"), "严格模式应把它们全部升级为「缺数据」"
+    assert any(f.blocking for f in strict), "升级之后必须真的阻断，否则等于没升级"
+
+
 def test_every_probe_resolves_when_its_source_is_present(registry, request: pytest.FixtureRequest) -> None:
     """源文件在场时，探针不许返回空值——空值会被当成「数据不可得」而静默跳过。
 

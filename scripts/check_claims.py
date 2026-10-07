@@ -18,6 +18,9 @@
 --report   打印漂移表（不改任何文件）——发版前 / 审计时先看这个
 --check    有 authority 级不一致即非零退出（CI 与 pytest 用这个）
 --fix      把登记位置上的数字就地改成实测值（人只审 diff）
+--full-run 真跑一遍全仓，连 passed/skipped 的拆分也钉死
+--strict   发版前用：本机本该真测却拿不到数据的项，从「跳过」升级为阻断
+           （跳过 ≠ 通过：CI 里跳过是合理的，发版前不是）
 ```
 
 ## 设计取舍
@@ -48,6 +51,11 @@ REGISTRY_REL = "docs/claims.toml"
 
 AUTHORITY = "authority"
 HISTORY = "history"
+
+# 这些探针需要「真环境」才有数：CI 的 lint job 只装 pytest（没成员包），也不跑 --cov。
+# 因此默认模式下它们如实**跳过**；但发版前用 `--strict`，跳过会升级成阻断——
+# 「本机本该真测却拿不到数据」和「这条不需要测」是两回事，不能混着显示成一片安静。
+REQUIRES_SOURCE_PROBES = {"coverage_percent", "passed_total", "skipped_total", "kb_state"}
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +263,10 @@ def measure(
     """求一条 claim 的实测值；拿不到数据返回 None（调用方 skip）。"""
     cache = cache if cache is not None else {}
 
+    if claim.probe == "none":
+        # forbid_text 这类纯文本禁令不需要任何实测数据
+        return "0"
+
     if claim.probe == "asset_counts":
         key = "asset_counts"
         if key not in cache:
@@ -347,32 +359,44 @@ def check(
     claims: list[Claim],
     *,
     collected: dict[str, Any] | None = None,
+    strict: bool = False,
 ) -> list[Finding]:
     findings: list[Finding] = []
     cache: dict[str, Any] = {}
     for claim in claims:
-        expected = measure(root, claim, collected=collected, cache=cache)
+        if claim.kind == "forbid_text":
+            # 纯文本禁令：不依赖任何探针，永远生效（用于「历史口径必须带标注」这类规矩）
+            expected: str | list[str] | None = "0"
+        else:
+            expected = measure(root, claim, collected=collected, cache=cache)
         if claim.kind == "watch":
             # 观察项：没有「文档位置」，只报告状态。永不阻断——
             # 它盯的是「环境残留物会让对外数字只在本机成立」这类事。
             hot = expected is not None and str(expected).isdigit() and int(str(expected)) > 0
             findings.append(
                 Finding(
-                    claim.id, claim.label, claim.args.get("dir", "-"), 0,
+                    claim.id, claim.label, claim.args.get("file") or claim.args.get("dir") or "-", 0,
                     "watch" if hot else "ok", "0", str(expected), AUTHORITY, "warn",
                 )
             )
             continue
         for site in claim.sites:
+            # 先判「数据可不可得」：严格模式下这本身就是阻断项（不该怪站点文件）
+            if expected is None:
+                strict_miss = strict and claim.probe in REQUIRES_SOURCE_PROBES
+                findings.append(
+                    Finding(
+                        claim.id, claim.label, site.file, 0,
+                        "missing" if strict_miss else "skip",
+                        "(严格模式要求本机实测)" if strict_miss else "(数据不可得)",
+                        "-", site.tier, claim.strength,
+                    )
+                )
+                continue
             text = _read(root, site.file)
             if text is None:
                 findings.append(
                     Finding(claim.id, claim.label, site.file, 0, "skip", str(expected), "文件不存在", site.tier, claim.strength)
-                )
-                continue
-            if expected is None:
-                findings.append(
-                    Finding(claim.id, claim.label, site.file, 0, "skip", "(数据不可得)", "-", site.tier, claim.strength)
                 )
                 continue
 
@@ -614,6 +638,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--fix", action="store_true", help="把登记位置上的数字就地改成实测值")
     ap.add_argument("--no-collect", action="store_true", help="不跑 pytest 采集（用例数相关 claim 跳过）")
     ap.add_argument("--full-run", action="store_true", help="真跑一遍全仓，钉死 passed/skipped 拆分（数分钟）")
+    ap.add_argument("--strict", action="store_true", help="发版前用：本机本该真测却拿不到数据的项，从「跳过」升级为阻断")
     args = ap.parse_args(argv)
 
     root = Path(args.root).resolve()
@@ -630,7 +655,9 @@ def main(argv: list[str] | None = None) -> int:
         for line in fix(root, claims, collected=collected):
             print("已改写 " + line)
 
-    findings = check(root, claims, collected=collected)
+    findings = check(root, claims, collected=collected, strict=args.strict)
+    if args.strict:
+        print("（严格模式：需要本机实测的探针若拿不到数据，一律按阻断计）")
     print(render(findings, pending))
 
     blocking = [f for f in findings if f.blocking]

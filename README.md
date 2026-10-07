@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.11+-2dd4a0)](#快速开始)
-[![tests](https://img.shields.io/badge/tests-1729%20passed-2dd4a0)](#测试与门禁)
+[![tests](https://img.shields.io/badge/tests-1730%20passed-2dd4a0)](#测试与门禁)
 [![License](https://img.shields.io/badge/license-MIT-8ca0c0)](#license)
 
 ![平台总览：真实资产规模、三个入口与列车视角的被测功能](packages/platform/docs/dashboard-preview.png)
@@ -180,7 +180,7 @@ uv run python scripts/build_release.py --no-uv    # 最小包（不含 uv）
 | platform | `pytest -q` | ruff + pytest + vitest（380 passed + 1 skipped） |
 | testgen | `pytest tests --cov=tcms_ai_testgen` | 覆盖率 `fail_under=90`（170 passed） |
 | **agent** | `pytest -q` | 含**评测回归门禁**：规则臂 ≥10/11 且零幻觉（192 passed + 2 skipped） |
-| 全仓 | `uv run pytest`（仓库根） | 一把梭：**1729 passed + 4 skipped** |
+| 全仓 | `uv run pytest`（仓库根） | 一把梭：**1730 passed + 4 skipped** |
 
 > 4 条 skip 全部是**条件性**的：真语义向量通道 ×2、真实 CAN 硬件 ×1、平台语义通道 ×1。
 > 根 `conftest.py` 有一道护栏：monorepo 下找不到上游引擎时**大声中止**，
@@ -194,6 +194,7 @@ uv run python scripts/build_release.py --no-uv    # 最小包（不含 uv）
 > （包括"把已实现说成未落地"这种最伤信誉的一类）。
 > 看漂移表：`uv run python scripts/check_claims.py --report`；
 > 发版前加 `--full-run` 真跑一遍，把 passed/skipped 的拆分也钉死；
+> 再加 `--strict` 把「本机本该真测却拿不到数据」的项从**跳过**升级成**阻断**（跳过 ≠ 通过）；
 > 数字变了让脚本改：`--fix`（人只审 diff）。
 
 ---
