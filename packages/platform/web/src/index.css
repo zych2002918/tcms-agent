@@ -21,18 +21,18 @@
 :root,
 html.theme-dark {
   /* —— 深色：近黑中性阶（不用纯黑，留出层次）—— */
-  --bg: #08090a;
-  --surface: #0e0f11;
-  --surface-2: #151719;
-  --surface-3: #1c1f22;
-  --line: #26292d;
-  --line-soft: #1a1d20;
-  --input: #101113;
-  --ink: #f2f3f5;
-  --ink-dim: #9ba1a9;
-  --ink-faint: #7a818a;
-  --on-info: #ffffff;
-  --scrim: rgba(8, 9, 10, 0.66);
+  --bg: #05080c;
+  --surface: #1b2632;
+  --surface-2: #232f3d;
+  --surface-3: #2b3949;
+  --line: #37485a;
+  --line-soft: #26333f;
+  --input: #10161d;
+  --ink: #eef4f9;
+  --ink-dim: #a7b8c8;
+  --ink-faint: #8fa1b1;
+  --on-info: #04222b;
+  --scrim: rgba(5, 8, 12, 0.7);
 
   /* 浮层投影（深色下靠描边 + 更深的投影，不靠发光） */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -41,12 +41,12 @@ html.theme-dark {
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
 
   /* 信号语义色（暗底提亮，保证在近黑上仍可读） */
-  --ok: #3ecf8e;
-  --warn: #f5b544;
-  --bad: #f87171;
-  --info: #8b93ff;
-  --vio: #b39dff;
-  --info-soft: rgba(139, 147, 255, 0.14);
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #fb7185;
+  --info: #22d3ee;
+  --vio: #a78bfa;
+  --info-soft: rgba(34, 211, 238, 0.14);
 
   /* 图谱实体类型色 */
   --kind-message: #8b93ff;
@@ -72,18 +72,18 @@ html.theme-dark {
 
 html.theme-light {
   /* —— 浅色：冷白纸面 + 中性墨（不是"反相"，是重新取值）—— */
-  --bg: #f7f8f9;
+  --bg: #eef3f7;
   --surface: #ffffff;
-  --surface-2: #f4f5f7;
-  --surface-3: #eceef1;
-  --line: #e4e6ea;
-  --line-soft: #eef0f2;
+  --surface-2: #f4f8fb;
+  --surface-3: #e8eff5;
+  --line: #d3dfe8;
+  --line-soft: #e6eef4;
   --input: #ffffff;
-  --ink: #0f1115;
-  --ink-dim: #4a5260;
-  --ink-faint: #656d7f;
+  --ink: #0b141c;
+  --ink-dim: #44535f;
+  --ink-faint: #5c6a76;
   --on-info: #ffffff;
-  --scrim: rgba(15, 17, 21, 0.35);
+  --scrim: rgba(11, 20, 28, 0.4);
 
   --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
   --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
@@ -91,11 +91,11 @@ html.theme-light {
   --shadow-lg: 0 16px 48px rgba(16, 24, 40, 0.14);
 
   --ok: #0f7a55;
-  --warn: #a16207;
-  --bad: #dc2626;
-  --info: #4f46e5;
-  --vio: #7c3aed;
-  --info-soft: rgba(79, 70, 229, 0.1);
+  --warn: #8a5306;
+  --bad: #c2255c;
+  --info: #0e7490;
+  --vio: #6d28d9;
+  --info-soft: rgba(14, 116, 144, 0.1);
 
   --kind-message: #4f46e5;
   --kind-signal: #7c3aed;
@@ -144,10 +144,10 @@ html.theme-light {
   --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
 
   /* 圆角刻度：嵌套时 child ≤ parent（否则视觉上会"鼓包"） */
-  --radius-sm: 5px;
-  --radius-md: 7px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
 }
 
 html,
@@ -565,4 +565,49 @@ select {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* =============================================================================
+   工艺层（2026-10 审美化：现代深色 · 冷调青）
+   只加质感，**不改类名与结构** —— 各页无需逐页改写。取值都在主题 token 里。
+   ============================================================================= */
+/* 卡片顶部一道渐隐高光：纵深来自这一笔，而不是把投影加重 */
+.panel:not(.panel-float) {
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--info) 42%, transparent),
+    transparent
+  );
+  background-repeat: no-repeat;
+  background-size: 62% 1px;
+  background-position: top center;
+  transition: box-shadow 0.2s var(--ease-out), border-color 0.2s var(--ease-out);
+}
+/* 卡片：柔和纵深（比默认的 xs 深一档），悬停再抬一层 */
+.panel:not(.panel-float) {
+  box-shadow: var(--shadow-sm);
+}
+.panel-hover:hover {
+  box-shadow: var(--shadow-md);
+  border-color: color-mix(in oklab, var(--info) 42%, var(--line));
+}
+/* 侧栏项：圆角块（与卡片共用同一套刻度） */
+aside nav a { border-radius: 9px; }
+/* 浅色下同一道高光会发灰，单独降强度 */
+html.theme-light .panel:not(.panel-float) {
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--info) 24%, transparent),
+    transparent
+  );
+}
+/* 数字一律表格化对齐：数据刷新时不跳动 */
+.mono, .kbd-mono, .stat, .panel strong, table td { font-variant-numeric: tabular-nums; }
+/* 中文大标题收紧字距后更整 */
+h1 { letter-spacing: -0.028em; }
+h2, h3 { letter-spacing: -0.018em; }
+@media (prefers-reduced-motion: reduce) {
+  .panel:not(.panel-float) { transition: none; }
 }
