@@ -68,7 +68,7 @@ uv run tcms-agent run "..." --allow-write --yes   # 一律批准（不推荐，�
 
 | 臂 | 触发 | 用途 |
 |---|---|---|
-| `offline-rule` | 无 key / `--offline` | 确定性规则参考实现；走**同一张图同一套工具**，可复现、可进 CI |
+| `offline-rule` | 无 key（默认即此臂） | 确定性规则参考实现；走**同一张图同一套工具**，可复现、可进 CI |
 | `llm` | 有 key 且 `--llm` | 真模型决策 |
 
 结果里的 `model_kind` 如实标注，**不会把规则结果说成 AI 决策**。
@@ -101,6 +101,11 @@ uv run tcms-agent eval run                   # 跑全部可用对照臂
 uv run tcms-agent eval run --arms rule,llm --out a.json
 uv run tcms-agent eval gate --candidate a.json --baseline b.json   # 回归门禁
 ```
+
+**五只对照臂**（源码 `eval/harness.py` 的 `default_arms()`）：
+`rule` · `rule-no-rerank` · `nolib` · `llm` · `llm-no-memory`。
+注意 `run` 的**决策臂**只有 `offline-rule` / `llm` 两只（见上文「两个臂」）——
+**两张表不是一回事**，别拿 run 的臂表回答"评测有哪些对照"。
 
 任务集 11 条，四类：`verify`（能否验证故障→处置）/ `author`（能否自己写用例并真跑通过）/
 `diagnose`（症状多跳）/ `honest_fail`（无关输入能否如实拒绝）。

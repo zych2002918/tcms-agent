@@ -579,7 +579,7 @@ tcms-agent eval gate --candidate a.json --baseline b.json
 | 项 | 状态 | 里程碑 |
 |---|---|---|
 | LLM 参与 `plan` 节点 | ⬜ 当前用规则（锚定真实资产，可复现） | R2 |
-| 上下文预算裁剪 / 压缩 | ⬜ 当前只做单条工具结果截断 | R2 |
+| 上下文预算裁剪 / 压缩 | ✅ `nodes._apply_context_budget`：`config.max_context_chars`（48000 字符）为显式预算，超限压缩较早的工具结果并把 `event=context_budget` 写进轨迹（`tests/test_context_budget.py` 守着） | R2 |
 | 真 embedding / 图谱入融合 / rerank | ✅ 见 §2.7（图谱作纯补充通道 + 4 特征确定性重排；检索 golden top-1 12/14 → 14/14） | — |
 | 记忆召回的真语义通道 | ⬜ 当前是字符重合度（诚实标注，非语义） | R6 |
 | 程序性记忆的 LLM 提炼 | ⬜ 当前是确定性规则挖掘（同样要过两道门禁） | R6 |

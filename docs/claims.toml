@@ -1,0 +1,257 @@
+# 文档自证登记表 —— 「文档里写的」与「实物」的唯一对照源
+#
+# 规则
+#   · 加一个对外数字/状态声明 = 在这里加一条 claim；没登记的声明门禁不认识它。
+#   · tier = "authority" 不一致 => FAIL（CI 红）；"history" => 仅提示。
+#   · pattern 用 TOML 字面串（单引号）写正则，捕获组必须叫 value。
+#   · 拿不到数据（上游缺失 / 只跑子集 / coverage.json 不存在）时如实跳过，不猜。
+#
+# 用法
+#   uv run python scripts/check_claims.py --report     # 看漂移表
+#   uv run python scripts/check_claims.py --check      # CI / pytest 用
+#   uv run python scripts/check_claims.py --fix        # 就地改写数字（人审 diff）
+
+# ---------------------------------------------------------------------------
+# 用例数
+#
+# 「N passed + M skipped」这类声明分三层守：
+#   · tests.full         —— kind=sum：只校验 passed + skipped == 收集数。
+#                           CI 与 pytest 只能拿到收集结果（skip 是运行期决定的），
+#                           这一层是所有环境都跑得动的不变量。
+#   · tests.full_passed  —— 钉死 passed 的**绝对值**，需要 `--full-run` 真跑一遍。
+#   · tests.full_skipped —— 同理钉死 skipped。
+# 发版前：uv run python scripts/check_claims.py --report --full-run
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "tests.full"
+label = "全仓用例数（合计不变量）"
+kind = "sum"
+probe = "collected_total"
+sites = [
+  { file = "README.md", pattern = '\*\*(?P<value>\d+) passed \+ (?P<skipped>\d+) skipped\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*(?P<value>\d+) passed \+ (?P<skipped>\d+) skipped\*\*' },
+]
+
+[[claim]]
+id = "tests.full_passed"
+label = "全仓 passed 数"
+kind = "number"
+probe = "passed_total"
+sites = [
+  { file = "README.md", pattern = 'tests-(?P<value>\d+)%20passed' },
+  { file = "README.md", pattern = '\*\*(?P<value>\d+) passed \+ \d+ skipped\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*(?P<value>\d+) passed \+ \d+ skipped\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*现为 (?P<value>\d+)\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '还是 (?P<value>\d+)）' },
+]
+note = "需要 --full-run；只有收集结果时如实跳过（值不可得 ≠ 值正确）。"
+
+[[claim]]
+id = "tests.full_skipped"
+label = "全仓 skipped 数"
+kind = "number"
+probe = "skipped_total"
+sites = [
+  { file = "README.md", pattern = '\*\*\d+ passed \+ (?P<value>\d+) skipped\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*\d+ passed \+ (?P<value>\d+) skipped\*\*' },
+]
+note = "4 条 skip 都是条件性的（真语义通道/CAN 硬件），数量变化要能解释。"
+
+[[claim]]
+id = "tests.engine"
+label = "engine 用例数"
+kind = "number"
+probe = "collected_package"
+args = { package = "engine" }
+sites = [
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*(?P<value>\d+) 个用例\*\*' },
+]
+
+# ---------------------------------------------------------------------------
+# 资产规模（engine 实物）
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "assets.faults"
+label = "FMEA 故障条数"
+kind = "number"
+probe = "asset_counts"
+args = { key = "faults" }
+sites = [
+  { file = "../../resume/_口径卡_项目数字.md", pattern = 'FMEA \*\*(?P<value>\d+)\*\*' },
+]
+
+[[claim]]
+id = "assets.scenarios"
+label = "可执行场景数"
+kind = "number"
+probe = "asset_counts"
+args = { key = "scenarios" }
+sites = [
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '可执行场景 \*\*(?P<value>\d+)\*\*' },
+]
+
+[[claim]]
+id = "assets.messages"
+label = "DBC 报文数"
+kind = "number"
+probe = "asset_counts"
+args = { key = "messages" }
+sites = [
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '(?P<value>\d+) 报文' },
+]
+
+[[claim]]
+id = "assets.signals"
+label = "DBC 信号数"
+kind = "number"
+probe = "asset_counts"
+args = { key = "signals" }
+sites = [
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '(?P<value>\d+) 信号' },
+]
+
+# ---------------------------------------------------------------------------
+# 检索 golden / ADR
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "golden.retrieval"
+label = "检索 golden 条数"
+kind = "number"
+probe = "file_regex_count"
+args = { file = "packages/platform/src/tcms_ai_platform/domain/data/retrieval_golden.yaml", pattern = '^\s+expect:' }
+sites = [
+  { file = "docs/ARCHITECTURE.md", pattern = '（(?P<value>\d+) 条检索 golden' },
+]
+
+[[claim]]
+id = "docs.adr_count"
+label = "ADR 条数"
+kind = "number"
+probe = "file_regex_count"
+args = { file = "docs/decisions.md", pattern = '^## ADR-' }
+sites = [
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*(?P<value>\d+) 条 ADR\*\*' },
+]
+
+# ---------------------------------------------------------------------------
+# 覆盖率（依赖 CI 产出的 coverage.json；本地没跑 --cov 时跳过）
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "coverage.engine"
+label = "engine 覆盖率"
+kind = "number"
+probe = "coverage_percent"
+args = { file = "packages/engine/coverage.json" }
+sites = [
+  { file = "../../resume/_口径卡_项目数字.md", pattern = '覆盖率 \*\*(?P<value>\d+\.\d+)%\*\*' },
+]
+
+[[claim]]
+id = "coverage.testgen"
+label = "testgen 覆盖率"
+kind = "number"
+probe = "coverage_percent"
+args = { file = "packages/testgen/coverage.json" }
+sites = [
+  { file = "packages/testgen/docs/metrics.md", pattern = '170 passed / (?P<value>\d+\.\d+)%' },
+]
+
+# ---------------------------------------------------------------------------
+# 状态声称：实现标记在 → 该行必须是 ✅（反向亦然）
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "status.context_budget"
+label = "上下文预算裁剪是否已落地"
+kind = "number"
+probe = "status_symbol"
+args = { marker_file = "packages/agent/src/tcms_agent/nodes.py", marker_pattern = 'def _apply_context_budget' }
+sites = [
+  { file = "docs/ARCHITECTURE.md", pattern = '上下文预算裁剪 / 压缩 \| (?P<value>[⬜✅])' },
+]
+
+[[claim]]
+id = "status.rerank_fusion"
+label = "真 embedding / 图谱入融合 / rerank 是否已落地"
+kind = "number"
+probe = "status_symbol"
+args = { marker_file = "packages/agent/src/tcms_agent/config.py", marker_pattern = 'rerank_enabled' }
+sites = [
+  { file = "docs/ARCHITECTURE.md", pattern = '真 embedding / 图谱入融合 / rerank \| (?P<value>[⬜✅])' },
+]
+
+[[claim]]
+id = "status.nolib"
+label = "nolib 手写最小 loop 对照是否已落地"
+kind = "number"
+probe = "status_symbol"
+args = { marker_file = "packages/agent/src/tcms_agent/nolib/__init__.py", marker_pattern = '.' }
+sites = [
+  { file = "docs/ARCHITECTURE.md", pattern = '`nolib/` 手写最小 loop 对比 \| (?P<value>[⬜✅])' },
+]
+
+# ---------------------------------------------------------------------------
+# 接口面：代码里没有的东西，文档不许教人用
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "surface.offline_flag"
+label = "run 子命令是否存在 --offline"
+kind = "forbid"
+probe = "file_regex_count"
+args = { file = "packages/agent/src/tcms_agent/cli.py", pattern = 'add_argument\("--offline"' }
+sites = [
+  { file = "packages/agent/README.md", pattern = '`--offline`', forbid = true },
+]
+note = "cli.py 只有 --llm，没有 --offline；离线臂靠「无 key」触发。文档教人用不存在的参数 = 照着做会失败。"
+
+[[claim]]
+id = "surface.eval_arms"
+label = "评测臂清单（5 只）是否在 README 里列全"
+kind = "tokens"
+probe = "harness_arms"
+args = { file = "packages/agent/src/tcms_agent/eval/harness.py", pattern = 'def default_arms\(\).*?\n\s*\]' }
+sites = [
+  { file = "packages/agent/README.md" },
+]
+note = "run 的决策臂只有 2 只（offline-rule/llm），评测 harness 有 5 只——两张表不能互相顶替。"
+
+# ---------------------------------------------------------------------------
+# 观察项：不阻断，但会让「对外数字只在本机成立」的环境因素
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "watch.generated_tests"
+label = "环境残留：engine/tests 下有 AI 生成用例（跑过 run_draft / agent-demo 就会留下，会让 engine 与全仓用例数各 +1）"
+kind = "watch"
+probe = "glob_count"
+args = { dir = "packages/engine/tests", pattern = "test_ai_generated*.py" }
+note = "文件被 .gitignore 忽略（`test_ai_generated*.py`），但落在 pytest 会收集的目录里。clean clone 上数字是 960/全仓 X；跑过 agent 演示后变 961/X+1。对外报数字前先归档清掉——2026-10-07 就是这么被抓到的。"
+
+# ---------------------------------------------------------------------------
+# 待人工拍板（机器判不了，如实列出，不假装守住了）
+# ---------------------------------------------------------------------------
+
+[[pending]]
+id = "P-1"
+label = "ARCHITECTURE §4「记忆召回的真语义通道」该标 ⬜ 还是 ✅"
+why = "默认通道确实是字符级哈希，但 TCMS_EMBEDDER=api 可切实语义（recall.py:67-69）。是「已落地但默认关」还是「未落地」，属口径判断，不能由正则裁定。"
+
+[[pending]]
+id = "P-2"
+label = "ARCHITECTURE:330/:583 的「top-1 12/14 → 14/14」叙述"
+why = "14 条是 2026-09-21 扩容前的表；当前 golden 为 28 条（§2.7 实测 23→25）。改写还是保留并标注「扩容前」，需要人定。"
+
+[[pending]]
+id = "P-3"
+label = "基础图谱到底 517/506 还是 519/748/508"
+why = "ROADMAP_Q2Q4.md:45/:47 与 PROJECT_ARC.md:117/:142 给出两套互斥的基础图谱口径；运行时只输出服务态总数（655/1176/644），基础口径需人定以哪套为准。"
+
+[[pending]]
+id = "P-4"
+label = "ARCHITECTURE:586「eval gate 回归门禁进 CI」的措辞"
+why = "CI 里确实有基线阈值门禁（随 agent 包 pytest），但没有 eval A/B 的 CLI 门禁。改成两句限定表述属文字判断。"
