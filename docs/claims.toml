@@ -135,7 +135,9 @@ probe = "file_regex_count"
 args = { file = "docs/decisions.md", pattern = '^## ADR-' }
 sites = [
   { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*(?P<value>\d+) 条 ADR\*\*' },
+  { file = "README.md", pattern = '(?P<value>\d+)\s*条\s*ADR' },
 ]
+note = "覆盖面教训（2026-10-07）：本条最初只登记了口径卡两处，结果 CI 里既有的 test_release_hygiene 抓出 README 仍写 26——同一个数字散在两处，登记表必须都列上。说明书（0-先读我-使用说明.txt）不写 ADR 条数，故不登记。"
 
 # ---------------------------------------------------------------------------
 # 覆盖率（依赖 CI 产出的 coverage.json；本地没跑 --cov 时跳过）
