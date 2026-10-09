@@ -3,116 +3,105 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TCMS × AI —— 列车控制软件测试平台与 AI 测试工程师 Agent</title>
-<meta name="description" content="面向列车网络控制系统（TCMS/CAN）的测试平台：960 条 CAN 报文用例、203 条 FMEA、104 个可执行场景，外加一层在本机真跑、结论带引用的 AI 测试工程师 Agent。全部离线可跑，不需要 API key。">
+<title>TCMS × AI —— 列车控制软件测试平台</title>
+<meta name="description" content="面向列车网络控制系统（TCMS/CAN）的测试平台：960 条报文用例、203 条 FMEA、104 个可执行场景都是真资产。上面有一层 AI 测试 Agent，默认走离线规则臂，配了 key 才由模型决策。">
 <style>
   :root {
     --ink: #1b1f24;
     --ink-soft: #55606b;
     --line: #dfe3e8;
     --bg: #fbfbfa;
-    --card: #ffffff;
     --accent: #2f6f5e;
     --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.7 -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    font: 16px/1.75 -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
   }
-  .wrap { max-width: 880px; margin: 0 auto; padding: 56px 24px 72px; }
-  h1 { font-size: 30px; line-height: 1.35; margin: 0 0 12px; letter-spacing: .2px; }
-  h2 { font-size: 20px; margin: 48px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-  p { margin: 10px 0; }
-  .lede { font-size: 17px; color: var(--ink-soft); max-width: 46em; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 64px 24px 80px; }
+  h1 { font-size: 26px; margin: 0 0 18px; letter-spacing: .2px; }
+  h2 { font-size: 18px; margin: 44px 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  p { margin: 12px 0; }
+  .lede { font-size: 17px; }
+  .soft { color: var(--ink-soft); }
   ul { padding-left: 20px; }
-  li { margin: 6px 0; }
-  code, .num { font-family: var(--mono); }
-  code { background: #eef1f0; padding: 1px 5px; border-radius: 3px; font-size: 14px; }
+  li { margin: 7px 0; }
+  code { font-family: var(--mono); background: #eef1f0; padding: 1px 5px; border-radius: 3px; font-size: 14px; }
   pre {
     background: #14181c; color: #e6e9ec; padding: 14px 16px; border-radius: 6px;
-    overflow-x: auto; font-family: var(--mono); font-size: 13.5px; line-height: 1.6;
+    overflow-x: auto; font-family: var(--mono); font-size: 13.5px; line-height: 1.65;
   }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 18px 0 6px; }
-  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
-  .stat b { display: block; font-family: var(--mono); font-size: 22px; color: var(--accent); }
-  .stat span { font-size: 13px; color: var(--ink-soft); }
-  figure { margin: 20px 0 8px; }
+  .num { display: flex; flex-wrap: wrap; gap: 28px; margin: 22px 0 6px; }
+  .num div { min-width: 120px; }
+  .num b { display: block; font-family: var(--mono); font-size: 24px; color: var(--accent); line-height: 1.3; }
+  .num span { font-size: 13px; color: var(--ink-soft); }
+  figure { margin: 26px 0 8px; }
   figure img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
-  figcaption { font-size: 13px; color: var(--ink-soft); margin-top: 8px; }
-  .note {
-    background: #fff8e8; border: 1px solid #f0dfb8; border-left: 4px solid #d9a441;
-    border-radius: 6px; padding: 12px 16px; margin: 18px 0; font-size: 14.5px;
-  }
   footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-soft); }
   a { color: var(--accent); }
-  .links a { margin-right: 16px; }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <h1>TCMS × AI —— 列车控制软件测试平台与 AI 测试工程师 Agent</h1>
+  <h1>TCMS × AI</h1>
 
   <p class="lede">
-    列车网络控制系统（TCMS）跑在 CAN 总线上，这套平台用来测它。用例、故障字典、场景都是真资产，
-    逐条登记在 <code>docs/claims.toml</code> 里对实物核验（下面那几个数字就是从那儿来的）。
-    还有一层 AI Agent：查知识库、造用例、在本机真跑，结论带出处，能顺着点回去核对。
-    <strong>全部离线可跑，不需要任何 API key。</strong>
+    列车网络控制系统（TCMS）跑在 CAN 总线上，这套平台用来测它：报文周期、ID 合法性、信号值域、
+    事件联动、丢包检测、安全联锁。引擎里是 960 条真用例、203 条 FMEA 故障、104 个可执行场景，
+    不是演示数据。上面又加了一层 AI 测试 Agent：查知识库、造用例、在本机真跑，结论带引用。
   </p>
 
-  <div class="stats">
-    <div class="stat"><b>960</b><span>引擎用例（collect 口径）</span></div>
-    <div class="stat"><b>1738</b><span>全仓 passed（+4 skipped）</span></div>
-    <div class="stat"><b>203</b><span>FMEA 故障</span></div>
-    <div class="stat"><b>104</b><span>可执行场景</span></div>
-    <div class="stat"><b>29</b><span>条 ADR（含代价）</span></div>
+  <p>
+    先说清一句容易误会的话：<strong>Agent 默认走离线规则臂，不吃 key</strong>。决策靠规则，
+    结论由引擎断言和引用校验兜住。想让它用真模型选场景、给理由，加 <code>--llm</code> 并配 key；
+    没配就如实降级成规则臂，并在界面上标明这次是谁在决策。
+  </p>
+
+  <div class="num">
+    <div><b>960</b><span>引擎用例（collect 口径）</span></div>
+    <div><b>203</b><span>FMEA 故障</span></div>
+    <div><b>104</b><span>可执行场景</span></div>
   </div>
 
-  <h2>它做什么</h2>
-  <ul>
-    <li><strong>测 CAN 报文</strong>：周期、ID 合法性、信号值域、边界、枚举、事件联动、丢包检测、安全联锁、紧急制动。</li>
-    <li><strong>知识底座</strong>：知识图谱 + 混合检索（BM25 + 向量 + RRF 融合），故障字典与安全需求都在里面。</li>
-    <li><strong>受约束生成</strong>：DSL 编译成真 pytest，变异杀毒与反思自愈，生成的用例要能杀掉变异才算数。</li>
-    <li><strong>Agent 层</strong>：四级工具权限（只读 / 沙箱写 / 真实执行 / 持久化）、人在环路审批、引用强制校验。</li>
-  </ul>
-
   <figure>
-    <img src="img/dashboard-preview.png" alt="平台总览界面：真实资产规模、三个入口与列车视角的被测功能">
-    <figcaption>
-      界面截图由 <code>packages/platform/e2e/capture-doc-shots.mjs</code> 从当前构建采集，并带新鲜度守卫
-      （引擎版本 / 图谱节点 / 资产规模不符即采集失败）——页面上的数字与界面上的数字都不是手抄的。
+    <img src="img/dashboard-preview.png" alt="平台总览界面：资产规模、三个入口与列车视角的被测功能">
+    <figcaption class="soft">
+      截图由 <code>packages/platform/e2e/capture-doc-shots.mjs</code> 从当前构建采集，带新鲜度守卫：
+      引擎版本、图谱节点数、资产规模对不上就采集失败。
     </figcaption>
   </figure>
 
   <h2>跑起来</h2>
-  <p>前置只有两样：Python 3.11+ 和 <a href="https://docs.astral.sh/uv/">uv</a>。</p>
+  <p class="soft">前置只有 Python 3.11+ 和 <a href="https://docs.astral.sh/uv/">uv</a>。装依赖、起界面都在本机，没有云端环节。Windows 上也可以直接双击 <code>start.bat</code>（起界面）或 <code>agent-demo.bat</code>（跑一遍完整链路）。</p>
   <pre><code>git clone https://github.com/zych2002918/tcms-agent.git
 cd tcms-agent
 uv sync
-uv run tcms-agent demo        # 离线跑一遍，不需要任何 key</code></pre>
-  <p>平台界面：<code>uv run tcms-platform serve</code>，然后打开 <code>http://127.0.0.1:8000</code>。</p>
+uv run tcms-agent run "验证车门故障必须触发降级处置"   # 离线跑一个目标
+uv run tcms-platform                                  # 起 Web 界面，自动开浏览器</code></pre>
 
-  <div class="note">
-    <strong>没有在线演示，这是故意的。</strong>它是个要跑 Python 的本地工具，测的是一条虚拟 CAN 总线，
-    塞进浏览器里只能做成假界面。想试就 clone 下来，上面两条命令能跑起来；本机跑不动再提 issue。
-  </div>
+  <h2>做不到和没做的</h2>
+  <ul>
+    <li><strong>没有在线演示。</strong>它要跑 Python，测的是一条虚拟 CAN 总线。做成网页版只能是假界面，不如不做。</li>
+    <li><strong>全仓有 4 条用例是条件性的</strong>：真语义向量通道 2 条、真实 CAN 硬件 1 条、平台语义通道 1 条。没条件就 skip，skip 不算通过。</li>
+    <li><strong>LLM 臂要自己的 key。</strong>仓库里没有内置 key，也不打算有。</li>
+    <li><strong>平台前端是给本机看的</strong>，没做多用户、权限和部署方案。</li>
+  </ul>
 
-  <h2>数字怎么来的</h2>
+  <h2>数字怎么保证是真的</h2>
   <p>
-    文档里的每个数字都登记在 <code>docs/claims.toml</code>，由 <code>scripts/check_claims.py</code>
-    逐条对着实物核验，对不上 CI 就红。拿不到数据的项<strong>如实跳过</strong>，仓外的口径卡<strong>如实标「外部」</strong>，
-    两者不混。本页的数字与 README 同源，同样受这套门禁约束。
+    本页与 README 里的数字登记在 <code>docs/claims.toml</code>，由 <code>scripts/check_claims.py</code>
+    对着实物逐条核验，对不上 CI 就红。拿不到数据的项如实标"跳过"，仓外的口径卡如实标"外部"，两者不混。
   </p>
-  <p><a href="https://github.com/zych2002918/tcms-agent/blob/main/docs/ARCHITECTURE.md">架构说明</a> ·
-     <a href="https://github.com/zych2002918/tcms-agent/blob/main/docs/decisions.md">决策记录（ADR）</a> ·
-     <a href="https://github.com/zych2002918/tcms-agent/blob/main/docs/claims.toml">claims.toml</a> ·
-     <a href="https://github.com/zych2002918/tcms-agent/releases">发行记录</a></p>
+  <p class="soft">
+    <a href="https://github.com/zych2002918/tcms-agent">仓库</a> ·
+    <a href="https://github.com/zych2002918/tcms-agent/blob/main/docs/ARCHITECTURE.md">架构说明</a> ·
+    <a href="https://github.com/zych2002918/tcms-agent/blob/main/docs/decisions.md">决策记录（ADR）</a> ·
+    <a href="https://github.com/zych2002918/tcms-agent/releases">发行记录</a>
+  </p>
 
-  <footer>
-    MIT · <a href="https://github.com/zych2002918/tcms-agent">github.com/zych2002918/tcms-agent</a> ·
-    本页是静态页面，数据随仓库更新（更新路径：<code>site/index.html</code>）。
-  </footer>
+  <footer>MIT · 静态页，内容随仓库更新（<code>site/index.html</code>）</footer>
 
 </div>
 </body>

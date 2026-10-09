@@ -34,7 +34,6 @@ kind = "sum"
 probe = "collected_total"
 sites = [
   { file = "README.md", pattern = '\*\*(?P<value>\d+) passed \+ (?P<skipped>\d+) skipped\*\*' },
-  { file = "site/index.html", pattern = '(?P<value>\d+)</b><span>全仓 passed（\+(?P<skipped>\d+) skipped）' },
   { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '\*\*(?P<value>\d+) passed \+ (?P<skipped>\d+) skipped\*\*' },
 ]
 
@@ -46,7 +45,6 @@ probe = "passed_total"
 sites = [
   { file = "README.md", pattern = 'tests-(?P<value>\d+)%20passed' },
   { file = "README.md", pattern = '\*\*(?P<value>\d+) passed \+ \d+ skipped\*\*' },
-  { file = "site/index.html", pattern = '(?P<value>\d+)</b><span>全仓 passed' },
   { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '\*\*(?P<value>\d+) passed \+ \d+ skipped\*\*' },
   { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '\*\*现为 (?P<value>\d+)\*\*' },
   { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '还是 (?P<value>\d+)）' },
@@ -60,7 +58,6 @@ kind = "number"
 probe = "skipped_total"
 sites = [
   { file = "README.md", pattern = '\*\*\d+ passed \+ (?P<value>\d+) skipped\*\*' },
-  { file = "site/index.html", pattern = '全仓 passed（\+(?P<value>\d+) skipped）' },
   { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '\*\*\d+ passed \+ (?P<value>\d+) skipped\*\*' },
 ]
 note = "4 条 skip 都是条件性的（真语义通道/CAN 硬件），数量变化要能解释。"
@@ -159,7 +156,6 @@ probe = "file_regex_count"
 args = { file = "docs/decisions.md", pattern = '^## ADR-' }
 sites = [
   { file = "README.md", pattern = '(?P<value>\d+)\s*条\s*ADR' },
-  { file = "site/index.html", pattern = '(?P<value>\d+)</b><span>条 ADR' },
   { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '\*\*(?P<value>\d+) 条 ADR\*\*' },
 ]
 note = "覆盖面教训（2026-10-07）：本条最初只登记了口径卡两处，结果 CI 里既有的 test_release_hygiene 抓出 README 仍写 26——同一个数字散在两处，登记表必须都列上。说明书（0-先读我-使用说明.txt）不写 ADR 条数，故不登记。"

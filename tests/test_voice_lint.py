@@ -94,7 +94,7 @@ def test_outward_docs_have_no_high_hits(doc: str) -> None:
 
 
 def test_selftest_passes() -> None:
-    """脚本自带的 13 项自证（该抓的 7 项 + 不该抓的 5 项 + 数字守恒）必须全过。"""
+    """脚本自带的 14 项自证（该抓的 7 项 + 不该抓的 6 项 + 数字守恒）必须全过。"""
     proc = _run("--selftest")
     assert proc.returncode == 0, f"voice_lint --selftest 未通过：\n{proc.stdout}"
 

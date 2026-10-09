@@ -49,7 +49,7 @@ FENCE = re.compile(r"```.*?```", re.S)
 INLINE_CODE = re.compile(r"`[^`\n]*`")
 TABLE_LINE = re.compile(r"^[ \t]*\|.*$", re.M)
 LIST_ITEM = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t].*$", re.M)
-HTML_CODE_BLOCK = re.compile(r"<(style|script)\b.*?</\1\s*>", re.S | re.I)
+HTML_CODE_BLOCK = re.compile(r"<(style|script|pre)\b.*?</\1\s*>", re.S | re.I)
 HTML_TAG = re.compile(r"<[^>]*>", re.S)
 HEADING = re.compile(r"^[ \t]*#{1,6} ")
 SENT_SPLIT = re.compile(r"(?<=[。！？!?；;])|\n")
@@ -82,9 +82,9 @@ def mask_lists(text: str) -> str:
 
 
 def mask_html(text: str) -> str:
-    """把 HTML 的 <style>/<script> 段与标签换成空格：网页也是对外文案，
-    但标签不是句子。（真踩过：`site/index.html` 里每行 `<div>` 都被当成
-    「连续 3 句以「<」开头」，一次报 10 条 high。）"""
+    """把 HTML 的 <style>/<script>/<pre> 段与标签换成空格：网页也是对外文案，
+    但标签不是句子、<pre> 里是代码。（真踩过两次：`site/index.html` 里每行 `<div>`
+    都被当成「连续 3 句以「<」开头」；同一页的 <pre> 命令块被当成「连续 3 句以「u」开头」。）"""
     def blank(m: re.Match[str]) -> str:
         return re.sub(r"[^\n]", " ", m.group(0))
     return HTML_TAG.sub(blank, HTML_CODE_BLOCK.sub(blank, text))
@@ -195,6 +195,7 @@ def selftest() -> int:
         ("| **R0 只读** | 自由调用 |\n| **R1 沙箱写** | 只写沙箱 |\n| **R2 真实执行** | 子进程 |", "表格行不算连续同首词句"),
         ("- 可回放（history）\n- 可续跑（崩溃恢复）\n- 可审计（状态即证据）", "列表项并列首词不算 AI 味"),
         ("<div><b>960</b></div>\n<div><b>203</b></div>\n<div><b>104</b></div>", "HTML 标签不是句子"),
+        ("<pre><code>uv sync\nuv run tcms-agent run \"x\"\nuv run tcms-platform</code></pre>", "<pre> 里是代码，不是句子"),
         ("## 这是什么\n\n本仓由三个原独立仓库整合而成。", "纯标题段不参与节奏判定"),
         ("```\n✅ ⬜ —— “引号”\n```", "代码块里的符号不算"),
     ]
