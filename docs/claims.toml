@@ -6,6 +6,9 @@
 #   · pattern 用 TOML 字面串（单引号）写正则，所以**只写单反斜杠**：
 #     写成 '\\d' 在正则里是「字面反斜杠 + d」，永远匹配不到数字（本表踩过）。
 #   · 拿不到数据（上游缺失 / 只跑子集 / coverage.json 不存在）时如实跳过，不猜。
+#   · 站点标 external = true 表示它在**仓外**（本机口径卡之类）：那台机器上会被真校验，
+#     clone 出去以后如实报「外部」而不是混进「跳过」——「跳过」看着像"这次不用测"，
+#     而它其实是"这里根本没有"；两者混在一起，GitHub 上就会安静得像门禁守住了它。
 #
 # 用法
 #   uv run python scripts/check_claims.py --report     # 看漂移表
@@ -31,7 +34,7 @@ kind = "sum"
 probe = "collected_total"
 sites = [
   { file = "README.md", pattern = '\*\*(?P<value>\d+) passed \+ (?P<skipped>\d+) skipped\*\*' },
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*(?P<value>\d+) passed \+ (?P<skipped>\d+) skipped\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '\*\*(?P<value>\d+) passed \+ (?P<skipped>\d+) skipped\*\*' },
 ]
 
 [[claim]]
@@ -42,9 +45,9 @@ probe = "passed_total"
 sites = [
   { file = "README.md", pattern = 'tests-(?P<value>\d+)%20passed' },
   { file = "README.md", pattern = '\*\*(?P<value>\d+) passed \+ \d+ skipped\*\*' },
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*(?P<value>\d+) passed \+ \d+ skipped\*\*' },
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*现为 (?P<value>\d+)\*\*' },
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '还是 (?P<value>\d+)）' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '\*\*(?P<value>\d+) passed \+ \d+ skipped\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '\*\*现为 (?P<value>\d+)\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '还是 (?P<value>\d+)）' },
 ]
 note = "需要 --full-run；只有收集结果时如实跳过（值不可得 ≠ 值正确）。"
 
@@ -55,7 +58,7 @@ kind = "number"
 probe = "skipped_total"
 sites = [
   { file = "README.md", pattern = '\*\*\d+ passed \+ (?P<value>\d+) skipped\*\*' },
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*\d+ passed \+ (?P<value>\d+) skipped\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '\*\*\d+ passed \+ (?P<value>\d+) skipped\*\*' },
 ]
 note = "4 条 skip 都是条件性的（真语义通道/CAN 硬件），数量变化要能解释。"
 
@@ -66,7 +69,7 @@ kind = "number"
 probe = "collected_package"
 args = { package = "engine" }
 sites = [
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*(?P<value>\d+) 个用例\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '\*\*(?P<value>\d+) 个用例\*\*' },
 ]
 
 # ---------------------------------------------------------------------------
@@ -80,7 +83,7 @@ kind = "number"
 probe = "asset_counts"
 args = { key = "faults" }
 sites = [
-  { file = "../../resume/_口径卡_项目数字.md", pattern = 'FMEA \*\*(?P<value>\d+)\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = 'FMEA \*\*(?P<value>\d+)\*\*' },
 ]
 
 [[claim]]
@@ -90,7 +93,7 @@ kind = "number"
 probe = "asset_counts"
 args = { key = "scenarios" }
 sites = [
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '可执行场景 \*\*(?P<value>\d+)\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '可执行场景 \*\*(?P<value>\d+)\*\*' },
 ]
 
 [[claim]]
@@ -100,7 +103,7 @@ kind = "number"
 probe = "asset_counts"
 args = { key = "messages" }
 sites = [
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '(?P<value>\d+) 报文' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '(?P<value>\d+) 报文' },
 ]
 
 [[claim]]
@@ -110,7 +113,7 @@ kind = "number"
 probe = "asset_counts"
 args = { key = "signals" }
 sites = [
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '(?P<value>\d+) 信号' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '(?P<value>\d+) 信号' },
 ]
 
 # ---------------------------------------------------------------------------
@@ -134,7 +137,7 @@ kind = "number"
 probe = "file_regex_count"
 args = { file = "docs/decisions.md", pattern = '^## ADR-' }
 sites = [
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '\*\*(?P<value>\d+) 条 ADR\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '\*\*(?P<value>\d+) 条 ADR\*\*' },
   { file = "README.md", pattern = '(?P<value>\d+)\s*条\s*ADR' },
 ]
 note = "覆盖面教训（2026-10-07）：本条最初只登记了口径卡两处，结果 CI 里既有的 test_release_hygiene 抓出 README 仍写 26——同一个数字散在两处，登记表必须都列上。说明书（0-先读我-使用说明.txt）不写 ADR 条数，故不登记。"
@@ -150,7 +153,7 @@ kind = "number"
 probe = "coverage_percent"
 args = { file = "packages/engine/coverage.json" }
 sites = [
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '覆盖率 \*\*(?P<value>\d+\.\d+)%\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '覆盖率 \*\*(?P<value>\d+\.\d+)%\*\*' },
 ]
 
 [[claim]]
@@ -274,7 +277,7 @@ args = { state = "service", key = "nodes" }
 sites = [
   { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '服务态\(含 enrich\+症状/因果\) (?P<value>\d+) / 1176' },
   { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '服务态 \*\*(?P<value>\d+) 节点' },
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '图谱节点 \*\*(?P<value>\d+)\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '图谱节点 \*\*(?P<value>\d+)\*\*' },
 ]
 
 [[claim]]
@@ -296,7 +299,7 @@ probe = "kb_state"
 args = { state = "service", key = "docs" }
 sites = [
   { file = "packages/platform/docs/PROJECT_ARC.md", pattern = '/ (?P<value>\d+) 向量文档' },
-  { file = "../../resume/_口径卡_项目数字.md", pattern = '检索语料 \*\*(?P<value>\d+)\*\*' },
+  { file = "../../resume/_口径卡_项目数字.md", external = true, pattern = '检索语料 \*\*(?P<value>\d+)\*\*' },
 ]
 
 # ---------------------------------------------------------------------------

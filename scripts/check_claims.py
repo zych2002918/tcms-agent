@@ -71,6 +71,9 @@ class Site:
     pattern: str | None = None
     forbid: bool = False
     tier: str = AUTHORITY
+    # 仓外权威面（本机口径卡之类）：文件不在时如实标成「外部」，不许混进「跳过」——
+    # 「跳过」看着像"这次不用测"，而它其实是"这里根本没有"，两者混在一起就等于门禁骗人。
+    external: bool = False
 
 
 @dataclass
@@ -324,6 +327,7 @@ def load_registry(path: Path) -> tuple[list[Claim], list[Pending]]:
                 pattern=s.get("pattern"),
                 forbid=bool(s.get("forbid", False)),
                 tier=s.get("tier", AUTHORITY),
+                external=bool(s.get("external", False)),
             )
             for s in raw.get("sites", [])
         ]
@@ -395,6 +399,17 @@ def check(
                 continue
             text = _read(root, site.file)
             if text is None:
+                if site.external:
+                    # 仓外站点：在作者本机（口径卡在场）会被真校验；clone 出去以后如实报「外部」，
+                    # 而不是跟"本次没跑"的跳过混为一谈——否则 GitHub 上会安静得像门禁守住了它。
+                    findings.append(
+                        Finding(
+                            claim.id, claim.label, site.file, 0, "external",
+                            str(expected), "外部文档（不在本仓，仅在有该文件的机器上校验）",
+                            site.tier, claim.strength,
+                        )
+                    )
+                    continue
                 findings.append(
                     Finding(claim.id, claim.label, site.file, 0, "skip", str(expected), "文件不存在", site.tier, claim.strength)
                 )
@@ -487,20 +502,26 @@ def check(
 
 
 def render(findings: list[Finding], pending: list[Pending]) -> str:
-    bad = [f for f in findings if f.status != "ok"]
+    externals = [f for f in findings if f.status == "external"]
+    bad = [f for f in findings if f.status not in {"ok", "external"}]
     lines = [
         "文档自证门禁 —— 声称 vs 实物",
         "=" * 78,
     ]
-    if not bad:
+    if not bad and not externals:
         lines.append(f"全部一致（{len(findings)} 处声称，0 处漂移）")
     for f in bad:
-        tag = {"drift": "漂移", "forbidden": "违禁", "missing": "缺声明", "skip": "跳过", "watch": "观察"}[f.status]
+        tag = {"drift": "漂移", "forbidden": "违禁", "missing": "缺声明", "skip": "跳过", "watch": "观察", "external": "外部"}[f.status]
         star = "!!" if f.blocking else " ~"
         loc = f"{f.file}:{f.line}" if f.line else f.file
         lines.append(f"{star} [{tag}] {f.claim} {f.label}")
         lines.append(f"      位置 {loc}")
         lines.append(f"      实测 {f.expected} ｜ 文档 {f.actual}")
+    if externals:
+        lines.append("")
+        lines.append(f"外部文档 —— 不在本仓，只有拿到那些文件的机器才校验得到（{len(externals)} 处，不计通过）：")
+        for f in externals:
+            lines.append(f"  · {f.claim} {f.label} @ {f.file}")
     ok_count = sum(1 for f in findings if f.status == "ok")
     skipped = sum(1 for f in findings if f.status == "skip")
     watched = sum(1 for f in findings if f.status == "watch")
@@ -508,7 +529,7 @@ def render(findings: list[Finding], pending: list[Pending]) -> str:
     lines += [
         "-" * 78,
         f"一致 {ok_count} ｜ 漂移类 {len(bad) - skipped - watched} ｜ 跳过 {skipped}"
-        f" ｜ 观察 {watched} ｜ 阻断 {len(blocking)}",
+        f" ｜ 外部 {len(externals)} ｜ 观察 {watched} ｜ 阻断 {len(blocking)}",
     ]
     if pending:
         lines += ["", "待人工拍板（机器判不了，如实列出）:"]

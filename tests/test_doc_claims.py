@@ -219,6 +219,30 @@ def test_registry_covers_the_authority_surfaces(registry) -> None:
         assert required in files, f"登记表不再覆盖 {required}——覆盖面的收缩必须是有意的"
 
 
+def test_external_sites_are_reported_as_external_not_silently_skipped(tmp_path: Path, registry) -> None:
+    """仓外权威面（本机口径卡）必须显式标 `external`，且文件不在时如实报「外部」。
+
+    这条盯的是**门禁在别人机器上的诚实度**：那份口径卡不在仓库里，clone 出去以后
+    若把它算成「跳过」，报告上就只剩一片安静，读者会以为这些数字在 GitHub 上也被守着。
+    「跳过」（这次没测）与「外部」（这里根本没有）必须分得开。
+    """
+    claims, _pending = registry
+    externals = [s for c in claims for s in c.sites if s.file.startswith("../")]
+    assert externals, "登记表里应至少有一个仓外站点（口径卡）"
+    assert all(s.external for s in externals), "仓外站点必须显式标 external = true"
+
+    (tmp_path / "docs").mkdir()
+    shutil.copy(ROOT / cc.REGISTRY_REL, tmp_path / cc.REGISTRY_REL)
+    # 给足探针数据，好让「文件不在」这条分支真的被走到（数据不可得会先走跳过分支）。
+    findings = cc.check(tmp_path, claims, collected={"total": 1731, "by_package": {"engine": 960}})
+
+    ext = [f for f in findings if f.status == "external"]
+    assert ext, "仓外站点文件缺失时必须报「外部」"
+    assert all(not (tmp_path / f.file).is_file() for f in ext)
+    assert not any(f.blocking for f in ext), "仓外文件缺失本身不是漂移，不该阻断"
+    assert "外部" in cc.render(findings, []), "报告里必须有一栏把外部站点列出来"
+
+
 def test_registry_parses_and_ids_are_unique(registry) -> None:
     claims, pending = registry
     ids = [c.id for c in claims] + [p.id for p in pending]

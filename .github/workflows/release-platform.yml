@@ -1,0 +1,78 @@
+name: Release (platform)
+
+# 打 tag 即发布：`platform-v*` tag 触发后 lint + 全量回归 + 构建前端产物 + GitHub Release。
+# monorepo 约定：各成员用「成员名-v*」前缀区分 tag（engine-v1.13.0 / platform-v0.7.0 …），
+# 避免三仓合一后 tag 命名空间冲突。
+#
+# 为什么这个成员**不发 wheel 资产**（与 engine 不同）：
+#   平台对外的东西是「Web 界面 + 本地服务」，wheel 里并不含前端 dist（见 pyproject 的
+#   package-data，只有 _assets / domain 数据）。发一个装得上但打开是半截界面的 wheel，
+#   正是本仓最反感的"能发但没用"。因此这里改为：**验证前端能从源码构建出真实产物**，
+#   发布物用 GitHub 自动附带的 Source code（zip / tar.gz）。
+on:
+  push:
+    tags:
+      - "platform-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/platform
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        # 上游引擎是工作区成员：平台测试打的是真实资产，必须就地装；
+        # 装不上时测试会退化成"上游缺失"口径（那等于门禁变松），所以这一步失败即失败。
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ../engine
+          pip install -e ".[test,lint]"
+      - name: Quality gate (ruff + full regression)
+        # 覆盖率门禁单源：pyproject [tool.coverage.report] fail_under=80（不再传 --cov-fail-under）
+        run: |
+          ruff check src tests
+          python -m pytest -q --cov=tcms_ai_platform --cov-report=term
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - name: Frontend build（发布门禁：前端必须能从源码构建出真实 dist）
+        working-directory: packages/platform/web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: Generate release notes
+        # 取 CHANGELOG 的**最新一段**（第一个 `## ` 到下一个 `## ` 之前）。
+        # 不对标题格式做正则假设——engine 用 `## [1.12.0] - 日期`，本成员用 `## 0.7.0 (日期)`，
+        # 把两种写法都当成"第一个二级标题"，改格式不会静默取到空段落。
+        run: |
+          python - <<'EOF'
+          import pathlib
+          lines = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+          starts = [i for i, ln in enumerate(lines) if ln.startswith("## ")]
+          if not starts:
+              raise SystemExit("CHANGELOG 里找不到任何 `## ` 版本段")
+          start = starts[0]
+          end = next((i for i in starts[1:]), len(lines))
+          section = "\n".join(lines[start:end]).strip()
+          if not section:
+              raise SystemExit("CHANGELOG 最新版本段是空的")
+          pathlib.Path("release_notes.md").write_text(section + "\n", encoding="utf-8")
+          print(section.splitlines()[0])
+          EOF
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          # 注意：action 的路径相对**仓库根**——`defaults.run.working-directory` 只作用于 run 步骤。
+          # engine 的发布流曾因这里漏了前缀而失败，且失败点藏在一个从未触发过的 workflow 里。
+          body_path: packages/platform/release_notes.md

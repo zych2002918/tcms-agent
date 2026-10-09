@@ -41,9 +41,11 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
+from .._version import __version__
 from .toolassist import TOOL_SCHEMAS, run_tool_safe
 
-SERVER_INFO = {"name": "tcms-ai-platform-mcp", "version": "0.6.0"}
+#: 版本单一真源：跟包版本走，不再手写第二份（此前写死 0.6.0，发版时就是一处静默漂移）
+SERVER_INFO = {"name": "tcms-ai-platform-mcp", "version": __version__}
 
 #: 本实现自身支持的协议版本（协商用；不支持请求版本时回第一个 = 最新支持版本）
 SUPPORTED_PROTOCOLS = ("2026-07-28", "2025-06-18", "2024-11-05")
