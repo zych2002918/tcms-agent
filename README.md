@@ -1,8 +1,8 @@
 # TCMS × AI —— 列车控制软件测试平台与 AI 测试工程师 Agent
 
-> 面向列车网络控制系统（TCMS / CAN）的**可执行、可自证**测试工程平台 + 一个**真正会干活的
-> 领域 Agent**：真实资产 → 领域引擎 → 知识底座 → Agent 查证/造用例/真跑 → 机器自证。
-> **全部离线可跑，无需任何 API key。**
+> 列车网络控制系统（TCMS）跑在 CAN 总线上。这套平台就是用来测它的：用例、故障字典、场景
+> 全是真资产，不是占位样例。上面还坐着一个 AI 测试工程师——它去知识库查、自己造用例、
+> 在本机真跑，结论带出处，能顺着点回去核对。**全部离线可跑，不需要任何 API key。**
 
 [![CI](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.11+-2dd4a0)](#快速开始)
