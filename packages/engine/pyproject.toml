@@ -41,7 +41,7 @@ test = [
     "tomli>=2.0; python_version < '3.11'",
 ]
 viz = ["matplotlib>=3.8"]
-lint = ["ruff>=0.5"]
+lint = ["ruff>=0.16.10"]
 
 [project.scripts]
 tcms-test = "tcms.cli:main"
