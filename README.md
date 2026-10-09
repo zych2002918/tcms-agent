@@ -1,12 +1,13 @@
 # TCMS × AI —— 列车控制软件测试平台与 AI 测试工程师 Agent
 
-> 列车网络控制系统（TCMS）跑在 CAN 总线上，这套平台用来测它。用例、故障字典、场景都是
-> 真资产，不是占位样例。还有一层 AI Agent：查知识库、造用例、在本机真跑，结论带出处，
-> 能顺着点回去核对。**全部离线可跑，不需要任何 API key。**
+> 列车网络控制系统（TCMS）跑在 CAN 总线上，这套平台用来测它。用例、故障字典、场景都是真资产：
+> 960 条引擎用例、203 条 FMEA 故障、104 个可执行场景，逐条登记在 `docs/claims.toml` 里对实物核验。
+> 还有一层 AI Agent：查知识库、造用例、在本机真跑，结论带出处，能顺着点回去核对。**全部离线可跑，不需要任何 API key。**
 
 [![CI](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml)
+[![主页](https://img.shields.io/badge/%E4%B8%BB%E9%A1%B5-2f6f5e)](https://zych2002918.github.io/tcms-agent/)
 [![Python](https://img.shields.io/badge/Python-3.11+-2dd4a0)](#快速开始)
-[![tests](https://img.shields.io/badge/tests-1731%20passed-2dd4a0)](#测试与门禁)
+[![tests](https://img.shields.io/badge/tests-1738%20passed-2dd4a0)](#测试与门禁)
 [![License](https://img.shields.io/badge/license-MIT-8ca0c0)](#license)
 
 ![平台总览：真实资产规模、三个入口与列车视角的被测功能](packages/platform/docs/dashboard-preview.png)
@@ -176,11 +177,11 @@ uv run python scripts/build_release.py --no-uv    # 最小包（不含 uv）
 
 | 成员 | 命令（成员目录内） | 门禁 |
 |---|---|---|
-| engine | `pytest tests -q` | 覆盖率 `fail_under=97`（960 collected） |
+| engine | `pytest tests -q` | 覆盖率 `fail_under=97`（960 collected；其中一条要真实 CAN 硬件、运行时 skip，故 passed = 959） |
 | platform | `pytest -q` | ruff + pytest + vitest（380 passed + 1 skipped） |
 | testgen | `pytest tests --cov=tcms_ai_testgen` | 覆盖率 `fail_under=90`（170 passed） |
 | **agent** | `pytest -q` | 含**评测回归门禁**：规则臂 ≥10/11 且零幻觉（192 passed + 2 skipped） |
-| 全仓 | `uv run pytest`（仓库根） | 一把梭：**1731 passed + 4 skipped** |
+| 全仓 | `uv run pytest`（仓库根） | 一把梭：**1738 passed + 4 skipped** |
 
 > 4 条 skip 全部是**条件性**的：真语义向量通道 ×2、真实 CAN 硬件 ×1、平台语义通道 ×1。
 > 根 `conftest.py` 有一道护栏：monorepo 下找不到上游引擎时**大声中止**，
@@ -205,7 +206,7 @@ uv run python scripts/build_release.py --no-uv    # 最小包（不含 uv）
 | 文档 | 内容 |
 |---|---|
 | `docs/ARCHITECTURE.md` | 架构说明（现状，非愿景）：图拓扑、四级权限、子进程执行、审批拆分、四层记忆、RAG、评测、nolib 对照 |
-| `docs/decisions.md` | 28 条 ADR：每条含背景 → 决策 → 理由 → 代价，以及**踩过的坑** |
+| `docs/decisions.md` | 29 条 ADR：每条含背景 → 决策 → 理由 → 代价，以及**踩过的坑** |
 | `packages/agent/README.md` | Agent 使用说明 |
 
 **这个项目的性格**：文档里写的每个数字都能在代码或测试里指到；

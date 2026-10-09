@@ -153,6 +153,12 @@ def test_pytest_summary_parser_handles_real_output() -> None:
     with_failure = "1 failed, 1727 passed, 4 skipped, 2 warnings in 231.07s (0:03:51)"
     parsed = cc.parse_pytest_summary(with_failure)
     assert parsed["passed"] == 1727 and parsed["skipped"] == 4, "有失败时也要能解出 passed/skipped"
+    # 有失败时必须连 failed 一起解出来：`--fix` 靠它决定"要不要拒绝改文档"。
+    # 2026-10-09 踩过：那一轮有 2 条断言正在红，--fix 把偏小的 passed 写进了 README。
+    assert parsed["failed"] == 1, "有失败时没解出 failed 数，--fix 会照旧写出偏小的 passed"
+    assert "failed" not in cc.parse_pytest_summary("1737 passed, 4 skipped in 257.54s"), (
+        "没有失败的运行不该凭空多出 failed 键（既有断言按字典相等比较）"
+    )
 
     assert cc.parse_pytest_summary("no tests ran in 0.01s") == {}, "解不出时返回空，不许瞎猜"
 

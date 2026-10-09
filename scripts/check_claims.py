@@ -156,6 +156,24 @@ def probe_file_regex_count(root: Path, file: str, pattern: str) -> str | None:
     return str(len(re.findall(pattern, text, re.M)))
 
 
+def probe_file_regex_value(root: Path, file: str, pattern: str) -> str | None:
+    """从某个文件里取出第一个 `(?P<value>...)` 捕获组。
+
+    与 `probe_file_regex_count` 的区别：那个数「有几条」，这个取「值是多少」。
+    用途：让某个数字的**机器产物**成为另一个手写位置的实物依据——
+    例如 engine README 里由 `gen_badges.py` 依据 JUnit 写出的徽章自证行
+    （`tests: 959`），就是根 README 那句「运行口径 passed = 959」的依据。
+    拿不到文件或匹配不到时返回 None（调用方按「数据不可得」跳过，不猜）。
+    """
+    text = _read(root, file)
+    if text is None:
+        return None
+    m = re.search(pattern, text, re.M)
+    if m is None:
+        return None
+    return (m.groupdict().get("value") or "").strip() or None
+
+
 def probe_status_symbol(root: Path, marker_file: str, marker_pattern: str) -> str | None:
     """实现标记存在 → 该行必须是 ✅；不存在 → 必须是 ⬜。"""
     text = _read(root, marker_file)
@@ -248,6 +266,7 @@ def probe_coverage_percent(root: Path, file: str) -> str | None:
 PROBES = {
     "asset_counts": probe_asset_counts,
     "file_regex_count": probe_file_regex_count,
+    "file_regex_value": probe_file_regex_value,
     "status_symbol": probe_status_symbol,
     "harness_arms": probe_harness_arms,
     "coverage_percent": probe_coverage_percent,
@@ -299,7 +318,7 @@ def measure(
     fn = PROBES.get(claim.probe)
     if fn is None:
         raise KeyError(f"未知探针 {claim.probe!r}（claim {claim.id}）")
-    if claim.probe in {"file_regex_count", "coverage_percent"}:
+    if claim.probe in {"file_regex_count", "file_regex_value", "coverage_percent"}:
         return fn(root, claim.args["file"], claim.args["pattern"]) if "pattern" in claim.args else fn(root, claim.args["file"])  # type: ignore[operator]
     if claim.probe == "status_symbol":
         return fn(root, claim.args["marker_file"], claim.args["marker_pattern"])  # type: ignore[operator]
@@ -580,11 +599,17 @@ def fix(root: Path, claims: list[Claim], *, collected: dict[str, Any] | None = N
 
 
 def parse_pytest_summary(text: str | None) -> dict[str, Any]:
-    """从 `pytest -q` 的尾行解出 passed / skipped / 耗时。
+    """从 `pytest -q` 的尾行解出 passed / skipped / 耗时（有失败时连 failed 一起解）。
 
     单独成函数是为了能被单测直接喂样例（真跑一遍全仓要几分钟，
     而这条解析路径恰恰是「--full-run 到底靠不靠谱」的关键一半）。
     喂进来 None（子进程输出解码失败等）时返回空表，由调用方如实降级。
+
+    **为什么要解 failed**：只认 passed 的话，一次"有 2 条测试失败"的全仓运行
+    会给出一个偏小的 passed（失败的那 2 条既不算 passed 也不算 skipped），
+    而 `--fix` 会把这个偏小的数写进文档——2026-10-09 真踩到过：
+    那轮 README 的用例数还没同步，`test_doc_numbers` 的两条断言正在红，
+    `--fix` 于是把 1735 写进了本该是 1737 的位置。所以有失败就拒绝改文档。
     """
     if not text:
         return {}
@@ -594,11 +619,22 @@ def parse_pytest_summary(text: str | None) -> dict[str, Any]:
         return {}
     ms = re.search(r"(\d+) skipped", tail)
     md = re.search(r"in ([\d.]+)s", tail)
-    return {
+    out: dict[str, Any] = {
         "passed": int(mp.group(1)),
         "skipped": int(ms.group(1)) if ms else 0,
         "seconds": float(md.group(1)) if md else None,
     }
+    # 只在真出现时加键：既有单测是按字典相等断言的，凭空多出三个 0 会把它打破
+    for key, pattern in (
+        ("failed", r"(\d+) failed"),
+        ("errors", r"(\d+) error"),
+        ("xfailed", r"(\d+) xfailed"),
+        ("deselected", r"(\d+) deselected"),
+    ):
+        m = re.search(pattern, tail)
+        if m:
+            out[key] = int(m.group(1))
+    return out
 
 
 def collect_via_pytest(root: Path, *, full: bool = False) -> dict[str, Any] | None:
@@ -666,11 +702,24 @@ def main(argv: list[str] | None = None) -> int:
     claims, pending = load_registry(root / REGISTRY_REL)
 
     collected = None if args.no_collect else collect_via_pytest(root, full=args.full_run)
+    bad = 0
     if collected and collected.get("passed") is not None:
+        bad = collected.get("failed", 0) + collected.get("errors", 0)
+        note = f" ｜ **失败 {bad}**（这一轮的 passed 不完整）" if bad else ""
         print(
             f"实测：collected {collected['total']} ｜ passed {collected['passed']} ｜ "
-            f"skipped {collected['skipped']} ｜ {collected.get('seconds')}s"
+            f"skipped {collected['skipped']} ｜ {collected.get('seconds')}s{note}"
         )
+
+    if args.fix and bad:
+        # 失败的那几条既不算 passed 也不算 skipped，写出来的数字是偏小的。
+        # 宁可拒绝，也不要让文档认领一个"本轮跑不出来"的值。
+        print(
+            f"拒绝 --fix：本轮全仓运行有 {bad} 条失败/错误，passed 数不可信。"
+            "先把测试修绿，再让脚本改文档。",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.fix:
         for line in fix(root, claims, collected=collected):

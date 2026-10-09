@@ -1,0 +1,55 @@
+# 项目主页（GitHub Pages）
+#
+# 只发布 site/ 这一个静态目录。与 CI 解耦：CI 挂不挂都不影响主页能不能访问，
+# 反之亦然——所以它独立成一个 workflow，而不是塞进 ci.yml 里当第 7 个 job。
+#
+# 截图不复制进仓：README 用的那张 `packages/platform/docs/dashboard-preview.png`
+# 已经在仓里，且由 e2e 采集脚本带新鲜度守卫产出，部署时拼进 _site 即可，
+# 避免同一张图在仓库里存两份、只更新一份。
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 组装站点
+        run: |
+          mkdir -p _site/img
+          cp -r site/. _site/
+          cp packages/platform/docs/dashboard-preview.png _site/img/dashboard-preview.png
+          echo "--- _site 内容 ---"
+          find _site -type f | sort
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
