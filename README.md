@@ -2,7 +2,7 @@
 
 > 列车网络控制系统（TCMS）跑在 CAN 总线上，这套平台用来测它。用例、故障字典、场景都是真资产：
 > 960 条引擎用例、203 条 FMEA 故障、104 个可执行场景，逐条登记在 `docs/claims.toml` 里对实物核验。
-> 还有一层 AI Agent：查知识库、造用例、在本机真跑，结论带出处，能顺着点回去核对。
+> AI Agent可用于查知识库、造用例、执行。
 
 [![CI](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/zych2002918/tcms-agent/actions/workflows/ci.yml)
 [![主页](https://img.shields.io/badge/%E4%B8%BB%E9%A1%B5-2f6f5e)](https://zych2002918.github.io/tcms-agent/)
