@@ -42,7 +42,7 @@ test = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
 ]
-lint = ["ruff>=0.16.10"]
+lint = ["ruff>=0.17.0"]
 
 [project.scripts]
 tcms-agent = "tcms_agent.cli:main"
