@@ -85,13 +85,13 @@ jobs:
             --cov=tcms --cov-report=term --cov-report=json
       - name: Upload coverage JSON
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: engine-coverage-py${{ matrix.python-version }}
           path: packages/engine/coverage.json
       - name: Upload JUnit XML
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: engine-junit-py${{ matrix.python-version }}
           path: packages/engine/reports/junit-py${{ matrix.python-version }}.xml
@@ -119,7 +119,7 @@ jobs:
         run: python -m ruff check src tests
       - name: Pytest（真实上游资产门禁）
         run: python -m pytest -q
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - uses: pnpm/action-setup@v6
@@ -226,7 +226,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ../engine
           pip install -e ".[test,lint]"
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - uses: pnpm/action-setup@v6
